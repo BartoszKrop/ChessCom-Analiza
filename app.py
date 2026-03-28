@@ -159,7 +159,7 @@ else:
             for mode in ["Rapid", "Blitz", "Bullet"]:
                 m_df = df_f[df_f["Tryb"] == mode].sort_values("")
                 if not m_df.empty:
-                    fig_elo = px.line(m_df, x="", y="Elo_Moje", title=f"{mode}")
+                    fig_elo = px.line(m_df, x="", y="Elo", title=f"{mode}")
                     fig_elo.update_layout(height=250, margin=dict(l=0, r=0, t=30, b=0), xaxis_title=None)
                     st.plotly_chart(fig_elo, use_container_width=True)
 

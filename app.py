@@ -112,9 +112,9 @@ else:
         return f"{s.get('best', {}).get('rating', '-')} / {s.get('last', {}).get('rating', '-')}"
 
     m1, m2, m3 = st.columns(3)
-    m1.metric("Rapid", get_elo_v("chess_rapid"))
-    m2.metric("Blitz", get_elo_v("chess_blitz"))
-    m3.metric("Bullet", get_elo_v("chess_bullet"))
+    m1.metric("Rapid (Peak vs Teraz)", get_elo_v("chess_rapid"))
+    m2.metric("Blitz (Peak vs Teraz)", get_elo_v("chess_blitz"))
+    m3.metric("Bullet (Peak vs Teraz)", get_elo_v("chess_bullet"))
 
     with st.expander("⚙️ Filtry"):
         d_range = st.date_input("Zakres:", value=(df["Data"].min(), df["Data"].max()))

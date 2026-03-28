@@ -137,7 +137,7 @@ else:
             w, d, l = (df_f["Wynik"] == "Wygrane").sum(), (df_f["Wynik"] == "Remisy").sum(), (df_f["Wynik"] == "Przegrane").sum()
             wr = int(round((w/len(df_f))*100, 0))
             k1, k2, k3 = st.columns(3)
-            k1.metric("Gry", len(df_f))
+            k1.metric("Ilość gier", len(df_f))
             k2.metric("W/R/P", f"{w}/{d}/{l}")
             k3.metric("Win%", f"{wr}%")
             
@@ -145,49 +145,55 @@ else:
             st.plotly_chart(px.pie(df_f, names="Wynik", hole=0.5, color="Wynik", 
                                  color_discrete_map={"Wygrane":"#00cc96","Przegrane":"#ef553b","Remisy":"#7f7f7f"}), use_container_width=True)
             
-            # WYKRES SŁUPKOWY AKTYWNOŚCI (PRZYWRÓCONY)
+            # WYKRES SŁUPKOWY AKTYWNOŚCI
             st.write("#### Aktywność dzienna")
             act = df_f.groupby(["Data", "Wynik"]).size().reset_index(name="Ilość gier")
             fig_act = px.bar(act, x="Data", y="Ilość gier", color="Wynik", 
                              color_discrete_map={"Wygrane":"#00cc96","Przegrane":"#ef553b","Remisy":"#7f7f7f"},
                              category_orders={"Wynik": ["Wygrane", "Remisy", "Przegrane"]})
-            fig_act.update_layout(xaxis_title=None, yaxis_title=None, showlegend=False, margin=dict(l=0, r=0, t=10, b=0))
+            fig_act.update_layout(xaxis_title=None, yaxis_title="Ilość gier", showlegend=False, margin=dict(l=0, r=0, t=10, b=0))
             st.plotly_chart(fig_act, use_container_width=True)
 
             st.divider()
-            st.write("#### Historia ELO")
+            st.write("#### Historia rankingu")
             for mode in ["Rapid", "Blitz", "Bullet"]:
                 m_df = df_f[df_f["Tryb"] == mode].sort_values("Timestamp")
                 if not m_df.empty:
-                    fig_elo = px.line(m_df, x="Timestamp", y="Elo_Moje", title=f"Trend {mode}")
-                    fig_elo.update_layout(height=250, margin=dict(l=0, r=0, t=30, b=0), xaxis_title=None)
+                    # Zmiana nazwy wykresu na samą nazwę trybu
+                    fig_elo = px.line(m_df, x="Timestamp", y="Elo_Moje", title=mode)
+                    fig_elo.update_layout(height=250, margin=dict(l=0, r=0, t=30, b=0), xaxis_title=None, yaxis_title="ELO")
                     st.plotly_chart(fig_elo, use_container_width=True)
 
         with tab2:
             monthly = df_f.groupby(["Miesiąc_Klucz", "Miesiąc_Format"]).agg(W=('Wynik', lambda x: (x == 'Wygrane').sum()), R=('Wynik', lambda x: (x == 'Remisy').sum()), P=('Wynik', lambda x: (x == 'Przegrane').sum()), T=('Wynik', 'count'), E=('Elo_Moje', 'mean')).reset_index()
             monthly["W/R/P"] = monthly.apply(lambda x: f"{int(x['W'])}/{int(x['R'])}/{int(x['P'])}", axis=1)
-            monthly["Średnie ELO"] = monthly["E"].round(0).astype(int)
-            st.dataframe(monthly[["Miesiąc_Format", "T", "W/R/P", "Średnie ELO"]].rename(columns={"Miesiąc_Format":"Miesiąc", "T":"Gry"}).sort_values("Miesiąc", ascending=False), use_container_width=True, hide_index=True)
+            monthly["Moje średnie ELO"] = monthly["E"].round(0).astype(int)
+            # Zmiana 'Gry' na 'Ilość gier'
+            st.dataframe(monthly[["Miesiąc_Format", "T", "W/R/P", "Moje średnie ELO"]].rename(columns={"Miesiąc_Format":"Miesiąc", "T":"Ilość gier"}).sort_values("Miesiąc", ascending=False), use_container_width=True, hide_index=True)
             
             st.divider()
             sel_m = st.selectbox("Szczegóły miesiąca:", monthly["Miesiąc_Format"].unique())
             day_df = df_f[df_f["Miesiąc_Format"] == sel_m].groupby("Data").agg(W=('Wynik', lambda x: (x == 'Wygrane').sum()), R=('Wynik', lambda x: (x == 'Remisy').sum()), P=('Wynik', lambda x: (x == 'Przegrane').sum()), T=('Wynik', 'count'), E=('Elo_Moje', 'mean')).reset_index()
             day_df["Dzień"] = pd.to_datetime(day_df["Data"]).dt.strftime("%d/%m")
             day_df["Bilans"] = day_df.apply(lambda x: f"{int(x['W'])}/{int(x['R'])}/{int(x['P'])}", axis=1)
-            day_df["ELO"] = day_df["E"].round(0).astype(int)
-            st.dataframe(day_df[["Dzień", "T", "Bilans", "ELO"]].rename(columns={"T":"Gry"}).sort_values("Dzień", ascending=False), use_container_width=True, hide_index=True)
+            day_df["Moje średnie ELO"] = day_df["E"].round(0).astype(int)
+            # Zmiana 'Gry' na 'Ilość gier'
+            st.dataframe(day_df[["Dzień", "T", "Bilans", "Moje średnie ELO"]].rename(columns={"T":"Ilość gier"}).sort_values("Dzień", ascending=False), use_container_width=True, hide_index=True)
 
         with tab3:
             navy = ['#ffffff', '#000080']
             d_st = df_f.groupby(["Dzień", "Dzień_Nr"]).agg(Gry=('Wynik', 'count'), W=('Wynik', lambda x: (x == 'Wygrane').sum())).reset_index().sort_values("Dzień_Nr")
             d_st["Win%"] = (d_st["W"] / d_st["Gry"] * 100).round(0).astype(int)
-            st.plotly_chart(px.bar(d_st, x="Dzień", y="Win%", color="Gry", color_continuous_scale=navy, title="Win Rate wg dni"), use_container_width=True)
+            # Zmiana etykiety legendy 'Gry' na 'Ilość gier'
+            st.plotly_chart(px.bar(d_st, x="Dzień", y="Win%", color="Gry", labels={"Gry": "Ilość gier"}, color_continuous_scale=navy, title="Win Rate wg dni"), use_container_width=True)
             
             t_st = df_f.groupby("Godzina").agg(Gry=('Wynik', 'count'), W=('Wynik', lambda x: (x == 'Wygrane').sum())).reset_index()
             t_st["Win%"] = (t_st["W"] / t_st["Gry"] * 100).round(0).astype(int)
-            st.plotly_chart(px.bar(t_st, x="Godzina", y="Win%", color="Gry", color_continuous_scale=navy, title="Win Rate wg godzin"), use_container_width=True)
+            # Zmiana etykiety legendy 'Gry' na 'Ilość gier'
+            st.plotly_chart(px.bar(t_st, x="Godzina", y="Win%", color="Gry", labels={"Gry": "Ilość gier"}, color_continuous_scale=navy, title="Win Rate wg godzin"), use_container_width=True)
 
         with tab4:
             op = df_f.groupby("Debiut").agg(Gry=('Wynik', 'count'), W=('Wynik', lambda x: (x == 'Wygrane').sum())).reset_index()
             op["Win%"] = (op["W"] / op["Gry"] * 100).round(0).astype(int)
-            st.dataframe(op[["Debiut", "Gry", "Win%"]].sort_values("Gry", ascending=False).head(20), use_container_width=True, hide_index=True)
+            # Zmiana 'Gry' na 'Ilość gier'
+            st.dataframe(op[["Debiut", "Gry", "Win%"]].rename(columns={"Gry": "Ilość gier"}).sort_values("Ilość gier", ascending=False).head(20), use_container_width=True, hide_index=True)

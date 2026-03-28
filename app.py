@@ -65,9 +65,9 @@ def fetch_data(user):
                     out = "Wygrane" if res == "win" else ("Remisy" if res in ["agreed", "repetition", "stalemate", "insufficient", "50move", "timevsinsufficient"] else "Przegrane")
                     
                     all_games.append({
-                        "Timestamp": ts, "Godzina": ts.hour, "Dzień": days_map[ts.weekday()], "Dzień_Nr": ts.weekday(),
+                        "": ts, "Godzina": ts.hour, "Dzień": days_map[ts.weekday()], "Dzień_Nr": ts.weekday(),
                         "Data": ts.date(), "Miesiąc_Klucz": ts.strftime("%Y-%m"), "Miesiąc_Format": ts.strftime("%m/%Y"),
-                        "Tryb": g.get("time_class", "Inne").capitalize(), "Wynik": out, "Elo_Moje": my_r,
+                        "Tryb": g.get("time_class", "Inne").capitalize(), "Wynik": out, "Elo": my_r,
                         "Debiut": extract_opening(g.get("pgn", ""))
                     })
         return p_data, s_data, pd.DataFrame(all_games)
@@ -157,21 +157,21 @@ else:
             st.divider()
             st.write("#### Historia ELO")
             for mode in ["Rapid", "Blitz", "Bullet"]:
-                m_df = df_f[df_f["Tryb"] == mode].sort_values("Timestamp")
+                m_df = df_f[df_f["Tryb"] == mode].sort_values("")
                 if not m_df.empty:
-                    fig_elo = px.line(m_df, x="Timestamp", y="Elo_Moje", title=f"Trend {mode}")
+                    fig_elo = px.line(m_df, x="", y="Elo_Moje", title=f"{mode}")
                     fig_elo.update_layout(height=250, margin=dict(l=0, r=0, t=30, b=0), xaxis_title=None)
                     st.plotly_chart(fig_elo, use_container_width=True)
 
         with tab2:
-            monthly = df_f.groupby(["Miesiąc_Klucz", "Miesiąc_Format"]).agg(W=('Wynik', lambda x: (x == 'Wygrane').sum()), R=('Wynik', lambda x: (x == 'Remisy').sum()), P=('Wynik', lambda x: (x == 'Przegrane').sum()), T=('Wynik', 'count'), E=('Elo_Moje', 'mean')).reset_index()
+            monthly = df_f.groupby(["Miesiąc_Klucz", "Miesiąc_Format"]).agg(W=('Wynik', lambda x: (x == 'Wygrane').sum()), R=('Wynik', lambda x: (x == 'Remisy').sum()), P=('Wynik', lambda x: (x == 'Przegrane').sum()), T=('Wynik', 'count'), E=('Elo', 'mean')).reset_index()
             monthly["W/R/P"] = monthly.apply(lambda x: f"{int(x['W'])}/{int(x['R'])}/{int(x['P'])}", axis=1)
             monthly["Średnie ELO"] = monthly["E"].round(0).astype(int)
             st.dataframe(monthly[["Miesiąc_Format", "T", "W/R/P", "Średnie ELO"]].rename(columns={"Miesiąc_Format":"Miesiąc", "T":"Gry"}).sort_values("Miesiąc", ascending=False), use_container_width=True, hide_index=True)
             
             st.divider()
             sel_m = st.selectbox("Szczegóły miesiąca:", monthly["Miesiąc_Format"].unique())
-            day_df = df_f[df_f["Miesiąc_Format"] == sel_m].groupby("Data").agg(W=('Wynik', lambda x: (x == 'Wygrane').sum()), R=('Wynik', lambda x: (x == 'Remisy').sum()), P=('Wynik', lambda x: (x == 'Przegrane').sum()), T=('Wynik', 'count'), E=('Elo_Moje', 'mean')).reset_index()
+            day_df = df_f[df_f["Miesiąc_Format"] == sel_m].groupby("Data").agg(W=('Wynik', lambda x: (x == 'Wygrane').sum()), R=('Wynik', lambda x: (x == 'Remisy').sum()), P=('Wynik', lambda x: (x == 'Przegrane').sum()), T=('Wynik', 'count'), E=('Elo', 'mean')).reset_index()
             day_df["Dzień"] = pd.to_datetime(day_df["Data"]).dt.strftime("%d/%m")
             day_df["Bilans"] = day_df.apply(lambda x: f"{int(x['W'])}/{int(x['R'])}/{int(x['P'])}", axis=1)
             day_df["ELO"] = day_df["E"].round(0).astype(int)

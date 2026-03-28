@@ -145,9 +145,16 @@ else:
     m3.metric("Bullet (Peak / Teraz)", get_elo_v("chess_bullet"))
 
     with st.expander("⚙️ Filtry"):
-        d_range = st.date_input("Zakres:", value=(df["Data"].min(), df["Data"].max()))
-        s_mode = st.selectbox("Tryb:", ["Wszystkie"] + sorted(df["Tryb"].unique().tolist()))
-        days_list = ['Pn', 'Wt', 'Śr', 'Czw', 'Pt', 'Sb', 'Nd']
+        min_date = df["Data"].min()
+        max_date = df["Data"].max()
+        
+        d_range = st.date_input(
+            "Zakres dat:", 
+            value=(min_date, max_date),
+            min_value=min_date,
+            max_value=max_date
+        )
+        s_mode = st.selectbox("Tryb:", ["Wszystkie"] + sorted(df["Tryb"].unique().tolist()))        days_list = ['Pn', 'Wt', 'Śr', 'Czw', 'Pt', 'Sb', 'Nd']
         s_days = st.multiselect("Dni:", days_list, default=days_list)
         s_hours = st.slider("Godziny:", 0, 23, (0, 23))
 

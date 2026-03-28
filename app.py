@@ -175,7 +175,7 @@ else:
             day_df["Dzień"] = pd.to_datetime(day_df["Data"]).dt.strftime("%d/%m")
             day_df["Bilans"] = day_df.apply(lambda x: f"{int(x['W'])}/{int(x['R'])}/{int(x['P'])}", axis=1)
             day_df["ELO"] = day_df["E"].round(0).astype(int)
-            st.dataframe(day_df[["Dzień", "T", "Bilans", "ELO"]].rename(columns={"T":"Gry"}).sort_values("Dzień", ascending=False), use_container_width=True, hide_index=True)
+            st.dataframe(day_df[["Dzień", "T", "Bilans", "Średnie ELO"]].rename(columns={"T":"Gry"}).sort_values("Dzień", ascending=False), use_container_width=True, hide_index=True)
 
         with tab3:
             navy = ['#ffffff', '#000080']

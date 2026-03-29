@@ -312,7 +312,6 @@ else:
             b1, b2 = get_curr_elo(s1, "chess_blitz"), get_curr_elo(s2, "chess_blitz")
             bl1, bl2 = get_curr_elo(s1, "chess_bullet"), get_curr_elo(s2, "chess_bullet")
             
-            # Wartość Delty automatycznie zaświeci się na zielono (jeśli jesteś lepszy) lub czerwono (jeśli gorszy)
             c1.metric(f"Rapid ({u1} vs {u2})", f"{r1} / {r2}", int(r1 - r2) if r1 and r2 else None)
             c2.metric(f"Blitz ({u1} vs {u2})", f"{b1} / {b2}", int(b1 - b2) if b1 and b2 else None)
             c3.metric(f"Bullet ({u1} vs {u2})", f"{bl1} / {bl2}", int(bl1 - bl2) if bl1 and bl2 else None)
@@ -329,7 +328,6 @@ else:
             # --- WSPÓLNE WYKRESY ---
             st.write("### 📈 Wyścig ELO w czasie")
             
-            # Łączymy dane obu graczy do jednego wykresu
             d1_copy = d1.copy()
             d1_copy['Gracz'] = u1
             d2_copy = d2.copy()

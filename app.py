@@ -39,22 +39,29 @@ def extract_opening(pgn):
     return "Inny"
 
 def import_to_lichess(pgn_text):
-    """Wysyła PGN do Lichess i odbiera URL do analizy."""
+    """Przesyła PGN do Lichess i zwraca URL lub błąd tekstowy."""
     try:
         url = "https://lichess.org/api/import"
-        # Wysyłamy surowy tekst PGN jako formularz
-        res = requests.post(url, data={'pgn': pgn_text}, timeout=10)
+        # Dodajemy nagłówek udający przeglądarkę, żeby Lichess nas nie blokował
+        headers = {
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko)",
+            "Accept": "application/json"
+        }
+        res = requests.post(url, data={'pgn': pgn_text}, headers=headers, timeout=10)
+        
         if res.status_code == 200:
-            # Lichess zwraca JSON: {"url": "https://lichess.org/..."}
             return res.json().get("url")
-    except:
-        pass
-    return None
+        elif res.status_code == 429:
+            return "BŁĄD: Zbyt wiele zapytań (Rate Limit). Poczekaj minutę."
+        else:
+            return f"BŁĄD: Serwer Lichess zwrócił kod {res.status_code}."
+    except Exception as e:
+        return f"BŁĄD POŁĄCZENIA: {str(e)}"
 
 @st.cache_data(show_spinner=False, ttl=3600)
 def fetch_data(user):
     try:
-        headers = {"User-Agent": f"ChessApp-Simple-Analysis-{user}"}
+        headers = {"User-Agent": f"ChessApp-Final-Analysis-{user}"}
         p_res = requests.get(f"https://api.chess.com/pub/player/{user}", headers=headers)
         s_res = requests.get(f"https://api.chess.com/pub/player/{user}/stats", headers=headers)
         a_res = requests.get(f"https://api.chess.com/pub/player/{user}/games/archives", headers=headers)
@@ -91,13 +98,10 @@ def fetch_data(user):
     except:
         return None, None, None
 
-# --- SESSION STATE ---
-if 'data' not in st.session_state:
-    st.session_state.data = None
-if 'user' not in st.session_state:
-    st.session_state.user = ""
+# --- LOGIKA APLIKACJI ---
+if 'data' not in st.session_state: st.session_state.data = None
+if 'user' not in st.session_state: st.session_state.user = ""
 
-# --- LOGOWANIE ---
 if st.session_state.data is None:
     st.title("♟️ Chess Analytics")
     nick = st.text_input("Nick Chess.com:", value=st.session_state.user, placeholder="np. Kropek76")
@@ -106,8 +110,7 @@ if st.session_state.data is None:
             with st.spinner("Pobieranie danych..."):
                 fetched = fetch_data(nick)
                 if fetched[2] is not None and not fetched[2].empty:
-                    st.session_state.data = fetched
-                    st.session_state.user = nick
+                    st.session_state.data, st.session_state.user = fetched, nick
                     st.rerun()
                 else: st.error("Błąd pobierania danych.")
 else:
@@ -150,7 +153,6 @@ else:
     if not df_f.empty:
         tab1, tab2, tab3, tab4, tab5 = st.tabs(["📊 Stat", "📅 Hist", "⏳ Czas", "🔬 Deb", "🧠 Analiza"])
         
-        # --- TAB1-4 pozostają bez zmian ---
         with tab1:
             w, d, l = (df_f["Wynik"] == "Wygrane").sum(), (df_f["Wynik"] == "Remisy").sum(), (df_f["Wynik"] == "Przegrane").sum()
             k1, k2, k3 = st.columns(3)
@@ -162,7 +164,7 @@ else:
             st.write("#### Aktywność dzienna")
             act = df_f.groupby(["Data", "Wynik"]).size().reset_index(name="Ilość gier")
             fig_act = px.bar(act, x="Data", y="Ilość gier", color="Wynik", color_discrete_map={"Wygrane":"#00cc96","Przegrane":"#ef553b","Remisy":"#7f7f7f"}, category_orders={"Wynik": ["Wygrane", "Remisy", "Przegrane"]})
-            fig_act.update_layout(xaxis_title=None, yaxis_title="Ilość gier", showlegend=False, margin=dict(l=0, r=0, t=10, b=0))
+            fig_act.update_layout(xaxis_title=None, yaxis_title="Ilość gier", showlegend=False)
             st.plotly_chart(fig_act, use_container_width=True)
 
             st.divider()
@@ -171,7 +173,7 @@ else:
                 m_df = df_f[df_f["Tryb"] == mode].sort_values("Timestamp")
                 if not m_df.empty:
                     fig_elo = px.line(m_df, x="Timestamp", y="Elo_Moje", title=mode)
-                    fig_elo.update_layout(height=250, margin=dict(l=0, r=0, t=30, b=0), xaxis_title=None, yaxis_title="ELO")
+                    fig_elo.update_layout(height=250, xaxis_title=None, yaxis_title="ELO")
                     st.plotly_chart(fig_elo, use_container_width=True)
 
         with tab2:
@@ -203,33 +205,34 @@ else:
             op["Win%"] = (op["W"] / op["Gry"] * 100).round(0).astype(int)
             st.dataframe(op[["Debiut", "Gry", "Win%"]].rename(columns={"Gry": "Ilość gier"}).sort_values("Ilość gier", ascending=False).head(20), use_container_width=True, hide_index=True)
 
-        # --- TAB5: ANALIZA ---
         with tab5:
             st.write("### 🧠 Analiza partii")
-            st.write("Wpisz nick przeciwnika, aby przeszukać całą historię, lub wybierz dzień.")
             
             c1, c2 = st.columns(2)
             with c1: search_date = st.date_input("Dzień partii (jeśli nick pusty):", value=df["Data"].max())
             with c2: search_opp = st.text_input("Nick przeciwnika (override daty):").strip()
 
             if search_opp:
+                # Szukamy w całej historii (df), nie tylko w przefiltrowanym df_f
                 df_ana = df[df["Przeciwnik"].str.lower() == search_opp.lower()]
             else:
                 df_ana = df[df["Data"] == search_date]
 
             if not df_ana.empty:
                 df_ana["Label"] = df_ana.apply(lambda x: f"{x['Data']} | {x['Godzina']}:00 | {x['Tryb']} vs {x['Przeciwnik']} ({x['Wynik']})", axis=1)
-                sel_label = st.selectbox("Wybierz partię:", df_ana.sort_values("Timestamp", ascending=False)["Label"])
+                # Sortujemy od najnowszych
+                sel_label = st.selectbox("Wybierz partię z listy:", df_ana.sort_values("Timestamp", ascending=False)["Label"])
                 sel_game = df_ana[df_ana["Label"] == sel_label].iloc[0]
                 
-                st.divider()
+                st.info(f"Grasz jako: **{selected_game['Kolor']}** | Debiut: **{selected_game['Debiut']}**" if 'selected_game' in locals() else f"Grasz jako: **{sel_game['Kolor']}**")
+                
                 if st.button("🔗 Analiza partii", use_container_width=True, type="primary"):
-                    with st.spinner("Generowanie linku..."):
+                    with st.spinner("Łączenie z Lichess..."):
                         link = import_to_lichess(sel_game["PGN_Raw"])
-                        if link:
-                            # Streamlit nie pozwala na auto-otwarcie nowej karty, więc wyświetlamy link-button
+                        if link.startswith("http"):
+                            st.success("Gotowe! Kliknij poniższy przycisk, aby otworzyć analizę.")
                             st.link_button("➡️ Otwórz szachownicę Lichess", link, use_container_width=True)
                         else:
-                            st.error("Wystąpił błąd przy przesyłaniu do Lichess.")
+                            st.error(link) # Tutaj wyświetli konkretny kod błędu
             else:
-                st.warning("Brak partii spełniających kryteria.")
+                st.warning("Nie znaleziono partii.")

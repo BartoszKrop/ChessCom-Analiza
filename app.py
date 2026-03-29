@@ -211,7 +211,7 @@ else:
             op["Win%"] = (op["W"] / op["Gry"] * 100).round(0).astype(int)
             # Zmiana 'Gry' na 'Ilość gier'
             st.dataframe(op[["Debiut", "Gry", "Win%"]].rename(columns={"Gry": "Ilość gier"}).sort_values("Ilość gier", ascending=False).head(20), use_container_width=True, hide_index=True)
-            
+           
         with tab5:
             st.write("### 🧠 Darmowa Analiza Dokładności")
             st.write("Skorzystaj z Lichess, aby wyliczyć dokładność (%) i przeanalizować błędy całkowicie za darmo.")
@@ -234,18 +234,30 @@ else:
                 st.divider()
                 st.write("#### Jak poznać dokładność (%) partii?")
                 st.markdown("""
-                1. Kliknij niebieski przycisk poniżej.
+                1. Kliknij niebieski przycisk **Analiza partii** poniżej (otworzy się nowa karta).
                 2. Na stronie Lichess zjedź na dół i kliknij **Request a computer analysis** (Zażądaj analizy komputerowej).
-                3. Po kilkunastu sekundach otrzymasz pełną analizę z dokładnością (Accuracy) - całkowicie za darmo.
                 """)
                 
-                if st.button("🚀 Otwórz darmową analizę na Lichess", type="primary", use_container_width=True):
-                    with st.spinner("Przesyłanie partii na serwery Lichess..."):
-                        lichess_url = import_to_lichess(selected_game["PGN_Raw"])
-                        if lichess_url:
-                            st.success("Partia została pomyślnie wyeksportowana!")
-                            st.link_button("➡️ Przejdź do szachownicy", lichess_url, use_container_width=True)
-                        else:
-                            st.error("Nie udało się połączyć z serwerami Lichess. Spróbuj ponownie później.")
+                # Bezpośredni formularz POST do Lichess (omija API i podwójne klikanie)
+                pgn_content = selected_game["PGN_Raw"].replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+                st.markdown(f"""
+                <form action="https://lichess.org/import" method="post" target="_blank">
+                    <textarea name="pgn" style="display:none;">{pgn_content}</textarea>
+                    <button type="submit" style="
+                        background-color: #3b82f6; 
+                        color: white; 
+                        border: none; 
+                        padding: 0.6rem 1rem; 
+                        border-radius: 0.5rem; 
+                        cursor: pointer; 
+                        font-size: 1rem; 
+                        width: 100%;
+                        font-weight: 600;
+                        margin-top: 10px;">
+                        Analiza partii
+                    </button>
+                </form>
+                """, unsafe_allow_html=True)
+
             else:
                 st.warning("Brak partii spełniających wybrane kryteria w tym dniu.")

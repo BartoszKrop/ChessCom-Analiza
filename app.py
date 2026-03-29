@@ -39,10 +39,8 @@ def extract_opening(pgn):
     return "Inny"
 
 def import_to_lichess(pgn_text):
-    """Wysyła PGN do Lichess i odbiera URL do analizy."""
     try:
         url = "https://lichess.org/api/import"
-        # Nagłówek mobilny - pomaga przy Deep Linkingu na telefonach
         headers = {
             "User-Agent": "Mozilla/5.0 (iPhone; CPU iPhone OS 15_0 like Mac OS X) AppleWebKit/605.1.15",
             "Accept": "application/json"
@@ -53,6 +51,10 @@ def import_to_lichess(pgn_text):
     except:
         pass
     return None
+
+# --- CALLBACK DO RESETOWANIA LINKU ---
+def reset_link():
+    st.session_state.current_lichess_url = None
 
 @st.cache_data(show_spinner=False, ttl=3600)
 def fetch_data(user):
@@ -101,8 +103,6 @@ if 'user' not in st.session_state:
     st.session_state.user = ""
 if 'current_lichess_url' not in st.session_state:
     st.session_state.current_lichess_url = None
-if 'last_selected_label' not in st.session_state:
-    st.session_state.last_selected_label = None
 
 # --- LOGOWANIE ---
 if st.session_state.data is None:
@@ -125,7 +125,6 @@ else:
         if st.button("⬅️ Zmień gracza", use_container_width=True):
             st.session_state.data = None
             st.session_state.current_lichess_url = None
-            st.session_state.last_selected_label = None
             st.rerun()
 
     avatar = profile.get("avatar")
@@ -227,29 +226,30 @@ else:
 
             if not df_ana.empty:
                 df_ana["Label"] = df_ana.apply(lambda x: f"{x['Data']} | {x['Godzina']}:00 | {x['Tryb']} vs {x['Przeciwnik']} ({x['Wynik']})", axis=1)
-                sel_label = st.selectbox("Wybierz partię z listy:", df_ana.sort_values("Timestamp", ascending=False)["Label"])
+                
+                # POPRAWKA DLA MOBILE: Używamy 'on_change' i 'key', żeby selectbox nie zwijał się przy dotyku.
+                sel_label = st.selectbox(
+                    "Wybierz partię z listy:", 
+                    df_ana.sort_values("Timestamp", ascending=False)["Label"],
+                    key="mobile_game_selector",
+                    on_change=reset_link
+                )
+                
                 sel_game = df_ana[df_ana["Label"] == sel_label].iloc[0]
                 
                 st.info(f"Grasz jako: **{sel_game['Kolor']}** | Debiut: **{sel_game['Debiut']}**")
                 
-                # Zabezpieczenie przed zachowaniem "starego" linku przy zmianie partii
-                if st.session_state.last_selected_label != sel_label:
-                    st.session_state.current_lichess_url = None
-                    st.session_state.last_selected_label = sel_label
-
                 st.divider()
                 
-                # Przycisk "Przygotuj", który generuje wynik i przypisuje go do pamięci sesji
                 if st.button("🚀 Przygotuj analizę", use_container_width=True):
                     with st.spinner("Łączenie z Lichess..."):
                         link = import_to_lichess(sel_game["PGN_Raw"])
                         if link:
                             st.session_state.current_lichess_url = link
-                            st.rerun() # Wymuszamy odświeżenie UI, by od razu pokazał się przycisk poniżej
+                            st.rerun() 
                         else:
                             st.error("Wystąpił błąd połączenia. Lichess odrzucił żądanie.")
 
-                # Gdy link już jest gotowy, wyświetlamy dynamiczny przycisk
                 if st.session_state.current_lichess_url:
                     btn_label = f"➡️ ANALIZA: {sel_game['Przeciwnik']} ({sel_game['Data']})"
                     st.link_button(btn_label, st.session_state.current_lichess_url, type="primary", use_container_width=True)

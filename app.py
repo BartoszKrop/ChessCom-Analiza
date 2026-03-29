@@ -229,7 +229,7 @@ else:
         if s_mode != "Wszystkie": df_f = df_f[df_f["Tryb"] == s_mode]
 
         if not df_f.empty:
-            tab1, tab2, tab3, tab4, tab_styl, tab5 = st.tabs(["📊 Stat", "📅 Hist", "⏳ Czas", "🔬 Deb", "🧩 Psychologia & Styl", "🧠 Analiza"])
+            tab1, tab2, tab3, tab4, tab_styl, tab5 = st.tabs(["📊 Stat", "📅 Hist", "⏳ Czas", "🔬 Deb", "🧩 Psycha", "🧠 Analiza"])
             
             with tab1:
                 w, d, l = (df_f["Wynik"] == "Wygrane").sum(), (df_f["Wynik"] == "Remisy").sum(), (df_f["Wynik"] == "Przegrane").sum()

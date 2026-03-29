@@ -20,6 +20,7 @@ st.markdown("""
         border-radius: 10px; 
         border: 1px solid #30363d;
         margin-bottom: 10px;
+        height: 100%;
     }
     [data-testid="stMetricValue"] { font-size: 1.1rem !important; color: #ffffff; }
     [data-testid="stMetricLabel"] { font-size: 0.75rem !important; }
@@ -28,7 +29,6 @@ st.markdown("""
         padding: 1rem;
     }
     
-    /* Styl dla poziomego przełącznika (radio) by wyglądał jak przyciski */
     div.row-widget.stRadio > div { flex-direction: row; justify-content: center; background-color: #161b22; padding: 10px; border-radius: 10px; border: 1px solid #30363d;}
     </style>
     """, unsafe_allow_html=True)
@@ -61,7 +61,7 @@ def reset_link():
 @st.cache_data(show_spinner=False, ttl=3600)
 def fetch_data(user):
     try:
-        headers = {"User-Agent": f"ChessApp-Analytics-Pro-V5-{user}"}
+        headers = {"User-Agent": f"ChessApp-Analytics-Pro-V6-{user}"}
         p_res = requests.get(f"https://api.chess.com/pub/player/{user}", headers=headers)
         s_res = requests.get(f"https://api.chess.com/pub/player/{user}/stats", headers=headers)
         a_res = requests.get(f"https://api.chess.com/pub/player/{user}/games/archives", headers=headers)
@@ -98,11 +98,22 @@ def fetch_data(user):
     except:
         return None, None, None
 
+def render_lichess_button(url, label):
+    st.markdown(f"""
+    <a href="{url}" target="_blank" style="
+        display: block; width: 100%; text-align: center; background-color: #1e88e5; 
+        color: white; padding: 12px; border-radius: 8px; text-decoration: none; 
+        font-weight: bold; font-size: 16px; border: 1px solid #1565c0;
+        margin-top: 10px; box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+    ">{label}</a>
+    """, unsafe_allow_html=True)
+
 # --- SESSION STATE ---
 if 'data' not in st.session_state: st.session_state.data = None
 if 'user' not in st.session_state: st.session_state.user = ""
 if 'current_lichess_url' not in st.session_state: st.session_state.current_lichess_url = None
 if 'last_selected_label' not in st.session_state: st.session_state.last_selected_label = None
+if 'app_mode' not in st.session_state: st.session_state.app_mode = "👤 Moja Analiza"
 if 'data2' not in st.session_state: st.session_state.data2 = None
 if 'user2' not in st.session_state: st.session_state.user2 = ""
 
@@ -132,18 +143,25 @@ else:
     username = st.session_state.user
 
     # --- NAWIGACJA GŁÓWNA ---
-    app_mode = st.radio(
+    new_mode = st.radio(
         "Tryb aplikacji:", 
         ["👤 Moja Analiza", "⚔️ Porównanie Graczy"], 
         horizontal=True, 
-        label_visibility="collapsed"
+        label_visibility="collapsed",
+        index=0 if st.session_state.app_mode == "👤 Moja Analiza" else 1
     )
+    
+    if new_mode != st.session_state.app_mode:
+        st.session_state.app_mode = new_mode
+        st.session_state.current_lichess_url = None
+        st.rerun()
+        
     st.divider()
 
     # ==========================================
     # TRYB 1: MOJA ANALIZA
     # ==========================================
-    if app_mode == "👤 Moja Analiza":
+    if st.session_state.app_mode == "👤 Moja Analiza":
         avatar = profile.get("avatar")
         c_h1, c_h2 = st.columns([1, 4])
         if avatar: c_h1.image(avatar, width=70)
@@ -243,14 +261,7 @@ else:
 
                 if not df_ana.empty:
                     df_ana["Label"] = df_ana.apply(lambda x: f"{x['Data']} | {x['Godzina']}:00 | {x['Tryb']} vs {x['Przeciwnik']} ({x['Wynik']})", axis=1)
-                    
-                    sel_label = st.selectbox(
-                        "Wybierz partię z listy:", 
-                        df_ana.sort_values("Timestamp", ascending=False)["Label"],
-                        key="mobile_game_selector",
-                        on_change=reset_link
-                    )
-                    
+                    sel_label = st.selectbox("Wybierz partię z listy:", df_ana.sort_values("Timestamp", ascending=False)["Label"], key="main_game_select", on_change=reset_link)
                     sel_game = df_ana[df_ana["Label"] == sel_label].iloc[0]
                     
                     st.info(f"Grasz jako: **{sel_game['Kolor']}** | Debiut: **{sel_game['Debiut']}**")
@@ -265,27 +276,9 @@ else:
                             else:
                                 st.error("Wystąpił błąd połączenia. Lichess odrzucił żądanie.")
 
-                    # ZMIANA: Piękny, niestandardowy niebieski przycisk w HTML
                     if st.session_state.current_lichess_url:
                         btn_label = f"➡️ ANALIZA PARTII: {sel_game['Przeciwnik']} ({sel_game['Data']})"
-                        custom_button_html = f"""
-                        <a href="{st.session_state.current_lichess_url}" target="_blank" style="
-                            display: block; 
-                            width: 100%; 
-                            text-align: center; 
-                            background-color: #1e88e5; 
-                            color: white; 
-                            padding: 12px; 
-                            border-radius: 8px; 
-                            text-decoration: none; 
-                            font-weight: bold; 
-                            font-size: 16px;
-                            border: 1px solid #1565c0;
-                            margin-top: 10px;
-                            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
-                        ">{btn_label}</a>
-                        """
-                        st.markdown(custom_button_html, unsafe_allow_html=True)
+                        render_lichess_button(st.session_state.current_lichess_url, btn_label)
                         st.caption("Kliknij powyżej, aby otworzyć partię (po otwarciu kliknij 'Request a computer analysis').")
                 else:
                     st.warning("Nie znaleziono partii.")
@@ -293,12 +286,13 @@ else:
     # ==========================================
     # TRYB 2: PORÓWNANIE GRACZY
     # ==========================================
-    elif app_mode == "⚔️ Porównanie Graczy":
+    elif st.session_state.app_mode == "⚔️ Porównanie Graczy":
+        
         c_p1, c_p2 = st.columns(2)
         with c_p1:
             st.info(f"**Twój profil:** {username}")
         with c_p2:
-            nick2 = st.text_input("Wpisz nick rywala:", value=st.session_state.user2, placeholder="np. Hikaru", label_visibility="collapsed")
+            nick2 = st.text_input("Wpisz nick rywala:", value=st.session_state.user2, placeholder="Wpisz nick znajomego", label_visibility="collapsed")
             if st.button("🚀 Pobierz dane rywala", use_container_width=True):
                 if nick2:
                     with st.spinner(f"Pobieranie historii gier dla {nick2}..."):
@@ -311,49 +305,112 @@ else:
                             st.error(f"Nie udało się pobrać danych dla {nick2}. Sprawdź poprawność nicku.")
 
         if st.session_state.data2 is not None:
-            st.divider()
-            
             p1, s1, d1 = st.session_state.data
             p2, s2, d2 = st.session_state.data2
             u1 = username
             u2 = st.session_state.user2
 
-            # --- PORÓWNANIE ELO ---
-            st.write("### 🏆 Aktualne ELO (Twoja przewaga)")
-            
-            def get_curr_elo(stat_dict, mode):
-                return stat_dict.get(mode, {}).get('last', {}).get('rating', 0)
+            t_ogolne, t_h2h = st.tabs(["📊 Ogólne Informacje", "🥊 Head-to-Head (Bezpośrednie starcia)"])
 
-            c1, c2, c3 = st.columns(3)
-            r1, r2 = get_curr_elo(s1, "chess_rapid"), get_curr_elo(s2, "chess_rapid")
-            b1, b2 = get_curr_elo(s1, "chess_blitz"), get_curr_elo(s2, "chess_blitz")
-            bl1, bl2 = get_curr_elo(s1, "chess_bullet"), get_curr_elo(s2, "chess_bullet")
-            
-            c1.metric(f"Rapid ({u1} vs {u2})", f"{r1} / {r2}", int(r1 - r2) if r1 and r2 else None)
-            c2.metric(f"Blitz ({u1} vs {u2})", f"{b1} / {b2}", int(b1 - b2) if b1 and b2 else None)
-            c3.metric(f"Bullet ({u1} vs {u2})", f"{bl1} / {bl2}", int(bl1 - bl2) if bl1 and bl2 else None)
+            with t_ogolne:
+                st.write("### 🏆 Aktualne ELO")
+                
+                def get_curr_elo(stat_dict, mode):
+                    return stat_dict.get(mode, {}).get('last', {}).get('rating', 0)
 
-            # --- STATYSTYKI OGÓLNE ---
-            st.write("### 📊 Ogólny Win Rate")
-            wr1 = int(round(((d1["Wynik"] == "Wygrane").sum() / len(d1)) * 100, 0)) if len(d1) > 0 else 0
-            wr2 = int(round(((d2["Wynik"] == "Wygrane").sum() / len(d2)) * 100, 0)) if len(d2) > 0 else 0
-            
-            c4, c5 = st.columns(2)
-            c4.metric(f"Twój Win Rate ({u1}) vs {u2}", f"{wr1}% / {wr2}%", f"{wr1 - wr2}%" if wr2 else None)
-            c5.metric("Ilość przeanalizowanych partii", f"{len(d1)} / {len(d2)}")
+                c1, c2, c3 = st.columns(3)
+                r1, r2 = get_curr_elo(s1, "chess_rapid"), get_curr_elo(s2, "chess_rapid")
+                b1, b2 = get_curr_elo(s1, "chess_blitz"), get_curr_elo(s2, "chess_blitz")
+                bl1, bl2 = get_curr_elo(s1, "chess_bullet"), get_curr_elo(s2, "chess_bullet")
+                
+                c1.metric(f"Rapid: {u1} vs {u2}", f"{r1} / {r2}", int(r1 - r2) if r1 and r2 else None)
+                c2.metric(f"Blitz: {u1} vs {u2}", f"{b1} / {b2}", int(b1 - b2) if b1 and b2 else None)
+                c3.metric(f"Bullet: {u1} vs {u2}", f"{bl1} / {bl2}", int(bl1 - bl2) if bl1 and bl2 else None)
 
-            # --- WSPÓLNE WYKRESY ---
-            st.write("### 📈 Wyścig ELO w czasie")
-            
-            d1_copy = d1.copy()
-            d1_copy['Gracz'] = u1
-            d2_copy = d2.copy()
-            d2_copy['Gracz'] = u2
-            df_comp = pd.concat([d1_copy, d2_copy])
+                st.write("### 📊 Ogólny Win Rate")
+                wr1 = int(round(((d1["Wynik"] == "Wygrane").sum() / len(d1)) * 100, 0)) if len(d1) > 0 else 0
+                wr2 = int(round(((d2["Wynik"] == "Wygrane").sum() / len(d2)) * 100, 0)) if len(d2) > 0 else 0
+                
+                c4, c5 = st.columns(2)
+                c4.metric(f"Win Rate: {u1} vs {u2}", f"{wr1}% / {wr2}%", f"{wr1 - wr2}%" if wr2 else None)
+                c5.metric("Ilość rozegranych partii", f"{len(d1)} / {len(d2)}")
 
-            for mode in ["Rapid", "Blitz", "Bullet"]:
-                m_df = df_comp[df_comp["Tryb"] == mode].sort_values("Timestamp")
-                if not m_df.empty:
-                    fig_comp = px.line(m_df, x="Timestamp", y="Elo_Moje", color="Gracz", title=f"Porównanie: {mode}")
-                    fig_comp.update_layout(height=300, margin=dict(l=0, r=0, t=30, b=0), xaxis_title=None, yaxis_title="ELO")
-                    st.plotly_chart(fig_comp, use_container_width=True)
+                st.write("### 📈 Wyścig ELO w czasie")
+                
+                d1_copy = d1.copy()
+                d1_copy['Gracz'] = u1
+                d2_copy = d2.copy()
+                d2_copy['Gracz'] = u2
+                df_comp = pd.concat([d1_copy, d2_copy])
+
+                for mode in ["Rapid", "Blitz", "Bullet"]:
+                    m_df = df_comp[df_comp["Tryb"] == mode].sort_values("Timestamp")
+                    if not m_df.empty:
+                        fig_comp = px.line(m_df, x="Timestamp", y="Elo_Moje", color="Gracz", title=f"Porównanie: {mode}")
+                        fig_comp.update_layout(height=300, margin=dict(l=0, r=0, t=30, b=0), xaxis_title=None, yaxis_title="ELO")
+                        st.plotly_chart(fig_comp, use_container_width=True)
+
+            with t_h2h:
+                # Wyszukujemy bezpośrednie mecze w historii Gracza 1
+                h2h_df = d1[d1['Przeciwnik'].str.lower() == u2.lower()].copy().sort_values("Timestamp")
+                
+                if h2h_df.empty:
+                    st.info(f"Brak zarejestrowanych partii bezpośrednich pomiędzy **{u1}** a **{u2}** w pobranej historii.")
+                else:
+                    h2h_w = (h2h_df["Wynik"] == "Wygrane").sum()
+                    h2h_d = (h2h_df["Wynik"] == "Remisy").sum()
+                    h2h_l = (h2h_df["Wynik"] == "Przegrane").sum()
+                    
+                    st.write("### 🥊 Bilans bezposredni")
+                    c_h1, c_h2, c_h3 = st.columns(3)
+                    c_h1.metric(f"Wygrane ({u1})", h2h_w)
+                    c_h2.metric("Remisy", h2h_d)
+                    c_h3.metric(f"Wygrane ({u2})", h2h_l)
+                    
+                    # Ciekawostki
+                    col_f1, col_f2 = st.columns(2)
+                    with col_f1:
+                        fav_open = h2h_df["Debiut"].value_counts().idxmax()
+                        st.info(f"**Wasz najczęstszy debiut:**\n\n{fav_open}")
+                    with col_f2:
+                        w_games = h2h_df[h2h_df["Kolor"] == "Białe"]
+                        if not w_games.empty:
+                            w_win = int(((w_games["Wynik"] == "Wygrane").sum() / len(w_games)) * 100)
+                            st.info(f"**Twój Win Rate grając Białymi (vs {u2}):**\n\n{w_win}% (na {len(w_games)} partii)")
+                        else:
+                            st.info(f"**Twój Win Rate grając Białymi (vs {u2}):**\n\nBrak gier białymi.")
+
+                    st.write("### 📈 Przeciąganie Liny (Historia dominacji)")
+                    # Wykres przeciągania liny (+1 wygrana, -1 przegrana, 0 remis)
+                    h2h_df["Score_Change"] = h2h_df["Wynik"].map({"Wygrane": 1, "Przegrane": -1, "Remisy": 0})
+                    h2h_df["Przewaga"] = h2h_df["Score_Change"].cumsum()
+                    
+                    fig_h2h = px.line(h2h_df, x="Timestamp", y="Przewaga", markers=True)
+                    fig_h2h.add_hline(y=0, line_dash="dash", line_color="white")
+                    fig_h2h.update_layout(
+                        title=f"Wartość na PLUS = Prowadzi {u1} | Wartość na MINUS = Prowadzi {u2}",
+                        xaxis_title=None, 
+                        yaxis_title="Bilans Przewagi",
+                        height=350
+                    )
+                    st.plotly_chart(fig_h2h, use_container_width=True)
+
+                    st.divider()
+                    st.write("### 🔬 Przeanalizuj wasze starcie")
+                    h2h_df["Label"] = h2h_df.apply(lambda x: f"{x['Data']} | {x['Tryb']} ({x['Wynik']})", axis=1)
+                    
+                    sel_h2h_label = st.selectbox("Wybierz partię z historii H2H:", h2h_df.sort_values("Timestamp", ascending=False)["Label"], key="h2h_game_select", on_change=reset_link)
+                    sel_h2h_game = h2h_df[h2h_df["Label"] == sel_h2h_label].iloc[0]
+                    
+                    if st.button("🚀 Przygotuj analizę H2H", use_container_width=True):
+                        with st.spinner("Łączenie z Lichess..."):
+                            link = import_to_lichess(sel_h2h_game["PGN_Raw"])
+                            if link:
+                                st.session_state.current_lichess_url = link
+                                st.rerun()
+                            else:
+                                st.error("Wystąpił błąd połączenia.")
+                    
+                    if st.session_state.current_lichess_url:
+                        btn_label = f"➡️ ANALIZA H2H: {u1} vs {u2} ({sel_h2h_game['Data']})"
+                        render_lichess_button(st.session_state.current_lichess_url, btn_label)

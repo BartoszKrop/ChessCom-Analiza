@@ -61,7 +61,7 @@ def reset_link():
 @st.cache_data(show_spinner=False, ttl=3600)
 def fetch_data(user):
     try:
-        headers = {"User-Agent": f"ChessApp-Analytics-Pro-V7-{user}"}
+        headers = {"User-Agent": f"ChessApp-Analytics-Pro-V8-{user}"}
         p_res = requests.get(f"https://api.chess.com/pub/player/{user}", headers=headers)
         s_res = requests.get(f"https://api.chess.com/pub/player/{user}/stats", headers=headers)
         a_res = requests.get(f"https://api.chess.com/pub/player/{user}/games/archives", headers=headers)
@@ -120,7 +120,7 @@ if 'user2' not in st.session_state: st.session_state.user2 = ""
 # --- LOGOWANIE ---
 if st.session_state.data is None:
     st.title("♟️ Chess Analytics Pro")
-    nick = st.text_input("Nick Chess.com:", value=st.session_state.user, placeholder="np. Kropek76")
+    nick = st.text_input("Nick Chess.com:", value=st.session_state.user, placeholder="np. Hikaru")
     if st.button("Analizuj moje wyniki", use_container_width=True):
         if nick:
             with st.spinner("Pobieranie danych..."):
@@ -176,7 +176,7 @@ else:
         m2.metric("Blitz (Peak vs Obecnie)", get_elo_v("chess_blitz"))
         m3.metric("Bullet (Peak vs Obecnie)", get_elo_v("chess_bullet"))
 
-        with st.expander("⚙️ Filtry główne"):
+        with st.expander("⚙️ Filtry"):
             col_f1, col_f2 = st.columns(2)
             d_range = col_f1.date_input("Zakres dat:", value=(df["Data"].min(), df["Data"].max()))
             s_mode = col_f2.selectbox("Tryb gry:", ["Wszystkie"] + sorted(df["Tryb"].unique().tolist()))
@@ -196,7 +196,7 @@ else:
         if s_mode != "Wszystkie": df_f = df_f[df_f["Tryb"] == s_mode]
 
         if not df_f.empty:
-            tab1, tab2, tab3, tab4, tab5 = st.tabs(["📊 Stat", "📅 Hist", "⏳ Czas", "🔬 Deb", "🧠 Analiza"])
+            tab1, tab2, tab3, tab4, tab_tilt, tab5 = st.tabs(["📊 Stat", "📅 Hist", "⏳ Czas", "🔬 Deb", "🚨 Nemesis & Tilt", "🧠 Analiza"])
             
             with tab1:
                 w, d, l = (df_f["Wynik"] == "Wygrane").sum(), (df_f["Wynik"] == "Remisy").sum(), (df_f["Wynik"] == "Przegrane").sum()
@@ -249,6 +249,58 @@ else:
                 op = df_f.groupby("Debiut").agg(Gry=('Wynik', 'count'), W=('Wynik', lambda x: (x == 'Wygrane').sum())).reset_index()
                 op["Win%"] = (op["W"] / op["Gry"] * 100).round(0).astype(int)
                 st.dataframe(op[["Debiut", "Gry", "Win%"]].rename(columns={"Gry": "Ilość partii"}).sort_values("Ilość partii", ascending=False).head(20), use_container_width=True, hide_index=True)
+
+            # NOWA ZAKŁADKA
+            with tab_tilt:
+                st.write("### 😈 System Nemesis")
+                opp_stats = df_f.groupby('Przeciwnik').agg(Gry=('Wynik', 'count'), W=('Wynik', lambda x: (x == 'Wygrane').sum()), P=('Wynik', lambda x: (x == 'Przegrane').sum())).reset_index()
+                # Filtrujemy graczy, z którymi zagrano min. 2 razy, żeby wyniki były miarodajne
+                opp_stats = opp_stats[opp_stats['Gry'] >= 2]
+                
+                if opp_stats.empty:
+                    st.info("Brak graczy z którymi grałeś więcej niż raz w tym okresie.")
+                else:
+                    nemesis = opp_stats.sort_values(by=['P', 'Gry'], ascending=[False, True]).head(3)
+                    victims = opp_stats.sort_values(by=['W', 'Gry'], ascending=[False, True]).head(3)
+                    
+                    c_nem1, c_nem2 = st.columns(2)
+                    with c_nem1:
+                        st.error("**Twoi Kaci (Najwięcej porażek):**")
+                        for _, row in nemesis.iterrows():
+                            st.write(f"💀 **{row['Przeciwnik']}** ({row['P']} porażek na {row['Gry']} gier)")
+                    with c_nem2:
+                        st.success("**Twoje Ofiary (Najwięcej zwycięstw):**")
+                        for _, row in victims.iterrows():
+                            st.write(f"👼 **{row['Przeciwnik']}** ({row['W']} wygranych na {row['Gry']} gier)")
+
+                st.divider()
+                st.write("### 📉 Analiza Tiltu (Kiedy przestać grać?)")
+                st.write("Sprawdzamy, jak radzisz sobie w kolejnej partii po wygranej, a jak po przegranej.")
+                
+                df_tilt = df_f.sort_values('Timestamp').reset_index(drop=True)
+                if len(df_tilt) > 1:
+                    df_tilt['Poprzedni_Wynik'] = df_tilt['Wynik'].shift(1)
+                    
+                    po_wygranej = df_tilt[df_tilt['Poprzedni_Wynik'] == 'Wygrane']
+                    po_przegranej = df_tilt[df_tilt['Poprzedni_Wynik'] == 'Przegrane']
+                    
+                    wr_po_wygranej = int(round(((po_wygranej['Wynik'] == 'Wygrane').sum() / len(po_wygranej)) * 100, 0)) if len(po_wygranej) > 0 else 0
+                    wr_po_przegranej = int(round(((po_przegranej['Wynik'] == 'Wygrane').sum() / len(po_przegranej)) * 100, 0)) if len(po_przegranej) > 0 else 0
+                    
+                    ogolny_wr = int(round(((df_f['Wynik'] == 'Wygrane').sum() / len(df_f)) * 100, 0))
+                    
+                    c_t1, c_t2 = st.columns(2)
+                    c_t1.metric("Win Rate grając 'Na fali' (po wygranej)", f"{wr_po_wygranej}%")
+                    c_t2.metric("Win Rate grając 'Na tiltcie' (po porażce)", f"{wr_po_przegranej}%")
+                    
+                    if wr_po_przegranej < (ogolny_wr - 5):
+                        st.warning(f"⚠️ Uwaga! Twój Win Rate spada drastycznie po porażce. Warto robić sobie przerwę po przegranym meczu, żeby oczyścić głowę!")
+                    elif wr_po_przegranej >= ogolny_wr:
+                        st.success(f"💪 Jesteś odporny! Porażki Cię motywują i grasz po nich jeszcze lepiej (lub na tym samym poziomie).")
+                    else:
+                        st.info("Twoja gra jest w miarę stabilna niezależnie od wyniku poprzedniego starcia.")
+                else:
+                    st.info("Za mało gier do analizy tiltu.")
 
             with tab5:
                 st.write("### 🧠 Analiza partii")
@@ -315,7 +367,7 @@ else:
             u2 = st.session_state.user2
 
             # FILTRY DLA PORÓWNANIA
-            with st.expander("⚙️ Filtry porównania (Zastosuj do obu graczy)"):
+            with st.expander("⚙️ Filtry"):
                 col_c1, col_c2 = st.columns(2)
                 d_range_c = col_c1.date_input("Zakres dat:", value=(d1["Data"].min(), d1["Data"].max()), key="c_date")
                 s_mode_c = col_c2.selectbox("Tryb gry:", ["Wszystkie"] + sorted(d1["Tryb"].unique().tolist()), key="c_mode")
@@ -326,7 +378,6 @@ else:
                 s_days_c = st.multiselect("Dni tygodnia:", days_list_c, default=days_list_c, key="c_days")
                 s_hours_c = st.slider("Godziny:", 0, 23, (0, 23), key="c_hours")
 
-            # Aplikowanie filtrów dla obu graczy
             d1_f = d1.copy()
             d2_f = d2.copy()
             
@@ -347,7 +398,7 @@ else:
                 d1_f = d1_f[d1_f["Tryb"] == s_mode_c]
                 d2_f = d2_f[d2_f["Tryb"] == s_mode_c]
 
-            t_ogolne, t_h2h = st.tabs(["📊 Ogólne Informacje", "🥊 Head-to-Head (Bezpośrednie starcia)"])
+            t_ogolne, t_h2h = st.tabs(["📊 Ogólne Informacje", "🥊 Head-to-Head"])
 
             with t_ogolne:
                 st.write("### 🏆 Aktualne ELO")
@@ -388,7 +439,6 @@ else:
                         st.plotly_chart(fig_comp, use_container_width=True)
 
             with t_h2h:
-                # Wyszukujemy bezpośrednie mecze po przefiltrowaniu
                 h2h_df = d1_f[d1_f['Przeciwnik'].str.lower() == u2.lower()].copy()
                 
                 if h2h_df.empty:
@@ -408,11 +458,9 @@ else:
                     c_h3.metric(f"Wygrane ({u2})", h2h_l)
                     
                     st.write("### 📈 Wyścig Zwycięstw")
-                    # Obliczamy skumulowane zwycięstwa dla obu graczy
                     h2h_df[f"Zwycięstwa {u1}"] = (h2h_df["Wynik"] == "Wygrane").cumsum()
-                    h2h_df[f"Zwycięstwa {u2}"] = (h2h_df["Wynik"] == "Przegrane").cumsum() # Przegrana gracza 1 to wygrana gracza 2
+                    h2h_df[f"Zwycięstwa {u2}"] = (h2h_df["Wynik"] == "Przegrane").cumsum() 
                     
-                    # Konwertujemy tabelę, aby Plotly narysowało dwie linie
                     chart_df = h2h_df[["Numer partii", f"Zwycięstwa {u1}", f"Zwycięstwa {u2}"]].melt(
                         id_vars=["Numer partii"], var_name="Gracz", value_name="Suma Zwycięstw"
                     )

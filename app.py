@@ -38,6 +38,16 @@ def extract_opening(pgn):
         return match.group(1).replace('-', ' ').capitalize()
     return "Inny"
 
+def import_to_lichess(pgn_text):
+    """Wysyła PGN i zwraca link do pełnej analizy na Lichess"""
+    try:
+        res = requests.post("https://lichess.org/api/import", data={"pgn": pgn_text})
+        if res.status_code == 200: 
+            return res.json().get("url")
+    except: 
+        pass
+    return None
+
 @st.cache_data(show_spinner=False, ttl=3600)
 def fetch_data(user):
     try:
@@ -60,6 +70,7 @@ def fetch_data(user):
                 if "end_time" in g:
                     ts = datetime.fromtimestamp(g["end_time"])
                     is_w = g["white"]["username"].lower() == user.lower()
+                    opp = g["black" if is_w else "white"]["username"]
                     res = g["white" if is_w else "black"]["result"]
                     my_r = g["white" if is_w else "black"].get("rating", 0)
                     out = "Wygrane" if res == "win" else ("Remisy" if res in ["agreed", "repetition", "stalemate", "insufficient", "50move", "timevsinsufficient"] else "Przegrane")
@@ -68,7 +79,10 @@ def fetch_data(user):
                         "Timestamp": ts, "Godzina": ts.hour, "Dzień": days_map[ts.weekday()], "Dzień_Nr": ts.weekday(),
                         "Data": ts.date(), "Miesiąc_Klucz": ts.strftime("%Y-%m"), "Miesiąc_Format": ts.strftime("%m/%Y"),
                         "Tryb": g.get("time_class", "Inne").capitalize(), "Wynik": out, "Elo_Moje": my_r,
-                        "Debiut": extract_opening(g.get("pgn", ""))
+                        "Debiut": extract_opening(g.get("pgn", "")),
+                        "Przeciwnik": opp, 
+                        "Kolor": "Białe" if is_w else "Czarne",
+                        "PGN_Raw": g.get("pgn", "")
                     })
         return p_data, s_data, pd.DataFrame(all_games)
     except:
@@ -131,7 +145,7 @@ else:
     if s_mode != "Wszystkie": df_f = df_f[df_f["Tryb"] == s_mode]
 
     if not df_f.empty:
-        tab1, tab2, tab3, tab4 = st.tabs(["📊 Stat", "📅 Hist", "⏳ Czas", "🔬 Deb"])
+        tab1, tab2, tab3, tab4, tab5 = st.tabs(["📊 Stat", "📅 Hist", "⏳ Czas", "🔬 Deb", "🧠 Analiza"])
         
         with tab1:
             w, d, l = (df_f["Wynik"] == "Wygrane").sum(), (df_f["Wynik"] == "Remisy").sum(), (df_f["Wynik"] == "Przegrane").sum()
@@ -197,3 +211,41 @@ else:
             op["Win%"] = (op["W"] / op["Gry"] * 100).round(0).astype(int)
             # Zmiana 'Gry' na 'Ilość gier'
             st.dataframe(op[["Debiut", "Gry", "Win%"]].rename(columns={"Gry": "Ilość gier"}).sort_values("Ilość gier", ascending=False).head(20), use_container_width=True, hide_index=True)
+            
+        with tab5:
+            st.write("### 🧠 Darmowa Analiza Dokładności")
+            st.write("Skorzystaj z Lichess, aby wyliczyć dokładność (%) i przeanalizować błędy całkowicie za darmo.")
+            
+            col_f1, col_f2 = st.columns(2)
+            with col_f1: search_date = st.date_input("Dzień partii:", value=df["Data"].max())
+            with col_f2: search_opp = st.text_input("Filtruj po przeciwniku:", placeholder="Wpisz nick...")
+
+            # Używamy df_f, żeby respektowało główne filtry pobierania danych
+            df_ana = df_f[df_f["Data"] == search_date]
+            if search_opp: df_ana = df_ana[df_ana["Przeciwnik"].str.contains(search_opp, case=False)]
+
+            if not df_ana.empty:
+                df_ana["Label"] = df_ana.apply(lambda x: f"{x['Godzina']}:00 | {x['Tryb']} vs {x['Przeciwnik']} ({x['Wynik']})", axis=1)
+                selected_label = st.selectbox("Wybierz partię z listy:", df_ana["Label"])
+                selected_game = df_ana[df_ana["Label"] == selected_label].iloc[0]
+                
+                st.info(f"Grasz jako: **{selected_game['Kolor']}** | Debiut: **{selected_game['Debiut']}**")
+                
+                st.divider()
+                st.write("#### Jak poznać dokładność (%) partii?")
+                st.markdown("""
+                1. Kliknij niebieski przycisk poniżej.
+                2. Na stronie Lichess zjedź na dół i kliknij **Request a computer analysis** (Zażądaj analizy komputerowej).
+                3. Po kilkunastu sekundach otrzymasz pełną analizę z dokładnością (Accuracy) - całkowicie za darmo.
+                """)
+                
+                if st.button("🚀 Otwórz darmową analizę na Lichess", type="primary", use_container_width=True):
+                    with st.spinner("Przesyłanie partii na serwery Lichess..."):
+                        lichess_url = import_to_lichess(selected_game["PGN_Raw"])
+                        if lichess_url:
+                            st.success("Partia została pomyślnie wyeksportowana!")
+                            st.link_button("➡️ Przejdź do szachownicy", lichess_url, use_container_width=True)
+                        else:
+                            st.error("Nie udało się połączyć z serwerami Lichess. Spróbuj ponownie później.")
+            else:
+                st.warning("Brak partii spełniających wybrane kryteria w tym dniu.")

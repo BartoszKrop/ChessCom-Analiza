@@ -27,6 +27,9 @@ st.markdown("""
     .block-container {
         padding: 1rem;
     }
+    
+    /* Styl dla poziomego przełącznika (radio) by wyglądał jak przyciski */
+    div.row-widget.stRadio > div { flex-direction: row; justify-content: center; background-color: #161b22; padding: 10px; border-radius: 10px; border: 1px solid #30363d;}
     </style>
     """, unsafe_allow_html=True)
 
@@ -58,7 +61,7 @@ def reset_link():
 @st.cache_data(show_spinner=False, ttl=3600)
 def fetch_data(user):
     try:
-        headers = {"User-Agent": f"ChessApp-Analytics-Pro-V4-{user}"}
+        headers = {"User-Agent": f"ChessApp-Analytics-Pro-V5-{user}"}
         p_res = requests.get(f"https://api.chess.com/pub/player/{user}", headers=headers)
         s_res = requests.get(f"https://api.chess.com/pub/player/{user}/stats", headers=headers)
         a_res = requests.get(f"https://api.chess.com/pub/player/{user}/games/archives", headers=headers)
@@ -100,9 +103,6 @@ if 'data' not in st.session_state: st.session_state.data = None
 if 'user' not in st.session_state: st.session_state.user = ""
 if 'current_lichess_url' not in st.session_state: st.session_state.current_lichess_url = None
 if 'last_selected_label' not in st.session_state: st.session_state.last_selected_label = None
-
-# Stan dla trybu porównania
-if 'app_mode' not in st.session_state: st.session_state.app_mode = "Analiza"
 if 'data2' not in st.session_state: st.session_state.data2 = None
 if 'user2' not in st.session_state: st.session_state.user2 = ""
 
@@ -118,33 +118,32 @@ if st.session_state.data is None:
                     st.session_state.data = fetched
                     st.session_state.user = nick
                     st.rerun()
-                else: st.error("Błąd pobierania danych.")
+                else: st.error("Błąd pobierania danych. Sprawdź poprawność nicku.")
 else:
-    # --- SIDEBAR (NAWIGACJA) ---
+    # --- BOCZNY PANEL ---
     with st.sidebar:
-        if st.button("⬅️ Zmień gracza", use_container_width=True):
+        if st.button("⬅️ Wyloguj / Zmień gracza", use_container_width=True):
             st.session_state.data = None
             st.session_state.data2 = None
-            st.session_state.app_mode = "Analiza"
+            st.session_state.current_lichess_url = None
             st.rerun()
-            
-        st.divider()
-        
-        # Przełącznik Trybu
-        if st.session_state.app_mode == "Analiza":
-            if st.button("⚔️ Porównanie graczy", type="primary", use_container_width=True):
-                st.session_state.app_mode = "Porównanie"
-                st.rerun()
-        else:
-            if st.button("👤 Analiza gracza", type="primary", use_container_width=True):
-                st.session_state.app_mode = "Analiza"
-                st.rerun()
 
     profile, stats, df = st.session_state.data
     username = st.session_state.user
 
-    # --- TRYB: POJEDYNCZY GRACZ ---
-    if st.session_state.app_mode == "Analiza":
+    # --- NAWIGACJA GŁÓWNA ---
+    app_mode = st.radio(
+        "Tryb aplikacji:", 
+        ["👤 Moja Analiza", "⚔️ Porównanie Graczy"], 
+        horizontal=True, 
+        label_visibility="collapsed"
+    )
+    st.divider()
+
+    # ==========================================
+    # TRYB 1: MOJA ANALIZA
+    # ==========================================
+    if app_mode == "👤 Moja Analiza":
         avatar = profile.get("avatar")
         c_h1, c_h2 = st.columns([1, 4])
         if avatar: c_h1.image(avatar, width=70)
@@ -159,11 +158,11 @@ else:
         m2.metric("Blitz (Peak vs Obecnie)", get_elo_v("chess_blitz"))
         m3.metric("Bullet (Peak vs Obecnie)", get_elo_v("chess_bullet"))
 
-        with st.expander("⚙️ Filtry"):
-            d_range = st.date_input("Zakres:", value=(df["Data"].min(), df["Data"].max()))
-            s_mode = st.selectbox("Tryb:", ["Wszystkie"] + sorted(df["Tryb"].unique().tolist()))
+        with st.expander("⚙️ Filtry główne"):
+            d_range = st.date_input("Zakres dat:", value=(df["Data"].min(), df["Data"].max()))
+            s_mode = st.selectbox("Tryb gry:", ["Wszystkie"] + sorted(df["Tryb"].unique().tolist()))
             days_list = ['Pn', 'Wt', 'Śr', 'Czw', 'Pt', 'Sb', 'Nd']
-            s_days = st.multiselect("Dni:", days_list, default=days_list)
+            s_days = st.multiselect("Dni tygodnia:", days_list, default=days_list)
             s_hours = st.slider("Godziny:", 0, 23, (0, 23))
 
         df_f = df.copy()
@@ -255,7 +254,6 @@ else:
                     sel_game = df_ana[df_ana["Label"] == sel_label].iloc[0]
                     
                     st.info(f"Grasz jako: **{sel_game['Kolor']}** | Debiut: **{sel_game['Debiut']}**")
-                    
                     st.divider()
                     
                     if st.button("🚀 Przygotuj analizę", use_container_width=True):
@@ -267,16 +265,35 @@ else:
                             else:
                                 st.error("Wystąpił błąd połączenia. Lichess odrzucił żądanie.")
 
+                    # ZMIANA: Piękny, niestandardowy niebieski przycisk w HTML
                     if st.session_state.current_lichess_url:
                         btn_label = f"➡️ ANALIZA PARTII: {sel_game['Przeciwnik']} ({sel_game['Data']})"
-                        st.link_button(btn_label, st.session_state.current_lichess_url, type="primary", use_container_width=True)
+                        custom_button_html = f"""
+                        <a href="{st.session_state.current_lichess_url}" target="_blank" style="
+                            display: block; 
+                            width: 100%; 
+                            text-align: center; 
+                            background-color: #1e88e5; 
+                            color: white; 
+                            padding: 12px; 
+                            border-radius: 8px; 
+                            text-decoration: none; 
+                            font-weight: bold; 
+                            font-size: 16px;
+                            border: 1px solid #1565c0;
+                            margin-top: 10px;
+                            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+                        ">{btn_label}</a>
+                        """
+                        st.markdown(custom_button_html, unsafe_allow_html=True)
+                        st.caption("Kliknij powyżej, aby otworzyć partię (po otwarciu kliknij 'Request a computer analysis').")
                 else:
                     st.warning("Nie znaleziono partii.")
 
-    # --- TRYB: PORÓWNANIE GRACZY ---
-    elif st.session_state.app_mode == "Porównanie":
-        st.write("## ⚔️ Porównanie Graczy")
-        
+    # ==========================================
+    # TRYB 2: PORÓWNANIE GRACZY
+    # ==========================================
+    elif app_mode == "⚔️ Porównanie Graczy":
         c_p1, c_p2 = st.columns(2)
         with c_p1:
             st.info(f"**Twój profil:** {username}")

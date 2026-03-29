@@ -41,6 +41,36 @@ def extract_opening(pgn):
         return match.group(1).replace('-', ' ').capitalize()
     return "Inny"
 
+def extract_moves_count(pgn):
+    if not pgn: return 0
+    matches = re.findall(r'(\d+)\.', pgn)
+    if matches:
+        return int(matches[-1])
+    return 0
+
+def get_duration_bin(moves):
+    if moves <= 20: return "0-20"
+    elif moves <= 30: return "21-30"
+    elif moves <= 40: return "31-40"
+    elif moves <= 50: return "41-50"
+    elif moves <= 60: return "51-60"
+    elif moves <= 70: return "61-70"
+    elif moves <= 80: return "71-80"
+    elif moves <= 90: return "81-90"
+    elif moves <= 100: return "91-100"
+    else: return "100+"
+
+def sort_duration_bins(bins):
+    order = ["0-20", "21-30", "31-40", "41-50", "51-60", "61-70", "71-80", "81-90", "91-100", "100+"]
+    return sorted(bins, key=lambda x: order.index(x) if x in order else 99)
+
+def get_elo_bin(diff):
+    if diff >= 50: return "1. Silny Faworyt (ponad +50 ELO)"
+    elif diff >= 15: return "2. Faworyt (+15 do +50 ELO)"
+    elif diff >= -15: return "3. Równy Mecz (-15 do +15 ELO)"
+    elif diff >= -50: return "4. Underdog (-50 do -15 ELO)"
+    else: return "5. Głęboki Underdog (ponad -50 ELO strat)"
+
 def import_to_lichess(pgn_text):
     try:
         url = "https://lichess.org/api/import"
@@ -61,7 +91,7 @@ def reset_link():
 @st.cache_data(show_spinner=False, ttl=3600)
 def fetch_data(user):
     try:
-        headers = {"User-Agent": f"ChessApp-Analytics-Pro-V8-{user}"}
+        headers = {"User-Agent": f"ChessApp-Analytics-Pro-V9-{user}"}
         p_res = requests.get(f"https://api.chess.com/pub/player/{user}", headers=headers)
         s_res = requests.get(f"https://api.chess.com/pub/player/{user}/stats", headers=headers)
         a_res = requests.get(f"https://api.chess.com/pub/player/{user}/games/archives", headers=headers)
@@ -83,16 +113,19 @@ def fetch_data(user):
                     opp = g["black" if is_w else "white"]["username"]
                     res = g["white" if is_w else "black"]["result"]
                     my_r = g["white" if is_w else "black"].get("rating", 0)
+                    opp_r = g["black" if is_w else "white"].get("rating", 0)
                     out = "Wygrane" if res == "win" else ("Remisy" if res in ["agreed", "repetition", "stalemate", "insufficient", "50move", "timevsinsufficient"] else "Przegrane")
+                    pgn_raw = g.get("pgn", "")
                     
                     all_games.append({
                         "Timestamp": ts, "Godzina": ts.hour, "Dzień": days_map[ts.weekday()], "Dzień_Nr": ts.weekday(),
                         "Data": ts.date(), "Miesiąc_Klucz": ts.strftime("%Y-%m"), "Miesiąc_Format": ts.strftime("%m/%Y"),
-                        "Tryb": g.get("time_class", "Inne").capitalize(), "Wynik": out, "Elo_Moje": my_r,
-                        "Debiut": extract_opening(g.get("pgn", "")),
+                        "Tryb": g.get("time_class", "Inne").capitalize(), "Wynik": out, 
+                        "Elo_Moje": my_r, "Elo_Rywala": opp_r, "Ruchy": extract_moves_count(pgn_raw),
+                        "Debiut": extract_opening(pgn_raw),
                         "Przeciwnik": opp,
                         "Kolor": "Białe" if is_w else "Czarne",
-                        "PGN_Raw": g.get("pgn", "")
+                        "PGN_Raw": pgn_raw
                     })
         return p_data, s_data, pd.DataFrame(all_games)
     except:
@@ -196,7 +229,7 @@ else:
         if s_mode != "Wszystkie": df_f = df_f[df_f["Tryb"] == s_mode]
 
         if not df_f.empty:
-            tab1, tab2, tab3, tab4, tab_tilt, tab5 = st.tabs(["📊 Stat", "📅 Hist", "⏳ Czas", "🔬 Deb", "🚨 Nemesis & Tilt", "🧠 Analiza"])
+            tab1, tab2, tab3, tab4, tab_styl, tab5 = st.tabs(["📊 Stat", "📅 Hist", "⏳ Czas", "🔬 Deb", "🧩 Psychologia & Styl", "🧠 Analiza"])
             
             with tab1:
                 w, d, l = (df_f["Wynik"] == "Wygrane").sum(), (df_f["Wynik"] == "Remisy").sum(), (df_f["Wynik"] == "Przegrane").sum()
@@ -250,57 +283,95 @@ else:
                 op["Win%"] = (op["W"] / op["Gry"] * 100).round(0).astype(int)
                 st.dataframe(op[["Debiut", "Gry", "Win%"]].rename(columns={"Gry": "Ilość partii"}).sort_values("Ilość partii", ascending=False).head(20), use_container_width=True, hide_index=True)
 
-            # NOWA ZAKŁADKA
-            with tab_tilt:
-                st.write("### 😈 System Nemesis")
-                opp_stats = df_f.groupby('Przeciwnik').agg(Gry=('Wynik', 'count'), W=('Wynik', lambda x: (x == 'Wygrane').sum()), P=('Wynik', lambda x: (x == 'Przegrane').sum())).reset_index()
-                # Filtrujemy graczy, z którymi zagrano min. 2 razy, żeby wyniki były miarodajne
-                opp_stats = opp_stats[opp_stats['Gry'] >= 2]
+            # --- NOWA ZAKŁADKA PSYCHOLOGII I STYLU ---
+            with tab_styl:
+                st.write("### ⏱️ Czas trwania meczu")
+                df_f["Przedział_Ruchów"] = df_f["Ruchy"].apply(get_duration_bin)
+                dur_stats = df_f.groupby("Przedział_Ruchów").agg(Gry=('Wynik', 'count'), W=('Wynik', lambda x: (x == 'Wygrane').sum())).reset_index()
+                dur_stats["Win%"] = (dur_stats["W"] / dur_stats["Gry"] * 100).round(0).astype(int)
                 
-                if opp_stats.empty:
-                    st.info("Brak graczy z którymi grałeś więcej niż raz w tym okresie.")
-                else:
-                    nemesis = opp_stats.sort_values(by=['P', 'Gry'], ascending=[False, True]).head(3)
-                    victims = opp_stats.sort_values(by=['W', 'Gry'], ascending=[False, True]).head(3)
-                    
-                    c_nem1, c_nem2 = st.columns(2)
-                    with c_nem1:
-                        st.error("**Twoi Kaci (Najwięcej porażek):**")
-                        for _, row in nemesis.iterrows():
-                            st.write(f"💀 **{row['Przeciwnik']}** ({row['P']} porażek na {row['Gry']} gier)")
-                    with c_nem2:
-                        st.success("**Twoje Ofiary (Najwięcej zwycięstw):**")
-                        for _, row in victims.iterrows():
-                            st.write(f"👼 **{row['Przeciwnik']}** ({row['W']} wygranych na {row['Gry']} gier)")
+                # Sortowanie po przedziałach
+                dur_stats["SortKey"] = dur_stats["Przedział_Ruchów"].apply(lambda x: sort_duration_bins([x])[0])
+                dur_stats = dur_stats.sort_values(by="SortKey", key=lambda col: [sort_duration_bins(list(col)).index(x) for x in col]).drop("SortKey", axis=1)
+
+                fig_dur = px.bar(dur_stats, x="Przedział_Ruchów", y="Win%", color="Gry", 
+                               labels={"Gry": "Ilość partii", "Przedział_Ruchów": "Ilość ruchów w meczu"},
+                               color_continuous_scale=['#ffffff', '#000080'])
+                fig_dur.update_layout(margin=dict(l=0, r=0, t=10, b=0))
+                st.plotly_chart(fig_dur, use_container_width=True)
 
                 st.divider()
-                st.write("### 📉 Analiza Tiltu (Kiedy przestać grać?)")
-                st.write("Sprawdzamy, jak radzisz sobie w kolejnej partii po wygranej, a jak po przegranej.")
+
+                st.write("### 🥊 Gra pod presją (Underdog vs Faworyt)")
+                df_f["Roznica_ELO"] = df_f["Elo_Moje"] - df_f["Elo_Rywala"]
+                df_f["Kategoria_Presji"] = df_f["Roznica_ELO"].apply(get_elo_bin)
                 
-                df_tilt = df_f.sort_values('Timestamp').reset_index(drop=True)
-                if len(df_tilt) > 1:
-                    df_tilt['Poprzedni_Wynik'] = df_tilt['Wynik'].shift(1)
+                pres_stats = df_f.groupby("Kategoria_Presji").agg(Gry=('Wynik', 'count'), W=('Wynik', lambda x: (x == 'Wygrane').sum())).reset_index()
+                pres_stats["Win%"] = (pres_stats["W"] / pres_stats["Gry"] * 100).round(0).astype(int)
+                pres_stats = pres_stats.sort_values("Kategoria_Presji")
+
+                fig_pres = px.bar(pres_stats, x="Win%", y="Kategoria_Presji", color="Gry", orientation='h',
+                               labels={"Gry": "Ilość partii", "Kategoria_Presji": "Klasyfikacja meczu"},
+                               color_continuous_scale=['#ffffff', '#000080'])
+                fig_pres.update_layout(margin=dict(l=0, r=0, t=10, b=0))
+                st.plotly_chart(fig_pres, use_container_width=True)
+
+                st.divider()
+
+                st.write("### 📉 Analiza Tiltu i Momentum (Wpływ serii)")
+                st.write("Sprawdź swój Win Rate w zależności od tego, z jaką serią z rzędu siadałeś do danej partii.")
+                
+                df_tilt = df_f.sort_values('Timestamp').copy()
+                
+                # Algorytm obliczający serię przed danym meczem
+                streaks_type = []
+                streaks_count = []
+                c_type = None
+                c_count = 0
+                
+                for res in df_tilt['Wynik']:
+                    streaks_type.append(c_type)
+                    streaks_count.append(c_count)
                     
-                    po_wygranej = df_tilt[df_tilt['Poprzedni_Wynik'] == 'Wygrane']
-                    po_przegranej = df_tilt[df_tilt['Poprzedni_Wynik'] == 'Przegrane']
+                    if res == 'Wygrane':
+                        if c_type == 'W': c_count += 1
+                        else: c_type = 'W'; c_count = 1
+                    elif res == 'Przegrane':
+                        if c_type == 'L': c_count += 1
+                        else: c_type = 'L'; c_count = 1
+                    else: # Remisy resetują serię
+                        c_type = None; c_count = 0
+                        
+                df_tilt['Seria_Typ'] = streaks_type
+                df_tilt['Seria_Dlugosc'] = streaks_count
+                
+                # Grupujemy dla wygranych i przegranych
+                tilt_stats = []
+                for stype, nazwa in [('W', 'Po serii Wygranych'), ('L', 'Po serii Porażek')]:
+                    for count in [1, 2, 3]:
+                        subset = df_tilt[(df_tilt['Seria_Typ'] == stype) & (df_tilt['Seria_Dlugosc'] == count)]
+                        if len(subset) > 0:
+                            w_count = (subset['Wynik'] == 'Wygrane').sum()
+                            wr = int(round((w_count / len(subset)) * 100, 0))
+                            tilt_stats.append({"Typ": nazwa, "Długość serii (przed meczem)": f"{count} z rzędu", "Win%": wr, "Gry": len(subset)})
                     
-                    wr_po_wygranej = int(round(((po_wygranej['Wynik'] == 'Wygrane').sum() / len(po_wygranej)) * 100, 0)) if len(po_wygranej) > 0 else 0
-                    wr_po_przegranej = int(round(((po_przegranej['Wynik'] == 'Wygrane').sum() / len(po_przegranej)) * 100, 0)) if len(po_przegranej) > 0 else 0
-                    
-                    ogolny_wr = int(round(((df_f['Wynik'] == 'Wygrane').sum() / len(df_f)) * 100, 0))
-                    
-                    c_t1, c_t2 = st.columns(2)
-                    c_t1.metric("Win Rate grając 'Na fali' (po wygranej)", f"{wr_po_wygranej}%")
-                    c_t2.metric("Win Rate grając 'Na tiltcie' (po porażce)", f"{wr_po_przegranej}%")
-                    
-                    if wr_po_przegranej < (ogolny_wr - 5):
-                        st.warning(f"⚠️ Uwaga! Twój Win Rate spada drastycznie po porażce. Warto robić sobie przerwę po przegranym meczu, żeby oczyścić głowę!")
-                    elif wr_po_przegranej >= ogolny_wr:
-                        st.success(f"💪 Jesteś odporny! Porażki Cię motywują i grasz po nich jeszcze lepiej (lub na tym samym poziomie).")
-                    else:
-                        st.info("Twoja gra jest w miarę stabilna niezależnie od wyniku poprzedniego starcia.")
+                    # 4+ z rzędu
+                    subset_4 = df_tilt[(df_tilt['Seria_Typ'] == stype) & (df_tilt['Seria_Dlugosc'] >= 4)]
+                    if len(subset_4) > 0:
+                        w_count = (subset_4['Wynik'] == 'Wygrane').sum()
+                        wr = int(round((w_count / len(subset_4)) * 100, 0))
+                        tilt_stats.append({"Typ": nazwa, "Długość serii (przed meczem)": "4+ z rzędu", "Win%": wr, "Gry": len(subset_4)})
+
+                if tilt_stats:
+                    df_tilt_res = pd.DataFrame(tilt_stats)
+                    fig_tilt = px.bar(df_tilt_res, x="Długość serii (przed meczem)", y="Win%", color="Typ", barmode='group',
+                                     text="Win%",
+                                     color_discrete_map={"Po serii Wygranych":"#00cc96", "Po serii Porażek":"#ef553b"})
+                    fig_tilt.update_traces(textposition='outside')
+                    fig_tilt.update_layout(margin=dict(l=0, r=0, t=10, b=0))
+                    st.plotly_chart(fig_tilt, use_container_width=True)
                 else:
-                    st.info("Za mało gier do analizy tiltu.")
+                    st.info("Za mało gier do narysowania wykresu serii.")
 
             with tab5:
                 st.write("### 🧠 Analiza partii")

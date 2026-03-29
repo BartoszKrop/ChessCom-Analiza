@@ -39,16 +39,27 @@ def extract_opening(pgn):
     return "Inny"
 
 def import_to_lichess(pgn_text):
-    """Przesyła PGN do Lichess i zwraca link do analizy."""
+    """Przesyła PGN do Lichess i zwraca link lub opis błędu."""
+    if not pgn_text:
+        return "Błąd: PGN jest pusty"
     try:
         url = "https://lichess.org/api/import"
-        payload = {'pgn': pgn_text}
-        res = requests.post(url, data=payload)
+        # Czyścimy PGN z ewentualnych białych znaków na początku/końcu
+        payload = {'pgn': pgn_text.strip()}
+        res = requests.post(url, data=payload, timeout=10)
+        
         if res.status_code == 200:
             return res.json().get("url")
-    except:
-        pass
-    return None
+        elif res.status_code == 429:
+            return "Błąd: Zbyt wiele zapytań (Rate Limit). Poczekaj minutę."
+        elif res.status_code == 400:
+            return "Błąd: Lichess nie zaakceptował formatu tej partii (Bad Request)."
+        else:
+            return f"Błąd serwera Lichess (Kod: {res.status_code})"
+    except requests.exceptions.Timeout:
+        return "Błąd: Przekroczono czas połączenia z Lichess."
+    except Exception as e:
+        return f"Wystąpił nieoczekiwany błąd: {str(e)}"
 
 @st.cache_data(show_spinner=False, ttl=3600)
 def fetch_data(user):
@@ -211,7 +222,7 @@ else:
 
         with tab5:
             st.write("### 🧠 Analiza partii")
-            st.write("Wyszukaj konkretnego przeciwnika (ignoruje datę) lub wybierz dzień z kalendarza.")
+            st.write("Wyszukaj przeciwnika lub wybierz dzień z kalendarza.")
             
             col_f1, col_f2 = st.columns(2)
             with col_f1: 
@@ -219,15 +230,13 @@ else:
             with col_f2: 
                 search_opp = st.text_input("Wpisz DOKŁADNY nick przeciwnika:", placeholder="np. MagnusCarlsen").strip()
 
-            # LOGIKA OVERRIDE: Jeśli nick jest wpisany, szukamy go w całym 'df'
             if search_opp:
                 df_ana = df[df["Przeciwnik"].str.lower() == search_opp.lower()]
-                st.caption(f"Znaleziono {len(df_ana)} partii przeciwko '{search_opp}' w całej historii.")
+                st.caption(f"Znaleziono {len(df_ana)} partii przeciwko '{search_opp}'.")
             else:
                 df_ana = df[df["Data"] == search_date]
 
             if not df_ana.empty:
-                # Dodajemy datę do labela, żeby odróżnić mecze przy wyszukiwaniu po nicku
                 df_ana["Label"] = df_ana.apply(lambda x: f"{x['Data']} | {x['Godzina']}:00 | {x['Tryb']} vs {x['Przeciwnik']} ({x['Wynik']})", axis=1)
                 selected_label = st.selectbox("Wybierz partię z listy:", df_ana.sort_values("Timestamp", ascending=False)["Label"])
                 selected_game = df_ana[df_ana["Label"] == selected_label].iloc[0]
@@ -237,16 +246,15 @@ else:
                 st.divider()
                 
                 if st.button("🚀 Przygotuj dane do analizy", use_container_width=True):
-                    with st.spinner("Wysyłanie partii na serwery Lichess..."):
-                        link = import_to_lichess(selected_game["PGN_Raw"])
-                        if link:
-                            st.session_state.current_lichess_url = link
+                    with st.spinner("Przesyłanie do Lichess..."):
+                        res_link = import_to_lichess(selected_game["PGN_Raw"])
+                        if res_link.startswith("http"):
+                            st.session_state.current_lichess_url = res_link
                             st.success("Link gotowy!")
                         else:
-                            st.error("Wystąpił błąd przy przesyłaniu danych.")
+                            st.error(res_link) # Wyświetla konkretny błąd (np. Rate Limit)
 
                 if st.session_state.current_lichess_url:
                     st.link_button("➡️ Analiza partii", st.session_state.current_lichess_url, type="primary", use_container_width=True)
-                    st.caption("Podpowiedź: Na stronie Lichess kliknij 'Request a computer analysis' na samym dole.")
             else:
-                st.warning("Nie znaleziono partii spełniających kryteria.")
+                st.warning("Nie znaleziono partii.")

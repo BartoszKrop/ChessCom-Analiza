@@ -286,7 +286,7 @@ else:
                 pst = pst.sort_values("Presja")
                 st.plotly_chart(px.bar(pst, x="Win%", y="Presja", orientation='h', color="Gry", color_continuous_scale='Blues', title="Skuteczność wg ELO rywala"), use_container_width=True)
 
-                st.write("### 📉 Analiza Tiltu (Wpływ serii)")
+                st.write("### 📉 Wpływ serii")
                 df_tilt = df_f.sort_values('Timestamp').copy()
                 streaks_type, streaks_count = [], []
                 c_type, c_count = None, 0
@@ -308,26 +308,26 @@ else:
                 
                 tilt_stats = []
                 for stype, nazwa in [('W', 'Po serii Wygranych'), ('L', 'Po serii Porażek')]:
-                    for count in [1, 2, 3]:
+                    for count in [1, 2, 3, 4]:
                         subset = df_tilt[(df_tilt['Seria_Typ'] == stype) & (df_tilt['Seria_Dlugosc'] == count)]
                         if len(subset) > 0:
                             w_count = (subset['Wynik'] == 'Wygrane').sum()
-                            tilt_stats.append({"Typ": nazwa, "Długość serii (przed meczem)": f"{count} z rzędu", "Win%": int(round((w_count / len(subset)) * 100, 0)), "Gry": len(subset)})
+                            tilt_stats.append({"Typ": nazwa, "Długość serii (przed meczem)": f"{count} z rzędu", "Win%": int(round((w_count / len(subset)) * 100, 0)), "Liczba partii": len(subset)})
                     
-                    subset_4 = df_tilt[(df_tilt['Seria_Typ'] == stype) & (df_tilt['Seria_Dlugosc'] >= 4)]
-                    if len(subset_4) > 0:
-                        w_count = (subset_4['Wynik'] == 'Wygrane').sum()
-                        tilt_stats.append({"Typ": nazwa, "Długość serii (przed meczem)": "4+ z rzędu", "Win%": int(round((w_count / len(subset_4)) * 100, 0)), "Gry": len(subset_4)})
+                    subset_5 = df_tilt[(df_tilt['Seria_Typ'] == stype) & (df_tilt['Seria_Dlugosc'] >= 5)]
+                    if len(subset_5) > 0:
+                        w_count = (subset_5['Wynik'] == 'Wygrane').sum()
+                        tilt_stats.append({"Typ": nazwa, "Długość serii (przed meczem)": "5+ z rzędu", "Win%": int(round((w_count / len(subset_5)) * 100, 0)), "Liczba partii": len(subset_5)})
 
                 if tilt_stats:
                     df_tilt_res = pd.DataFrame(tilt_stats)
                     fig_tilt = px.bar(df_tilt_res, x="Długość serii (przed meczem)", y="Win%", color="Typ", barmode='group',
-                                     text="Win%", color_discrete_map={"Po serii Wygranych":"#1e88e5", "Po serii Porażek":"#ef553b"})
+                                     text="Win%", hover_data=["Liczba partii"], color_discrete_map={"Po serii Wygranych":"#1e88e5", "Po serii Porażek":"#ef553b"})
                     fig_tilt.update_traces(textposition='outside')
                     fig_tilt.update_layout(margin=dict(l=0, r=0, t=30, b=0))
                     st.plotly_chart(fig_tilt, use_container_width=True)
                 else:
-                    st.info("Za mało gier do analizy tiltu.")
+                    st.info("Za mało gier do analizy wpływu serii.")
 
             with t7:
                 f1, f2 = st.columns(2)

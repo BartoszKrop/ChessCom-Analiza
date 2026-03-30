@@ -67,18 +67,34 @@ def import_to_lichess(pgn_text):
         return res.json().get("url") if res.status_code == 200 else None
     except: return None
 
-# DYNAMICZNY KALKULATOR ELO Z ZABEZPIECZENIEM
+# DYNAMICZNY KALKULATOR ELO (Z WYBOREM NAJLEPSZEJ PLATFORMY)
 def calc_elo(df, mode):
     mdf = df[df["Tryb"] == mode]
-    if mdf.empty: return "-", "-"
-    peak = int(mdf["Elo_Moje"].max())
-    curr = int(mdf.sort_values("Timestamp").iloc[-1]["Elo_Moje"])
-    return peak, curr
+    if mdf.empty: return "-", "-", None
+    
+    best_peak, best_curr = -1, -1
+    best_peak_plat, best_curr_plat = "", ""
+    
+    for plat in mdf["Platforma"].unique():
+        plat_df = mdf[mdf["Platforma"] == plat]
+        if not plat_df.empty:
+            peak = int(plat_df["Elo_Moje"].max())
+            curr = int(plat_df.sort_values("Timestamp").iloc[-1]["Elo_Moje"])
+            if peak > best_peak: best_peak, best_peak_plat = peak, plat
+            if curr > best_curr: best_curr, best_curr_plat = curr, plat
+            
+    is_multi = len(df["Platforma"].unique()) > 1
+    if is_multi:
+        p_short = "C.com" if best_peak_plat == "Chess.com" else "Lich"
+        c_short = "C.com" if best_curr_plat == "Chess.com" else "Lich"
+        return f"{best_peak} ({p_short})", f"{best_curr} ({c_short})", best_curr
+    else:
+        return str(best_peak), str(best_curr), best_curr
 
 @st.cache_data(show_spinner=False, ttl=3600)
 def fetch_data(user, platform="Chess.com"):
     try:
-        headers = {"User-Agent": f"ChessApp-V26-{user}"}
+        headers = {"User-Agent": f"ChessApp-V27-{user}"}
         days_map = {0: 'Pn', 1: 'Wt', 2: 'Śr', 3: 'Czw', 4: 'Pt', 5: 'Sb', 6: 'Nd'}
         all_games = []
         konto_id = f"{user} ({platform})"
@@ -243,9 +259,9 @@ else:
         c_h2.subheader(username)
         
         m1, m2, m3 = st.columns(3)
-        p_r, c_r = calc_elo(df, "Rapid")
-        p_b, c_b = calc_elo(df, "Blitz")
-        p_bl, c_bl = calc_elo(df, "Bullet")
+        p_r, c_r, _ = calc_elo(df, "Rapid")
+        p_b, c_b, _ = calc_elo(df, "Blitz")
+        p_bl, c_bl, _ = calc_elo(df, "Bullet")
         m1.metric("Rapid (Peak / Teraz)", f"{p_r} / {c_r}")
         m2.metric("Blitz (Peak / Teraz)", f"{p_b} / {c_b}")
         m3.metric("Bullet (Peak / Teraz)", f"{p_bl} / {c_bl}")
@@ -279,7 +295,15 @@ else:
                 for m in ["Rapid", "Blitz", "Bullet"]:
                     mdf = df_f[df_f["Tryb"] == m].sort_values("Timestamp")
                     if not mdf.empty:
-                        st.plotly_chart(px.line(mdf, x="Timestamp", y="Elo_Moje", color="Konto", title=f"Ranking {m}", markers=True).update_layout(height=300, margin=dict(l=0, r=0, t=30, b=0), xaxis_title=None, yaxis_title="ELO"), use_container_width=True)
+                        # POPRAWKA LEGENDY - Przeniesienie nad wykres i wyśrodkowanie, żeby zwolnić miejsce
+                        st.plotly_chart(
+                            px.line(mdf, x="Timestamp", y="Elo_Moje", color="Konto", title=f"Ranking {m}", markers=True)
+                            .update_layout(
+                                height=300, margin=dict(l=0, r=0, t=40, b=0), xaxis_title=None, yaxis_title="ELO",
+                                legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="center", x=0.5, title=None)
+                            ), 
+                            use_container_width=True
+                        )
 
             with t_hist:
                 st.write("### Podsumowanie miesięczne")
@@ -396,7 +420,6 @@ else:
         if st.button("Pobierz dane rywala", use_container_width=True):
             if n2:
                 with st.spinner(f"Pobieranie z {p2}..."):
-                    # Celowo nie robimy fetch_data.clear() żeby nie skasować własnego cache'u!
                     prof2, df2 = fetch_data(n2, p2)
                     if df2 is not None: 
                         st.session_state.data2 = df2
@@ -409,27 +432,64 @@ else:
             df2 = st.session_state.data2
             u1, u2 = username, st.session_state.user2
             p2_plat = st.session_state.plat2
-            
             show_h2h = p2_plat in user_plats
+
+            # FILTRY DLA PORÓWNANIA
+            with st.expander("⚙️ Filtry (Wspólne dla obu graczy)"):
+                f1, f2, f3 = st.columns(3)
+                min_d = min(df["Data"].min(), df2["Data"].min())
+                max_d = max(df["Data"].max(), df2["Data"].max())
+                d_range_c = f1.date_input("Zakres dat:", value=(min_d, max_d), key="c_d")
+                
+                modes_all = list(set(df["Tryb"].unique().tolist() + df2["Tryb"].unique().tolist()))
+                s_mode_c = f2.selectbox("Tryb gry:", ["Wszystkie"] + sorted(modes_all), key="c_m")
+                
+                s_color_c = f3.multiselect("Kolor gracza:", ["Białe", "Czarne"], default=["Białe", "Czarne"], key="c_c")
+                s_days_c = st.multiselect("Dni tygodnia:", ['Pn', 'Wt', 'Śr', 'Czw', 'Pt', 'Sb', 'Nd'], default=['Pn', 'Wt', 'Śr', 'Czw', 'Pt', 'Sb', 'Nd'], key="c_days")
+                s_hours_c = st.slider("Godziny:", 0, 23, (0, 23), key="c_h")
+
+            df1_f = df.copy()
+            df2_f = df2.copy()
+            if isinstance(d_range_c, (list, tuple)) and len(d_range_c) == 2:
+                df1_f = df1_f[(df1_f["Data"] >= d_range_c[0]) & (df1_f["Data"] <= d_range_c[1])]
+                df2_f = df2_f[(df2_f["Data"] >= d_range_c[0]) & (df2_f["Data"] <= d_range_c[1])]
+            
+            df1_f = df1_f[df1_f["Kolor"].isin(s_color_c) & df1_f["Dzień"].isin(s_days_c) & (df1_f["Godzina"] >= s_hours_c[0]) & (df1_f["Godzina"] <= s_hours_c[1])]
+            df2_f = df2_f[df2_f["Kolor"].isin(s_color_c) & df2_f["Dzień"].isin(s_days_c) & (df2_f["Godzina"] >= s_hours_c[0]) & (df2_f["Godzina"] <= s_hours_c[1])]
+            
+            if s_mode_c != "Wszystkie": 
+                df1_f = df1_f[df1_f["Tryb"] == s_mode_c]
+                df2_f = df2_f[df2_f["Tryb"] == s_mode_c]
+            
             tabs = st.tabs(["📊 Ogólne", "🥊 H2H"]) if show_h2h else st.tabs(["📊 Ogólne"])
             
             with tabs[0]:
+                c_g1, c_g2 = st.columns(2)
+                wr1 = int(round((df1_f["Wynik"]=="Wygrane").sum()/len(df1_f)*100,0)) if not df1_f.empty else 0
+                wr2 = int(round((df2_f["Wynik"]=="Wygrane").sum()/len(df2_f)*100,0)) if not df2_f.empty else 0
+                c_g1.metric(f"Rozegrane partie ({u1} vs {u2})", f"{len(df1_f)} / {len(df2_f)}")
+                c_g2.metric(f"Ogólny Win Rate", f"{wr1}% / {wr2}%", wr1 - wr2)
+                
+                st.divider()
+
                 c1, c2, c3 = st.columns(3)
-                p_r1, c_r1 = calc_elo(df[df["Platforma"] == p2_plat] if not df[df["Platforma"] == p2_plat].empty else df, "Rapid")
-                p_r2, c_r2 = calc_elo(df2, "Rapid")
-                c1.metric(f"Rapid: Ty vs {u2}", f"{c_r1} / {c_r2}", c_r1 - c_r2 if isinstance(c_r1, int) and isinstance(c_r2, int) else None)
+                df1_comp = df1_f[df1_f["Platforma"] == p2_plat] if not df1_f[df1_f["Platforma"] == p2_plat].empty else df1_f
                 
-                p_b1, c_b1 = calc_elo(df[df["Platforma"] == p2_plat] if not df[df["Platforma"] == p2_plat].empty else df, "Blitz")
-                p_b2, c_b2 = calc_elo(df2, "Blitz")
-                c2.metric(f"Blitz: Ty vs {u2}", f"{c_b1} / {c_b2}", c_b1 - c_b2 if isinstance(c_b1, int) and isinstance(c_b2, int) else None)
+                p_r1, c_r1_str, c_r1_int = calc_elo(df1_comp, "Rapid")
+                p_r2, c_r2_str, c_r2_int = calc_elo(df2_f, "Rapid")
+                c1.metric(f"Rapid: Ty vs {u2}", f"{c_r1_str} / {c_r2_str}", c_r1_int - c_r2_int if c_r1_int and c_r2_int else None)
                 
-                p_bl1, c_bl1 = calc_elo(df[df["Platforma"] == p2_plat] if not df[df["Platforma"] == p2_plat].empty else df, "Bullet")
-                p_bl2, c_bl2 = calc_elo(df2, "Bullet")
-                c3.metric(f"Bullet: Ty vs {u2}", f"{c_bl1} / {c_bl2}", c_bl1 - c_bl2 if isinstance(c_bl1, int) and isinstance(c_bl2, int) else None)
+                p_b1, c_b1_str, c_b1_int = calc_elo(df1_comp, "Blitz")
+                p_b2, c_b2_str, c_b2_int = calc_elo(df2_f, "Blitz")
+                c2.metric(f"Blitz: Ty vs {u2}", f"{c_b1_str} / {c_b2_str}", c_b1_int - c_b2_int if c_b1_int and c_b2_int else None)
+                
+                p_bl1, c_bl1_str, c_bl1_int = calc_elo(df1_comp, "Bullet")
+                p_bl2, c_bl2_str, c_bl2_int = calc_elo(df2_f, "Bullet")
+                c3.metric(f"Bullet: Ty vs {u2}", f"{c_bl1_str} / {c_bl2_str}", c_bl1_int - c_bl2_int if c_bl1_int and c_bl2_int else None)
                 
             if show_h2h:
                 with tabs[1]:
-                    h2 = df[(df['Przeciwnik'].str.lower() == u2.lower()) & (df['Platforma'] == p2_plat)].copy().sort_values("Timestamp").reset_index(drop=True)
+                    h2 = df1_f[(df1_f['Przeciwnik'].str.lower() == u2.lower()) & (df1_f['Platforma'] == p2_plat)].copy().sort_values("Timestamp").reset_index(drop=True)
                     if not h2.empty:
                         h2["Partia_Nr"] = h2.index + 1
                         c1, c2, c3 = st.columns(3)
@@ -438,5 +498,9 @@ else:
                         h2[u2] = (h2["Wynik"]=="Przegrane").cumsum()
                         
                         chart_df = h2.melt(id_vars=["Partia_Nr"], value_vars=["Ty", u2])
-                        st.plotly_chart(px.line(chart_df, x="Partia_Nr", y="value", color="variable", title="Wyścig zwycięstw (H2H)").update_layout(xaxis_title="Numer Partii", yaxis_title="Suma Zwycięstw"), use_container_width=True)
-                    else: st.info("Brak bezpośrednich partii między wami na tej platformie.")
+                        st.plotly_chart(
+                            px.line(chart_df, x="Partia_Nr", y="value", color="variable", title="Wyścig zwycięstw (H2H)")
+                            .update_layout(xaxis_title="Numer Partii", yaxis_title="Suma Zwycięstw", legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="center", x=0.5, title=None)), 
+                            use_container_width=True
+                        )
+                    else: st.info("Brak bezpośrednich partii między wami w wybranym filtrze.")

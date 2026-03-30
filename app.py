@@ -67,7 +67,7 @@ def import_to_lichess(pgn_text):
         return res.json().get("url") if res.status_code == 200 else None
     except: return None
 
-# DYNAMICZNY KALKULATOR ELO (Rozwiązuje problem Peak Lichess)
+# DYNAMICZNY KALKULATOR ELO Z ZABEZPIECZENIEM
 def calc_elo(df, mode):
     mdf = df[df["Tryb"] == mode]
     if mdf.empty: return "-", "-"
@@ -78,7 +78,7 @@ def calc_elo(df, mode):
 @st.cache_data(show_spinner=False, ttl=3600)
 def fetch_data(user, platform="Chess.com"):
     try:
-        headers = {"User-Agent": f"ChessApp-V25-{user}"}
+        headers = {"User-Agent": f"ChessApp-V26-{user}"}
         days_map = {0: 'Pn', 1: 'Wt', 2: 'Śr', 3: 'Czw', 4: 'Pt', 5: 'Sb', 6: 'Nd'}
         all_games = []
         konto_id = f"{user} ({platform})"
@@ -166,9 +166,11 @@ def fetch_data(user, platform="Chess.com"):
 
     except: return None, None
 
-# --- SESSION STATE ---
-if 'data' not in st.session_state: st.session_state.data = None
-if 'user' not in st.session_state: st.session_state.user = ""
+# --- SESSION STATE (ZABEZPIECZONE) ---
+for key in ['data', 'data2', 'url']:
+    if key not in st.session_state: st.session_state[key] = None
+for key in ['user', 'user2', 'plat2']:
+    if key not in st.session_state: st.session_state[key] = ""
 if 'platforms' not in st.session_state: st.session_state.platforms = []
 if 'app_mode' not in st.session_state: st.session_state.app_mode = "👤 Moja Analiza"
 
@@ -191,7 +193,7 @@ if st.session_state.data is None:
                     if fetched[1] is not None:
                         st.session_state.data, st.session_state.user, st.session_state.platforms = fetched, nick, [plat]
                         st.rerun()
-                    else: st.error("Nie znaleziono gracza lub brak gier.")
+                    else: st.error("Nie znaleziono gracza lub brak gier publicznych.")
     else:
         st.info("Pobierzemy partie z obu kont i połączymy je w jedną wielką bazę statystyk!")
         c1, c2 = st.columns(2)
@@ -226,10 +228,11 @@ else:
     with c_nav1: new_mode = st.radio("Tryb:", ["👤 Moja Analiza", "⚔️ Porównanie Graczy"], horizontal=True, label_visibility="collapsed")
     with c_nav2:
         if st.button("Odśwież dane", use_container_width=True):
-            st.session_state.data = None; st.rerun() # Prosty wylog, bo refresh podwójnego konta wymagałby zapamiętania nicków
+            st.session_state.data = None; st.rerun()
     with c_nav3:
         if st.button("Zmień gracza", use_container_width=True):
-            st.session_state.data = None; st.rerun()
+            for key in ['data', 'data2', 'url', 'user', 'user2', 'plat2']: st.session_state[key] = None if key in ['data', 'data2', 'url'] else ""
+            st.session_state.platforms = []; st.rerun()
 
     if new_mode != st.session_state.app_mode: st.session_state.app_mode = new_mode; st.rerun()
     st.divider()
@@ -265,7 +268,7 @@ else:
 
         if not df_f.empty:
             pgn_b = "\n\n".join(df_f["PGN_Raw"].dropna().tolist())
-            st.download_button("Pobierz wybrane partie (PGN)", data=pgn_b, file_name="agregacja_szachy.pgn", use_container_width=True)
+            st.download_button("Pobierz wybrane partie (PGN)", data=pgn_b, file_name="szachy_export.pgn", use_container_width=True)
             
             t1, t_hist, t2, t3, t4, t5, t6, t7 = st.tabs(["📊 Statystyki", "📅 Historia", "🏁 Technika", "⏳ Czas gry", "🔬 Debiuty", "⚖️ Black & White", "🧩 Styl i Psycha", "🧠 Analiza"])
             
@@ -382,7 +385,7 @@ else:
                                 st.session_state.url = import_to_lichess(g["PGN_Raw"]); st.rerun()
                     if 'url' in st.session_state and st.session_state.url:
                         st.markdown(f'<a href="{st.session_state.url}" target="_blank" style="display:block; width:100%; text-align:center; background-color:#1e88e5; color:white; padding:12px; border-radius:8px; text-decoration:none; font-weight:bold; margin-top:10px;">ANALIZA {g["Platforma"].upper()} ➡️</a>', unsafe_allow_html=True)
-                else: st.warning("Brak partii.")
+                else: st.warning("Brak partii w tym filtrze.")
 
     elif st.session_state.app_mode == "⚔️ Porównanie Graczy":
         c1, c2 = st.columns(2)
@@ -390,12 +393,16 @@ else:
         p2 = c2.selectbox("Platforma rywala:", ["Chess.com", "Lichess"])
         n2 = c2.text_input("Nick rywala:")
         
-        if st.button("Pobierz dane", use_container_width=True):
+        if st.button("Pobierz dane rywala", use_container_width=True):
             if n2:
                 with st.spinner(f"Pobieranie z {p2}..."):
-                    fetch_data.clear()
+                    # Celowo nie robimy fetch_data.clear() żeby nie skasować własnego cache'u!
                     prof2, df2 = fetch_data(n2, p2)
-                    if df2 is not None: st.session_state.data2, st.session_state.user2, st.session_state.plat2 = df2, n2, p2; st.rerun()
+                    if df2 is not None: 
+                        st.session_state.data2 = df2
+                        st.session_state.user2 = n2
+                        st.session_state.plat2 = p2
+                        st.rerun()
                     else: st.error("Nie znaleziono gracza.")
                     
         if st.session_state.data2 is not None:
@@ -403,7 +410,6 @@ else:
             u1, u2 = username, st.session_state.user2
             p2_plat = st.session_state.plat2
             
-            # Decyzja o wyświetleniu H2H
             show_h2h = p2_plat in user_plats
             tabs = st.tabs(["📊 Ogólne", "🥊 H2H"]) if show_h2h else st.tabs(["📊 Ogólne"])
             

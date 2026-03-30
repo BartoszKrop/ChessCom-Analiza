@@ -4,6 +4,7 @@ import pandas as pd
 import plotly.express as px
 from datetime import datetime
 import re
+import json
 
 # --- KONFIGURACJA STRONY ---
 st.set_page_config(page_title="Chess Analytics Pro", page_icon="♟️", layout="wide")
@@ -96,74 +97,141 @@ def import_to_lichess(pgn_text):
     except: return None
 
 @st.cache_data(show_spinner=False, ttl=3600)
-def fetch_data(user):
+def fetch_data(user, platform="Chess.com"):
     try:
-        headers = {"User-Agent": f"ChessApp-V22-{user}"}
-        p_res = requests.get(f"https://api.chess.com/pub/player/{user}", headers=headers)
-        s_res = requests.get(f"https://api.chess.com/pub/player/{user}/stats", headers=headers)
-        a_res = requests.get(f"https://api.chess.com/pub/player/{user}/games/archives", headers=headers)
-        if p_res.status_code != 200: return None, None, None
-        
-        archives = a_res.json().get("archives", [])
-        all_games = []
+        headers = {"User-Agent": f"ChessApp-V24-{user}"}
         days_map = {0: 'Pn', 1: 'Wt', 2: 'Śr', 3: 'Czw', 4: 'Pt', 5: 'Sb', 6: 'Nd'}
-        
-        for url in archives:
-            try:
-                m_res = requests.get(url, headers=headers, timeout=10)
-                if m_res.status_code == 200:
-                    m_data = m_res.json()
-                    for g in m_data.get("games", []):
-                        if "end_time" in g:
-                            ts = datetime.fromtimestamp(g["end_time"])
-                            is_w = g["white"]["username"].lower() == user.lower()
-                            my_res = g["white" if is_w else "black"]["result"]
-                            opp_res = g["black" if is_w else "white"]["result"]
-                            out = "Wygrane" if my_res == "win" else ("Remisy" if my_res in ["agreed", "repetition", "stalemate", "insufficient", "50move", "timevsinsufficient"] else "Przegrane")
-                            pgn = g.get("pgn", "")
-                            all_games.append({
-                                "Timestamp": ts, "Godzina": ts.hour, "Dzień": days_map[ts.weekday()], "Dzień_Nr": ts.weekday(),
-                                "Data": ts.date(), "Miesiąc": ts.strftime("%Y-%m"),
-                                "Tryb": g.get("time_class", "Inne").capitalize(), "Wynik": out, 
-                                "Elo_Moje": g["white" if is_w else "black"].get("rating", 0),
-                                "Elo_Rywala": g["black" if is_w else "white"].get("rating", 0),
-                                "Ruchy": extract_moves_count(pgn), "Debiut": extract_opening(pgn), "Przeciwnik": g["black" if is_w else "white"]["username"],
-                                "Kolor": "Białe" if is_w else "Czarne", "Powod_Konca": get_end_reason(my_res, opp_res, out), "PGN_Raw": pgn
-                            })
-            except: continue 
+        all_games = []
 
-        if not all_games: return None, None, None
-        return p_res.json(), s_res.json(), pd.DataFrame(all_games)
+        if platform == "Chess.com":
+            p_res = requests.get(f"https://api.chess.com/pub/player/{user}", headers=headers)
+            s_res = requests.get(f"https://api.chess.com/pub/player/{user}/stats", headers=headers)
+            a_res = requests.get(f"https://api.chess.com/pub/player/{user}/games/archives", headers=headers)
+            if p_res.status_code != 200: return None, None, None
+            
+            archives = a_res.json().get("archives", [])
+            for url in archives:
+                try:
+                    m_res = requests.get(url, headers=headers, timeout=10)
+                    if m_res.status_code == 200:
+                        for g in m_res.json().get("games", []):
+                            if "end_time" in g:
+                                ts = datetime.fromtimestamp(g["end_time"])
+                                is_w = g["white"]["username"].lower() == user.lower()
+                                my_res = g["white" if is_w else "black"]["result"]
+                                opp_res = g["black" if is_w else "white"]["result"]
+                                out = "Wygrane" if my_res == "win" else ("Remisy" if my_res in ["agreed", "repetition", "stalemate", "insufficient", "50move", "timevsinsufficient"] else "Przegrane")
+                                pgn = g.get("pgn", "")
+                                all_games.append({
+                                    "Timestamp": ts, "Godzina": ts.hour, "Dzień": days_map[ts.weekday()], "Dzień_Nr": ts.weekday(),
+                                    "Data": ts.date(), "Miesiąc": ts.strftime("%Y-%m"),
+                                    "Tryb": g.get("time_class", "Inne").capitalize(), "Wynik": out, 
+                                    "Elo_Moje": g["white" if is_w else "black"].get("rating", 0),
+                                    "Elo_Rywala": g["black" if is_w else "white"].get("rating", 0),
+                                    "Ruchy": extract_moves_count(pgn), "Debiut": extract_opening(pgn), "Przeciwnik": g["black" if is_w else "white"]["username"],
+                                    "Kolor": "Białe" if is_w else "Czarne", "Powod_Konca": get_end_reason(my_res, opp_res, out), 
+                                    "PGN_Raw": pgn, "Link_Direct": ""
+                                })
+                except: continue 
+            if not all_games: return None, None, None
+            return p_res.json(), s_res.json(), pd.DataFrame(all_games)
+
+        elif platform == "Lichess":
+            p_res = requests.get(f"https://lichess.org/api/user/{user}", headers=headers)
+            if p_res.status_code != 200: return None, None, None
+            l_data = p_res.json()
+            
+            p_data = {"avatar": l_data.get("profile", {}).get("avatar", "")}
+            stats = {
+                "chess_rapid": {"last": {"rating": l_data.get("perfs", {}).get("rapid", {}).get("rating", 0)}},
+                "chess_blitz": {"last": {"rating": l_data.get("perfs", {}).get("blitz", {}).get("rating", 0)}},
+                "chess_bullet": {"last": {"rating": l_data.get("perfs", {}).get("bullet", {}).get("rating", 0)}}
+            }
+
+            # Usunięto limit max=1000, pobieramy całą historię
+            g_res = requests.get(f"https://lichess.org/api/games/user/{user}?opening=true", headers={"Accept": "application/x-ndjson"})
+            lines = g_res.text.strip().split('\n')
+            
+            for line in lines:
+                if not line: continue
+                try:
+                    g = json.loads(line)
+                    ts = datetime.fromtimestamp(g["createdAt"] / 1000.0)
+                    my_col = "white" if g["players"]["white"].get("user", {}).get("name", "").lower() == user.lower() else "black"
+                    opp_col = "black" if my_col == "white" else "white"
+                    is_w = (my_col == "white")
+                    
+                    winner = g.get("winner")
+                    if winner == my_col: out = "Wygrane"
+                    elif winner == opp_col: out = "Przegrane"
+                    else: out = "Remisy"
+
+                    moves_list = g.get("moves", "").split()
+                    ruchy = len(moves_list) // 2 + (1 if len(moves_list) % 2 != 0 else 0)
+                    
+                    l_status = g.get("status")
+                    if l_status in ["mate"]: pk = "Mat"
+                    elif l_status in ["resign"]: pk = "Poddanie"
+                    elif l_status in ["outoftime"]: pk = "Czas"
+                    elif l_status in ["timeout"]: pk = "Opuszczenie"
+                    elif l_status in ["draw", "stalemate", "repetition"]: pk = "Remis"
+                    else: pk = "Inne"
+
+                    all_games.append({
+                        "Timestamp": ts, "Godzina": ts.hour, "Dzień": days_map[ts.weekday()], "Dzień_Nr": ts.weekday(),
+                        "Data": ts.date(), "Miesiąc": ts.strftime("%Y-%m"),
+                        "Tryb": g.get("speed", "Inne").capitalize(), "Wynik": out, 
+                        "Elo_Moje": g["players"][my_col].get("rating", 0),
+                        "Elo_Rywala": g["players"][opp_col].get("rating", 0),
+                        "Ruchy": ruchy, "Debiut": g.get("opening", {}).get("name", "Nieznany").split(':')[0], 
+                        "Przeciwnik": g["players"][opp_col].get("user", {}).get("name", "Anonim"),
+                        "Kolor": "Białe" if is_w else "Czarne", "Powod_Konca": pk, 
+                        "PGN_Raw": g.get("moves", ""), "Link_Direct": f"https://lichess.org/{g['id']}"
+                    })
+                except: continue
+                
+            if not all_games: return None, None, None
+            return p_data, stats, pd.DataFrame(all_games)
+
     except: return None, None, None
 
 # --- SESSION STATE ---
 if 'data' not in st.session_state: st.session_state.data = None
 if 'user' not in st.session_state: st.session_state.user = ""
+if 'platform' not in st.session_state: st.session_state.platform = "Chess.com"
 if 'app_mode' not in st.session_state: st.session_state.app_mode = "👤 Moja Analiza"
 
 # --- LOGIN ---
 if st.session_state.data is None:
     st.title("♟️ Chess Analytics Pro")
-    nick = st.text_input("Nick Chess.com:", value=st.session_state.user, placeholder="np. Hikaru")
+    
+    col_plat1, col_plat2 = st.columns([1, 4])
+    with col_plat1:
+        plat = st.radio("Platforma:", ["Chess.com", "Lichess"])
+    with col_plat2:
+        nick = st.text_input("Nick gracza:", value=st.session_state.user, placeholder="np. Hikaru")
+        
     if st.button("Analizuj moje wyniki", use_container_width=True):
         if nick:
-            with st.spinner("Pobieranie całej historii..."):
-                fetched = fetch_data(nick)
+            with st.spinner(f"Pobieranie historii z {plat}... (przy dużej ilości partii może to potrwać dłuższą chwilę)"):
+                fetch_data.clear()
+                fetched = fetch_data(nick, plat)
                 if fetched[2] is not None:
-                    st.session_state.data, st.session_state.user = fetched, nick
+                    st.session_state.data, st.session_state.user, st.session_state.platform = fetched, nick, plat
                     st.rerun()
-                else: st.error("Nie znaleziono gracza.")
+                else: st.error("Nie znaleziono gracza lub brak publicznych partii.")
 else:
     profile, stats, df = st.session_state.data
     username = st.session_state.user
+    plat = st.session_state.platform
     
     c_nav1, c_nav2, c_nav3 = st.columns([2, 1, 1])
     with c_nav1: new_mode = st.radio("Tryb:", ["👤 Moja Analiza", "⚔️ Porównanie Graczy"], horizontal=True, label_visibility="collapsed")
     with c_nav2:
         if st.button("Odśwież dane", use_container_width=True):
-            with st.spinner("Odświeżanie..."):
+            with st.spinner(f"Odświeżanie danych z {plat}..."):
                 fetch_data.clear()
-                fetched = fetch_data(username)
+                fetched = fetch_data(username, plat)
                 if fetched[2] is not None: st.session_state.data = fetched; st.rerun()
     with c_nav3:
         if st.button("Zmień gracza", use_container_width=True):
@@ -175,7 +243,7 @@ else:
     if st.session_state.app_mode == "👤 Moja Analiza":
         c_h1, c_h2 = st.columns([1, 4])
         if profile.get("avatar"): c_h1.image(profile.get("avatar"), width=70)
-        c_h2.subheader(username)
+        c_h2.subheader(f"{username} ({plat})")
         
         m1, m2, m3 = st.columns(3)
         def gv(c): s = stats.get(c, {}); return f"{s.get('best', {}).get('rating', '-')} / {s.get('last', {}).get('rating', '-')}"
@@ -197,7 +265,7 @@ else:
 
         if not df_f.empty:
             pgn_b = "\n\n".join(df_f["PGN_Raw"].dropna().tolist())
-            st.download_button("Pobierz bazę partii (Format PGN)", data=pgn_b, file_name=f"chess_{username}.pgn", use_container_width=True)
+            st.download_button("Pobierz wybrane partie (Zapis Raw/PGN)", data=pgn_b, file_name=f"{plat}_{username}.pgn", use_container_width=True)
             
             t1, t_hist, t2, t3, t4, t5, t6, t7 = st.tabs(["📊 Statystyki", "📅 Historia", "🏁 Technika", "⏳ Czas gry", "🔬 Debiuty", "⚖️ Black & White", "🧩 Styl i Psycha", "🧠 Analiza"])
             
@@ -306,26 +374,34 @@ else:
                 f1, f2 = st.columns(2)
                 sd = f1.date_input("Dzień:", value=df_f["Data"].max())
                 so = f2.text_input("Nick rywala:").strip()
-                ana = df_f[df_f["Przeciwnik"].str.lower() == so.lower()] if so else df_f[df_f["Data"] == sd]
+                ana = df_f[df_f["Przeciwnik"].str.lower() == so.lower()].copy() if so else df_f[df_f["Data"] == sd].copy()
                 if not ana.empty:
                     ana["L"] = ana.apply(lambda x: f"{x['Data']} | {x['Tryb']} vs {x['Przeciwnik']} ({x['Wynik']})", axis=1)
                     sel = st.selectbox("Mecz:", ana.sort_values("Timestamp", ascending=False)["L"])
                     g = ana[ana["L"] == sel].iloc[0]
                     if st.button("Przygotuj analizę", use_container_width=True):
-                        st.session_state.url = import_to_lichess(g["PGN_Raw"]); st.rerun()
+                        if plat == "Lichess":
+                            st.session_state.url = g["Link_Direct"]
+                            st.rerun()
+                        else:
+                            with st.spinner("Przekazywanie na serwer Lichess..."):
+                                st.session_state.url = import_to_lichess(g["PGN_Raw"])
+                                st.rerun()
                     if 'url' in st.session_state and st.session_state.url:
-                        st.markdown(f'<a href="{st.session_state.url}" target="_blank" style="display:block; width:100%; text-align:center; background-color:#1e88e5; color:white; padding:12px; border-radius:8px; text-decoration:none; font-weight:bold;">ANALIZA: {g["Przeciwnik"]}</a>', unsafe_allow_html=True)
+                        st.markdown(f'<a href="{st.session_state.url}" target="_blank" style="display:block; width:100%; text-align:center; background-color:#1e88e5; color:white; padding:12px; border-radius:8px; text-decoration:none; font-weight:bold; margin-top:10px;">ANALIZA NA LICHESS.ORG ➡️</a>', unsafe_allow_html=True)
                 else: st.warning("Brak partii.")
 
     elif st.session_state.app_mode == "⚔️ Porównanie Graczy":
         c1, c2 = st.columns(2)
-        c1.info(f"Gracz 1: **{username}**")
-        n2 = c2.text_input("Nick rywala:")
+        c1.info(f"Gracz 1: **{username}** ({plat})")
+        n2 = c2.text_input("Rywal (z tej samej platformy):")
         if st.button("Pobierz dane", use_container_width=True):
             if n2:
-                with st.spinner("Pobieranie..."):
-                    f2 = fetch_data(n2)
+                with st.spinner(f"Pobieranie danych z {plat}..."):
+                    fetch_data.clear()
+                    f2 = fetch_data(n2, plat)
                     if f2[2] is not None: st.session_state.data2, st.session_state.user2 = f2, n2; st.rerun()
+                    else: st.error("Nie znaleziono gracza na podanej platformie.")
         if st.session_state.data2:
             s1, s2 = stats, st.session_state.data2[1]
             u1, u2 = username, st.session_state.user2
@@ -337,7 +413,10 @@ else:
                 st.metric(f"Bullet: {u1} vs {u2}", f"{gc(s1, 'chess_bullet')} / {gc(s2, 'chess_bullet')}", int(gc(s1, 'chess_bullet')-gc(s2, 'chess_bullet')))
             with t_h:
                 h2 = df[df['Przeciwnik'].str.lower() == u2.lower()].copy().sort_values("Timestamp").reset_index(drop=True)
+                h2["Partia_Nr"] = h2.index + 1
                 if not h2.empty:
-                    st.write(f"Bilans: {u1} **{(h2['Wynik']=='Wygrane').sum()}** - **{(h2['Wynik']=='Remisy').sum()}** - **{(h2['Wynik']=='Przegrane').sum()}** {u2}")
+                    c1, c2, c3 = st.columns(3)
+                    c1.metric(u1, (h2["Wynik"]=="Wygrane").sum()); c2.metric("Remisy", (h2["Wynik"]=="Remisy").sum()); c3.metric(u2, (h2["Wynik"]=="Przegrane").sum())
                     h2[u1], h2[u2] = (h2["Wynik"]=="Wygrane").cumsum(), (h2["Wynik"]=="Przegrane").cumsum()
-                    st.plotly_chart(px.line(h2.melt(id_vars=h2.index.name, value_vars=[u1, u2]), y="value", color="variable", title="Wyścig zwycięstw"), use_container_width=True)
+                    st.plotly_chart(px.line(h2.melt(id_vars=["Partia_Nr"], value_vars=[u1, u2]), x="Partia_Nr", y="value", color="variable", title="Wyścig zwycięstw").update_layout(xaxis_title="Numer Partii", yaxis_title="Suma Zwycięstw"), use_container_width=True)
+                else: st.info("Brak meczów bezpośrednich pomiędzy wami.")

@@ -100,7 +100,7 @@ def import_to_lichess(pgn_text):
 @st.cache_data(show_spinner=False, ttl=3600)
 def fetch_data(user):
     try:
-        headers = {"User-Agent": f"ChessApp-V19-{user}"}
+        headers = {"User-Agent": f"ChessApp-V20-{user}"}
         p_res = requests.get(f"https://api.chess.com/pub/player/{user}", headers=headers)
         s_res = requests.get(f"https://api.chess.com/pub/player/{user}/stats", headers=headers)
         a_res = requests.get(f"https://api.chess.com/pub/player/{user}/games/archives", headers=headers)
@@ -286,14 +286,24 @@ else:
                 pst = pst.sort_values("Presja")
                 st.plotly_chart(px.bar(pst, x="Win%", y="Presja", orientation='h', color="Gry", color_continuous_scale='Blues', title="Skuteczność wg ELO rywala"), use_container_width=True)
 
-                st.write("### 📉 Wpływ serii")
+                st.write("### 📉 Wpływ serii (Z uwzględnieniem Sesji)")
+                st.caption("Przerwa powyżej 2 godzin między meczami resetuje Twój licznik serii.")
                 df_tilt = df_f.sort_values('Timestamp').copy()
                 streaks_type, streaks_count = [], []
                 c_type, c_count = None, 0
+                last_ts = None
                 
-                for res in df_tilt['Wynik']:
+                for idx, row in df_tilt.iterrows():
+                    res = row['Wynik']
+                    ts = row['Timestamp']
+                    
+                    if last_ts is not None and (ts - last_ts).total_seconds() > 7200:
+                        c_type = None
+                        c_count = 0
+                        
                     streaks_type.append(c_type)
                     streaks_count.append(c_count)
+                    
                     if res == 'Wygrane':
                         if c_type == 'W': c_count += 1
                         else: c_type = 'W'; c_count = 1
@@ -302,6 +312,8 @@ else:
                         else: c_type = 'L'; c_count = 1
                     else: 
                         c_type = None; c_count = 0
+                        
+                    last_ts = ts
                         
                 df_tilt['Seria_Typ'] = streaks_type
                 df_tilt['Seria_Dlugosc'] = streaks_count

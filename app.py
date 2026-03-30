@@ -73,6 +73,10 @@ def get_duration_bin(moves):
     elif moves <= 70: return "61-70"
     else: return "71+"
 
+def sort_duration_bins(bins):
+    order = ["0-20", "21-30", "31-40", "41-50", "51-60", "61-70", "71+"]
+    return sorted(bins, key=lambda x: order.index(x) if x in order else 99)
+
 def get_elo_bin(diff):
     if diff >= 50: return "1. Silny Faworyt (+50 ELO)"
     elif diff >= 15: return "2. Faworyt (+15 do +50)"
@@ -82,7 +86,7 @@ def get_elo_bin(diff):
 
 def get_end_reason(my_res, opp_res, outcome):
     detail = opp_res if outcome == "Wygrane" else my_res
-    mapping = {"checkmated": "Mat", "resigned": "Poddanie", "timeout": "Czas", "abandoned": "Opuszczenie", "agreed": "Remis", "repetition": "Remis", "stalemate": "Pat", "insufficient": "Materiał", "timevsinsufficient": "Czas", "50move": "Remis"}
+    mapping = {"checkmated": "Mat", "resigned": "Poddanie", "timeout": "Czas", "abandoned": "Opuszczenie", "agreed": "Remis", "repetition": "Remis", "stalemate": "Pat", "insufficient": "Materiał", "timevsinsufficient": "Czas"}
     return mapping.get(detail, "Inne")
 
 def import_to_lichess(pgn_text):
@@ -119,7 +123,7 @@ def fetch_data(user):
                             pgn = g.get("pgn", "")
                             all_games.append({
                                 "Timestamp": ts, "Godzina": ts.hour, "Dzień": days_map[ts.weekday()], "Dzień_Nr": ts.weekday(),
-                                "Data": ts.date(), "Miesiąc_Klucz": ts.strftime("%Y-%m"), "Miesiąc_Format": ts.strftime("%m/%Y"),
+                                "Data": ts.date(), "Miesiąc": ts.strftime("%Y-%m"),
                                 "Tryb": g.get("time_class", "Inne").capitalize(), "Wynik": out, 
                                 "Elo_Moje": g["white" if is_w else "black"].get("rating", 0),
                                 "Elo_Rywala": g["black" if is_w else "white"].get("rating", 0),
@@ -208,22 +212,21 @@ else:
 
             with t_hist:
                 st.write("### Podsumowanie miesięczne")
-                monthly = df_f.groupby(["Miesiąc_Klucz", "Miesiąc_Format"]).agg(
+                monthly = df_f.groupby("Miesiąc").agg(
                     Partie=('Wynik', 'count'),
                     Wygrane=('Wynik', lambda x: (x == 'Wygrane').sum()),
                     Remisy=('Wynik', lambda x: (x == 'Remisy').sum()),
                     Przegrane=('Wynik', lambda x: (x == 'Przegrane').sum()),
                     Elo=('Elo_Moje', 'mean')
-                ).reset_index().sort_values("Miesiąc_Klucz", ascending=False)
+                ).reset_index().sort_values("Miesiąc", ascending=False)
                 
                 monthly["Win%"] = (monthly["Wygrane"] / monthly["Partie"] * 100).round(0).astype(int)
                 monthly["Bilans"] = monthly.apply(lambda x: f"{int(x['Wygrane'])}/{int(x['Remisy'])}/{int(x['Przegrane'])}", axis=1)
-                st.dataframe(monthly[["Miesiąc_Format", "Partie", "Bilans", "Win%"]].rename(columns={"Miesiąc_Format": "Miesiąc"}), use_container_width=True, hide_index=True)
+                st.dataframe(monthly[["Miesiąc", "Partie", "Bilans", "Win%"]], use_container_width=True, hide_index=True)
                 
                 st.divider()
-                sel_m = st.selectbox("Wybierz miesiąc do szczegółowej analizy:", monthly["Miesiąc_Format"].unique())
-                m_key = monthly[monthly["Miesiąc_Format"] == sel_m]["Miesiąc_Klucz"].values[0]
-                daily = df_f[df_f["Miesiąc_Klucz"] == m_key].groupby("Data").agg(
+                sel_m = st.selectbox("Wybierz miesiąc do szczegółowej analizy:", monthly["Miesiąc"].unique())
+                daily = df_f[df_f["Miesiąc"] == sel_m].groupby("Data").agg(
                     Gry=('Wynik', 'count'),
                     Wygrane=('Wynik', lambda x: (x == 'Wygrane').sum()),
                     Remisy=('Wynik', lambda x: (x == 'Remisy').sum()),
@@ -231,7 +234,7 @@ else:
                     Elo_Sr=('Elo_Moje', 'mean')
                 ).reset_index().sort_values("Data", ascending=False)
                 daily["Bilans"] = daily.apply(lambda x: f"{int(x['Wygrane'])}/{int(x['Remisy'])}/{int(x['Przegrane'])}", axis=1)
-                daily["Data_F"] = daily["Data"].apply(lambda x: x.strftime("%d/%m (%a)"))
+                daily["Data_F"] = daily["Data"].apply(lambda x: x.strftime("%Y-%m-%d (%a)"))
                 st.dataframe(daily[["Data_F", "Gry", "Bilans", "Elo_Sr"]].rename(columns={"Data_F": "Dzień", "Gry": "Partie", "Elo_Sr": "Śr. ELO"}), use_container_width=True, hide_index=True)
 
             with t2:
@@ -268,19 +271,12 @@ else:
                 df_f["Bin"] = df_f["Ruchy"].apply(get_duration_bin)
                 dst = df_f.groupby("Bin").agg(Gry=('Wynik', 'count'), W=('Wynik', lambda x: (x == 'Wygrane').sum())).reset_index()
                 dst["Win%"] = (dst["W"] / dst["Gry"] * 100).round(0).astype(int)
-                
-                # Zabezpieczone, klasyczne sortowanie
-                bin_order = ["0-20", "21-30", "31-40", "41-50", "51-60", "61-70", "71+"]
-                dst["SortKey"] = dst["Bin"].apply(lambda x: bin_order.index(x) if x in bin_order else 99)
-                dst = dst.sort_values("SortKey").drop("SortKey", axis=1)
-                
+                dst = dst.sort_values(by="Bin", key=lambda col: [sort_duration_bins(list(col)).index(x) for x in col])
                 st.plotly_chart(px.bar(dst, x="Bin", y="Win%", color="Gry", color_continuous_scale='Blues', title="Długość partii vs Win%"), use_container_width=True)
-                
                 df_f["Presja"] = (df_f["Elo_Moje"] - df_f["Elo_Rywala"]).apply(get_elo_bin)
                 pst = df_f.groupby("Presja").agg(Gry=('Wynik', 'count'), W=('Wynik', lambda x: (x == 'Wygrane').sum())).reset_index()
                 pst["Win%"] = (pst["W"] / pst["Gry"] * 100).round(0).astype(int)
                 st.plotly_chart(px.bar(pst.sort_values("Presja"), x="Win%", y="Presja", orientation='h', color="Gry", color_continuous_scale='Blues', title="Gra pod presją ELO"), use_container_width=True)
-                
                 st.write("### Wpływ serii (Sesja 2h)")
                 df_tilt = df_f.sort_values('Timestamp').copy()
                 stype_l, scount_l, last_ts = [], [], None
@@ -310,7 +306,7 @@ else:
                 f1, f2 = st.columns(2)
                 sd = f1.date_input("Dzień:", value=df_f["Data"].max())
                 so = f2.text_input("Nick rywala:").strip()
-                ana = df_f[df_f["Przeciwnik"].str.lower() == so.lower()].copy() if so else df_f[df_f["Data"] == sd].copy()
+                ana = df_f[df_f["Przeciwnik"].str.lower() == so.lower()] if so else df_f[df_f["Data"] == sd]
                 if not ana.empty:
                     ana["L"] = ana.apply(lambda x: f"{x['Data']} | {x['Tryb']} vs {x['Przeciwnik']} ({x['Wynik']})", axis=1)
                     sel = st.selectbox("Mecz:", ana.sort_values("Timestamp", ascending=False)["L"])
@@ -318,7 +314,7 @@ else:
                     if st.button("Przygotuj analizę", use_container_width=True):
                         st.session_state.url = import_to_lichess(g["PGN_Raw"]); st.rerun()
                     if 'url' in st.session_state and st.session_state.url:
-                        st.markdown(f'<a href="{st.session_state.url}" target="_blank" style="display:block; width:100%; text-align:center; background-color:#1e88e5; color:white; padding:12px; border-radius:8px; text-decoration:none; font-weight:bold; margin-top:10px;">ANALIZA: {g["Przeciwnik"]}</a>', unsafe_allow_html=True)
+                        st.markdown(f'<a href="{st.session_state.url}" target="_blank" style="display:block; width:100%; text-align:center; background-color:#1e88e5; color:white; padding:12px; border-radius:8px; text-decoration:none; font-weight:bold;">ANALIZA: {g["Przeciwnik"]}</a>', unsafe_allow_html=True)
                 else: st.warning("Brak partii.")
 
     elif st.session_state.app_mode == "⚔️ Porównanie Graczy":
@@ -341,9 +337,7 @@ else:
                 st.metric(f"Bullet: {u1} vs {u2}", f"{gc(s1, 'chess_bullet')} / {gc(s2, 'chess_bullet')}", int(gc(s1, 'chess_bullet')-gc(s2, 'chess_bullet')))
             with t_h:
                 h2 = df[df['Przeciwnik'].str.lower() == u2.lower()].copy().sort_values("Timestamp").reset_index(drop=True)
-                h2["Partia_Nr"] = h2.index + 1
                 if not h2.empty:
                     st.write(f"Bilans: {u1} **{(h2['Wynik']=='Wygrane').sum()}** - **{(h2['Wynik']=='Remisy').sum()}** - **{(h2['Wynik']=='Przegrane').sum()}** {u2}")
                     h2[u1], h2[u2] = (h2["Wynik"]=="Wygrane").cumsum(), (h2["Wynik"]=="Przegrane").cumsum()
-                    st.plotly_chart(px.line(h2.melt(id_vars=["Partia_Nr"], value_vars=[u1, u2]), x="Partia_Nr", y="value", color="variable", title="Wyścig zwycięstw").update_layout(xaxis_title="Numer Partii", yaxis_title="Suma Zwycięstw"), use_container_width=True)
-                else: st.info("Brak meczów bezpośrednich.")
+                    st.plotly_chart(px.line(h2.melt(id_vars=h2.index.name, value_vars=[u1, u2]), y="value", color="variable", title="Wyścig zwycięstw"), use_container_width=True)

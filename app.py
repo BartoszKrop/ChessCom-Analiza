@@ -75,6 +75,10 @@ def get_duration_bin(moves):
     elif moves <= 70: return "61-70"
     else: return "71+"
 
+def sort_duration_bins(bins):
+    order = ["0-20", "21-30", "31-40", "41-50", "51-60", "61-70", "71+"]
+    return sorted(bins, key=lambda x: order.index(x) if x in order else 99)
+
 def get_elo_bin(diff):
     if diff >= 50: return "1. Silny Faworyt (+50 ELO)"
     elif diff >= 15: return "2. Faworyt (+15 do +50)"
@@ -106,7 +110,6 @@ def fetch_data(user):
         all_games = []
         days_map = {0: 'Pn', 1: 'Wt', 2: 'Śr', 3: 'Czw', 4: 'Pt', 5: 'Sb', 6: 'Nd'}
         
-        # POBIERANIE Z ZABEZPIECZENIEM PRZED BŁĘDAMI
         for url in archives:
             try:
                 m_res = requests.get(url, headers=headers, timeout=10)
@@ -129,7 +132,7 @@ def fetch_data(user):
                                 "Kolor": "Białe" if is_w else "Czarne", "Powod_Konca": get_end_reason(my_res, opp_res, out), "PGN_Raw": pgn
                             })
             except Exception:
-                continue # Jeśli miesiąc zgłosi błąd, omijamy go i pobieramy resztę, żeby nie wywalać aplikacji
+                continue 
 
         if not all_games:
             return None, None, None
@@ -165,7 +168,7 @@ else:
     with c_nav2:
         if st.button("🔄 Odśwież dane", use_container_width=True):
             with st.spinner("Wymuszam pobranie najnowszych partii..."):
-                fetch_data.clear() # Czyścimy cache tylko, gdy użytkownik świadomie chce odświeżyć
+                fetch_data.clear() 
                 fetched = fetch_data(username)
                 if fetched[2] is not None: st.session_state.data = fetched; st.rerun()
     with c_nav3:
@@ -203,7 +206,7 @@ else:
 
         if not df_f.empty:
             pgn_b = "\n\n".join(df_f["PGN_Raw"].dropna().tolist())
-            st.download_button("Pobierz bazę partii (Format PGN)", data=pgn_b, file_name="chess_export.pgn", use_container_width=True)
+            st.download_button("Pobierz bazę partii (Format PGN)", data=pgn_b, file_name=f"chess_{username}.pgn", use_container_width=True)
             
             t1, t2, t3, t4, t5, t6, t7 = st.tabs(["📊 Ogólne", "🏁 Technika", "⏳ Czas gry", "🔬 Debiuty", "⚖️ Black & White", "🧩 Styl i Psycha", "🧠 Analiza"])
             
@@ -223,9 +226,12 @@ else:
 
             with t3:
                 d_st = df_f.groupby(["Dzień", "Dzień_Nr"]).agg(Gry=('Wynik', 'count'), W=('Wynik', lambda x: (x == 'Wygrane').sum())).reset_index().sort_values("Dzień_Nr")
-                st.plotly_chart(px.bar(d_st, x="Dzień", y="W", color="Gry", color_continuous_scale='Blues', title="Skuteczność wg Dni"), use_container_width=True)
+                d_st["Win%"] = (d_st["W"] / d_st["Gry"] * 100).round(0).astype(int)
+                st.plotly_chart(px.bar(d_st, x="Dzień", y="Win%", color="Gry", color_continuous_scale='Blues', title="Skuteczność wg Dni"), use_container_width=True)
+                
                 h_st = df_f.groupby("Godzina").agg(Gry=('Wynik', 'count'), W=('Wynik', lambda x: (x == 'Wygrane').sum())).reset_index()
-                st.plotly_chart(px.bar(h_st, x="Godzina", y="W", color="Gry", color_continuous_scale='Blues', title="Skuteczność wg Godzin"), use_container_width=True)
+                h_st["Win%"] = (h_st["W"] / h_st["Gry"] * 100).round(0).astype(int)
+                st.plotly_chart(px.bar(h_st, x="Godzina", y="Win%", color="Gry", color_continuous_scale='Blues', title="Skuteczność wg Godzin"), use_container_width=True)
 
             with t4:
                 op = df_f.groupby("Debiut").agg(Gry=('Wynik', 'count'), WinRate=('Wynik', lambda x: int(round((x == 'Wygrane').sum()/len(x)*100,0)))).reset_index()
@@ -265,12 +271,63 @@ else:
                 """, unsafe_allow_html=True)
 
             with t6:
+                st.write("### ⏱️ Długość partii a Win Rate")
                 df_f["Bin"] = df_f["Ruchy"].apply(get_duration_bin)
                 dst = df_f.groupby("Bin").agg(Gry=('Wynik', 'count'), W=('Wynik', lambda x: (x == 'Wygrane').sum())).reset_index()
-                st.plotly_chart(px.bar(dst, x="Bin", y="W", color="Gry", color_continuous_scale='Blues', title="Długość partii vs Wygrane"), use_container_width=True)
+                dst["Win%"] = (dst["W"] / dst["Gry"] * 100).round(0).astype(int)
+                dst["SortKey"] = dst["Bin"].apply(lambda x: sort_duration_bins([x])[0])
+                dst = dst.sort_values(by="SortKey", key=lambda col: [sort_duration_bins(list(col)).index(x) for x in col]).drop("SortKey", axis=1)
+                st.plotly_chart(px.bar(dst, x="Bin", y="Win%", color="Gry", color_continuous_scale='Blues', title="Skuteczność wg długości partii"), use_container_width=True)
+                
+                st.write("### 🥊 Gra pod presją ELO")
                 df_f["Presja"] = (df_f["Elo_Moje"] - df_f["Elo_Rywala"]).apply(get_elo_bin)
                 pst = df_f.groupby("Presja").agg(Gry=('Wynik', 'count'), W=('Wynik', lambda x: (x == 'Wygrane').sum())).reset_index()
-                st.plotly_chart(px.bar(pst, x="W", y="Presja", orientation='h', color="Gry", color_continuous_scale='Blues', title="Gra pod presją ELO"), use_container_width=True)
+                pst["Win%"] = (pst["W"] / pst["Gry"] * 100).round(0).astype(int)
+                pst = pst.sort_values("Presja")
+                st.plotly_chart(px.bar(pst, x="Win%", y="Presja", orientation='h', color="Gry", color_continuous_scale='Blues', title="Skuteczność wg ELO rywala"), use_container_width=True)
+
+                st.write("### 📉 Analiza Tiltu (Wpływ serii)")
+                df_tilt = df_f.sort_values('Timestamp').copy()
+                streaks_type, streaks_count = [], []
+                c_type, c_count = None, 0
+                
+                for res in df_tilt['Wynik']:
+                    streaks_type.append(c_type)
+                    streaks_count.append(c_count)
+                    if res == 'Wygrane':
+                        if c_type == 'W': c_count += 1
+                        else: c_type = 'W'; c_count = 1
+                    elif res == 'Przegrane':
+                        if c_type == 'L': c_count += 1
+                        else: c_type = 'L'; c_count = 1
+                    else: 
+                        c_type = None; c_count = 0
+                        
+                df_tilt['Seria_Typ'] = streaks_type
+                df_tilt['Seria_Dlugosc'] = streaks_count
+                
+                tilt_stats = []
+                for stype, nazwa in [('W', 'Po serii Wygranych'), ('L', 'Po serii Porażek')]:
+                    for count in [1, 2, 3]:
+                        subset = df_tilt[(df_tilt['Seria_Typ'] == stype) & (df_tilt['Seria_Dlugosc'] == count)]
+                        if len(subset) > 0:
+                            w_count = (subset['Wynik'] == 'Wygrane').sum()
+                            tilt_stats.append({"Typ": nazwa, "Długość serii (przed meczem)": f"{count} z rzędu", "Win%": int(round((w_count / len(subset)) * 100, 0)), "Gry": len(subset)})
+                    
+                    subset_4 = df_tilt[(df_tilt['Seria_Typ'] == stype) & (df_tilt['Seria_Dlugosc'] >= 4)]
+                    if len(subset_4) > 0:
+                        w_count = (subset_4['Wynik'] == 'Wygrane').sum()
+                        tilt_stats.append({"Typ": nazwa, "Długość serii (przed meczem)": "4+ z rzędu", "Win%": int(round((w_count / len(subset_4)) * 100, 0)), "Gry": len(subset_4)})
+
+                if tilt_stats:
+                    df_tilt_res = pd.DataFrame(tilt_stats)
+                    fig_tilt = px.bar(df_tilt_res, x="Długość serii (przed meczem)", y="Win%", color="Typ", barmode='group',
+                                     text="Win%", color_discrete_map={"Po serii Wygranych":"#1e88e5", "Po serii Porażek":"#ef553b"})
+                    fig_tilt.update_traces(textposition='outside')
+                    fig_tilt.update_layout(margin=dict(l=0, r=0, t=30, b=0))
+                    st.plotly_chart(fig_tilt, use_container_width=True)
+                else:
+                    st.info("Za mało gier do analizy tiltu.")
 
             with t7:
                 f1, f2 = st.columns(2)
@@ -291,13 +348,14 @@ else:
     elif st.session_state.app_mode == "⚔️ Porównanie Graczy":
         c1, c2 = st.columns(2)
         c1.info(f"Gracz 1: **{username}**")
-        n2 = c2.text_input("Nick rywala:", placeholder="Wpisz nick")
-        if st.button("Pobierz dane rywala", use_container_width=True):
+        n2 = c2.text_input("Rywal:", placeholder="Wpisz nick")
+        if st.button("Pobierz dane", use_container_width=True):
             if n2:
-                with st.spinner(f"Pobieranie historii gier dla {n2}..."):
-                    f2 = fetch_data(n2) # Tutaj cache zadziała naturalnie bez clear()
+                with st.spinner("Pobieranie historii rywala..."):
+                    fetch_data.clear()
+                    f2 = fetch_data(n2)
                     if f2[2] is not None: st.session_state.data2, st.session_state.user2 = f2, n2; st.rerun()
-                    else: st.error("Nie znaleziono gracza lub zablokowano zapytanie.")
+                    else: st.error("Nie znaleziono gracza.")
         if st.session_state.data2:
             s1, s2 = stats, st.session_state.data2[1]
             u1, u2 = username, st.session_state.user2

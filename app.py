@@ -23,14 +23,12 @@ st.markdown("""
     
     .block-container { padding: 1rem; }
     
-    /* Nawigacja */
     div.row-widget.stRadio > div { 
         flex-direction: row; justify-content: center; 
         background-color: #161b22; padding: 10px; 
         border-radius: 10px; border: 1px solid #30363d;
     }
 
-    /* Tabela Asymetrii */
     .asym-row {
         display: flex;
         justify-content: space-between;
@@ -100,7 +98,7 @@ def import_to_lichess(pgn_text):
 @st.cache_data(show_spinner=False, ttl=3600)
 def fetch_data(user):
     try:
-        headers = {"User-Agent": f"ChessApp-V20-{user}"}
+        headers = {"User-Agent": f"ChessApp-V21-{user}"}
         p_res = requests.get(f"https://api.chess.com/pub/player/{user}", headers=headers)
         s_res = requests.get(f"https://api.chess.com/pub/player/{user}/stats", headers=headers)
         a_res = requests.get(f"https://api.chess.com/pub/player/{user}/games/archives", headers=headers)
@@ -125,18 +123,16 @@ def fetch_data(user):
                             pgn = g.get("pgn", "")
                             all_games.append({
                                 "Timestamp": ts, "Godzina": ts.hour, "Dzień": days_map[ts.weekday()], "Dzień_Nr": ts.weekday(),
-                                "Data": ts.date(), "Tryb": g.get("time_class", "Inne").capitalize(), "Wynik": out, 
+                                "Data": ts.date(), "Miesiąc_Klucz": ts.strftime("%Y-%m"), "Miesiąc_Format": ts.strftime("%m/%Y"),
+                                "Tryb": g.get("time_class", "Inne").capitalize(), "Wynik": out, 
                                 "Elo_Moje": g["white" if is_w else "black"].get("rating", 0),
                                 "Elo_Rywala": g["black" if is_w else "white"].get("rating", 0),
                                 "Ruchy": extract_moves_count(pgn), "Debiut": extract_opening(pgn), "Przeciwnik": g["black" if is_w else "white"]["username"],
                                 "Kolor": "Białe" if is_w else "Czarne", "Powod_Konca": get_end_reason(my_res, opp_res, out), "PGN_Raw": pgn
                             })
-            except Exception:
-                continue 
+            except: continue 
 
-        if not all_games:
-            return None, None, None
-            
+        if not all_games: return None, None, None
         return p_res.json(), s_res.json(), pd.DataFrame(all_games)
     except: return None, None, None
 
@@ -151,32 +147,29 @@ if st.session_state.data is None:
     nick = st.text_input("Nick Chess.com:", value=st.session_state.user, placeholder="np. Hikaru")
     if st.button("Analizuj moje wyniki", use_container_width=True):
         if nick:
-            with st.spinner("Pobieranie całej historii partii..."):
+            with st.spinner("Pobieranie całej historii..."):
                 fetched = fetch_data(nick)
-                if fetched[2] is not None and not fetched[2].empty:
+                if fetched[2] is not None:
                     st.session_state.data, st.session_state.user = fetched, nick
                     st.rerun()
-                else: st.error("Błąd pobierania danych. Spróbuj odświeżyć stronę lub sprawdź poprawność nicku.")
+                else: st.error("Nie znaleziono gracza.")
 else:
     profile, stats, df = st.session_state.data
     username = st.session_state.user
     
-    # --- NAWIGACJA GÓRNA ---
     c_nav1, c_nav2, c_nav3 = st.columns([2, 1, 1])
-    with c_nav1:
-        new_mode = st.radio("Tryb:", ["👤 Moja Analiza", "⚔️ Porównanie Graczy"], horizontal=True, label_visibility="collapsed")
+    with c_nav1: new_mode = st.radio("Tryb:", ["👤 Moja Analiza", "⚔️ Porównanie Graczy"], horizontal=True, label_visibility="collapsed")
     with c_nav2:
-        if st.button("🔄 Odśwież dane", use_container_width=True):
-            with st.spinner("Wymuszam pobranie najnowszych partii..."):
-                fetch_data.clear() 
+        if st.button("Odśwież dane", use_container_width=True):
+            with st.spinner("Odświeżanie..."):
+                fetch_data.clear()
                 fetched = fetch_data(username)
                 if fetched[2] is not None: st.session_state.data = fetched; st.rerun()
     with c_nav3:
-        if st.button("🚪 Zmień gracza", use_container_width=True):
+        if st.button("Zmień gracza", use_container_width=True):
             st.session_state.data = None; st.rerun()
 
-    if new_mode != st.session_state.app_mode:
-        st.session_state.app_mode = new_mode; st.rerun()
+    if new_mode != st.session_state.app_mode: st.session_state.app_mode = new_mode; st.rerun()
     st.divider()
 
     if st.session_state.app_mode == "👤 Moja Analiza":
@@ -186,9 +179,7 @@ else:
         
         m1, m2, m3 = st.columns(3)
         def gv(c): s = stats.get(c, {}); return f"{s.get('best', {}).get('rating', '-')} / {s.get('last', {}).get('rating', '-')}"
-        m1.metric("Rapid (Peak / Teraz)", gv("chess_rapid"))
-        m2.metric("Blitz (Peak / Teraz)", gv("chess_blitz"))
-        m3.metric("Bullet (Peak / Teraz)", gv("chess_bullet"))
+        m1.metric("Rapid", gv("chess_rapid")); m2.metric("Blitz", gv("chess_blitz")); m3.metric("Bullet", gv("chess_bullet"))
 
         with st.expander("⚙️ Filtry"):
             f1, f2 = st.columns(2)
@@ -208,7 +199,7 @@ else:
             pgn_b = "\n\n".join(df_f["PGN_Raw"].dropna().tolist())
             st.download_button("Pobierz bazę partii (Format PGN)", data=pgn_b, file_name=f"chess_{username}.pgn", use_container_width=True)
             
-            t1, t2, t3, t4, t5, t6, t7 = st.tabs(["📊 Ogólne", "🏁 Technika", "⏳ Czas gry", "🔬 Debiuty", "⚖️ Black & White", "🧩 Styl i Psycha", "🧠 Analiza"])
+            t1, t_hist, t2, t3, t4, t5, t6, t7 = st.tabs(["📊 Statystyki", "📅 Historia", "🏁 Technika", "⏳ Czas gry", "🔬 Debiuty", "⚖️ Black & White", "🧩 Styl i Psycha", "🧠 Analiza"])
             
             with t1:
                 w, d, l = (df_f["Wynik"] == "Wygrane").sum(), (df_f["Wynik"] == "Remisy").sum(), (df_f["Wynik"] == "Przegrane").sum()
@@ -219,6 +210,34 @@ else:
                     if not mdf.empty:
                         st.plotly_chart(px.line(mdf, x="Timestamp", y="Elo_Moje", title=f"Ranking {m}", color_discrete_sequence=["#1e88e5"]).update_layout(height=250, margin=dict(l=0, r=0, t=30, b=0), xaxis_title=None, yaxis_title="ELO"), use_container_width=True)
 
+            with t_hist:
+                st.write("### Podsumowanie miesięczne")
+                monthly = df_f.groupby(["Miesiąc_Klucz", "Miesiąc_Format"]).agg(
+                    Partie=('Wynik', 'count'),
+                    Wygrane=('Wynik', lambda x: (x == 'Wygrane').sum()),
+                    Remisy=('Wynik', lambda x: (x == 'Remisy').sum()),
+                    Przegrane=('Wynik', lambda x: (x == 'Przegrane').sum()),
+                    Elo=('Elo_Moje', 'mean')
+                ).reset_index().sort_values("Miesiąc_Klucz", ascending=False)
+                
+                monthly["Win%"] = (monthly["Wygrane"] / monthly["Partie"] * 100).round(0).astype(int)
+                monthly["Bilans"] = monthly.apply(lambda x: f"{int(x['Wygrane'])}/{int(x['Remisy'])}/{int(x['Przegrane'])}", axis=1)
+                st.dataframe(monthly[["Miesiąc_Format", "Partie", "Bilans", "Win%"]].rename(columns={"Miesiąc_Format": "Miesiąc"}), use_container_width=True, hide_index=True)
+                
+                st.divider()
+                sel_m = st.selectbox("Wybierz miesiąc do szczegółowej analizy:", monthly["Miesiąc_Format"].unique())
+                m_key = monthly[monthly["Miesiąc_Format"] == sel_m]["Miesiąc_Klucz"].values[0]
+                daily = df_f[df_f["Miesiąc_Klucz"] == m_key].groupby("Data").agg(
+                    Gry=('Wynik', 'count'),
+                    Wygrane=('Wynik', lambda x: (x == 'Wygrane').sum()),
+                    Remisy=('Wynik', lambda x: (x == 'Remisy').sum()),
+                    Przegrane=('Wynik', lambda x: (x == 'Przegrane').sum()),
+                    Elo_Sr=('Elo_Moje', 'mean')
+                ).reset_index().sort_values("Data", ascending=False)
+                daily["Bilans"] = daily.apply(lambda x: f"{int(x['Wygrane'])}/{int(x['Remisy'])}/{int(x['Przegrane'])}", axis=1)
+                daily["Data_F"] = daily["Data"].apply(lambda x: x.strftime("%d/%m (%a)"))
+                st.dataframe(daily[["Data_F", "Gry", "Bilans", "Elo_Sr"]].rename(columns={"Data_F": "Dzień", "Gry": "Partie", "Elo_Sr": "Śr. ELO"}), use_container_width=True, hide_index=True)
+
             with t2:
                 c1, c2 = st.columns(2)
                 with c1: st.write("**Wygrane:**"); st.plotly_chart(px.pie(df_f[df_f["Wynik"]=="Wygrane"], names="Powod_Konca", hole=0.4, color_discrete_sequence=px.colors.sequential.Teal), use_container_width=True)
@@ -228,7 +247,6 @@ else:
                 d_st = df_f.groupby(["Dzień", "Dzień_Nr"]).agg(Gry=('Wynik', 'count'), W=('Wynik', lambda x: (x == 'Wygrane').sum())).reset_index().sort_values("Dzień_Nr")
                 d_st["Win%"] = (d_st["W"] / d_st["Gry"] * 100).round(0).astype(int)
                 st.plotly_chart(px.bar(d_st, x="Dzień", y="Win%", color="Gry", color_continuous_scale='Blues', title="Skuteczność wg Dni"), use_container_width=True)
-                
                 h_st = df_f.groupby("Godzina").agg(Gry=('Wynik', 'count'), W=('Wynik', lambda x: (x == 'Wygrane').sum())).reset_index()
                 h_st["Win%"] = (h_st["W"] / h_st["Gry"] * 100).round(0).astype(int)
                 st.plotly_chart(px.bar(h_st, x="Godzina", y="Win%", color="Gry", color_continuous_scale='Blues', title="Skuteczność wg Godzin"), use_container_width=True)
@@ -238,108 +256,52 @@ else:
                 st.dataframe(op.sort_values("Gry", ascending=False).head(20), use_container_width=True, hide_index=True)
 
             with t5:
-                st.write("### Bezpośrednie porównanie kolorów")
                 def get_stats(c):
                     sub = df_f[df_f["Kolor"] == c]
                     if sub.empty: return "0%", 0, 0
-                    wr = f"{int(round((sub['Wynik']=='Wygrane').sum()/len(sub)*100,0))}%"
-                    return wr, len(sub), int(sub["Ruchy"].mean())
-                
+                    return f"{int(round((sub['Wynik']=='Wygrane').sum()/len(sub)*100,0))}%", len(sub), int(sub["Ruchy"].mean())
                 ws, bs = get_stats("Białe"), get_stats("Czarne")
-                
                 st.markdown(f"""
-                <div class="asym-header">
-                    <div style="width:35%; text-align:center;">⬜ BIAŁE</div>
-                    <div style="width:30%; text-align:center; color:#8b949e;">STATYSTYKA</div>
-                    <div style="width:35%; text-align:center;">⬛ CZARNE</div>
-                </div>
-                <div class="asym-row">
-                    <div class="asym-val-w">{ws[0]}</div>
-                    <div class="asym-label">Win Rate</div>
-                    <div class="asym-val-b">{bs[0]}</div>
-                </div>
-                <div class="asym-row">
-                    <div class="asym-val-w">{ws[1]}</div>
-                    <div class="asym-label">Liczba partii</div>
-                    <div class="asym-val-b">{bs[1]}</div>
-                </div>
-                <div class="asym-row">
-                    <div class="asym-val-w">{ws[2]}</div>
-                    <div class="asym-label">Śr. ruchów</div>
-                    <div class="asym-val-b">{bs[2]}</div>
-                </div>
+                <div class="asym-header"><div style="width:35%; text-align:center;">⬜ BIAŁE</div><div style="width:30%; text-align:center; color:#8b949e;">STATYSTYKA</div><div style="width:35%; text-align:center;">⬛ CZARNE</div></div>
+                <div class="asym-row"><div class="asym-val-w">{ws[0]}</div><div class="asym-label">Win Rate</div><div class="asym-val-b">{bs[0]}</div></div>
+                <div class="asym-row"><div class="asym-val-w">{ws[1]}</div><div class="asym-label">Partie</div><div class="asym-val-b">{bs[1]}</div></div>
+                <div class="asym-row"><div class="asym-val-w">{ws[2]}</div><div class="asym-label">Śr. ruchów</div><div class="asym-val-b">{bs[2]}</div></div>
                 """, unsafe_allow_html=True)
 
             with t6:
-                st.write("### ⏱️ Długość partii a Win Rate")
                 df_f["Bin"] = df_f["Ruchy"].apply(get_duration_bin)
                 dst = df_f.groupby("Bin").agg(Gry=('Wynik', 'count'), W=('Wynik', lambda x: (x == 'Wygrane').sum())).reset_index()
                 dst["Win%"] = (dst["W"] / dst["Gry"] * 100).round(0).astype(int)
-                dst["SortKey"] = dst["Bin"].apply(lambda x: sort_duration_bins([x])[0])
-                dst = dst.sort_values(by="SortKey", key=lambda col: [sort_duration_bins(list(col)).index(x) for x in col]).drop("SortKey", axis=1)
-                st.plotly_chart(px.bar(dst, x="Bin", y="Win%", color="Gry", color_continuous_scale='Blues', title="Skuteczność wg długości partii"), use_container_width=True)
-                
-                st.write("### 🥊 Gra pod presją ELO")
+                dst = dst.sort_values(by="Bin", key=lambda col: [sort_duration_bins(list(col)).index(x) for x in col])
+                st.plotly_chart(px.bar(dst, x="Bin", y="Win%", color="Gry", color_continuous_scale='Blues', title="Długość partii vs Win%"), use_container_width=True)
                 df_f["Presja"] = (df_f["Elo_Moje"] - df_f["Elo_Rywala"]).apply(get_elo_bin)
                 pst = df_f.groupby("Presja").agg(Gry=('Wynik', 'count'), W=('Wynik', lambda x: (x == 'Wygrane').sum())).reset_index()
                 pst["Win%"] = (pst["W"] / pst["Gry"] * 100).round(0).astype(int)
-                pst = pst.sort_values("Presja")
-                st.plotly_chart(px.bar(pst, x="Win%", y="Presja", orientation='h', color="Gry", color_continuous_scale='Blues', title="Skuteczność wg ELO rywala"), use_container_width=True)
-
-                st.write("### 📉 Wpływ serii (Z uwzględnieniem Sesji)")
-                st.caption("Przerwa powyżej 2 godzin między meczami resetuje Twój licznik serii.")
+                st.plotly_chart(px.bar(pst.sort_values("Presja"), x="Win%", y="Presja", orientation='h', color="Gry", color_continuous_scale='Blues', title="Gra pod presją ELO"), use_container_width=True)
+                st.write("### Wpływ serii (Sesja 2h)")
                 df_tilt = df_f.sort_values('Timestamp').copy()
-                streaks_type, streaks_count = [], []
-                c_type, c_count = None, 0
-                last_ts = None
-                
-                for idx, row in df_tilt.iterrows():
-                    res = row['Wynik']
-                    ts = row['Timestamp']
-                    
-                    if last_ts is not None and (ts - last_ts).total_seconds() > 7200:
-                        c_type = None
-                        c_count = 0
-                        
-                    streaks_type.append(c_type)
-                    streaks_count.append(c_count)
-                    
-                    if res == 'Wygrane':
-                        if c_type == 'W': c_count += 1
-                        else: c_type = 'W'; c_count = 1
-                    elif res == 'Przegrane':
-                        if c_type == 'L': c_count += 1
-                        else: c_type = 'L'; c_count = 1
-                    else: 
-                        c_type = None; c_count = 0
-                        
-                    last_ts = ts
-                        
-                df_tilt['Seria_Typ'] = streaks_type
-                df_tilt['Seria_Dlugosc'] = streaks_count
-                
-                tilt_stats = []
-                for stype, nazwa in [('W', 'Po serii Wygranych'), ('L', 'Po serii Porażek')]:
-                    for count in [1, 2, 3, 4]:
-                        subset = df_tilt[(df_tilt['Seria_Typ'] == stype) & (df_tilt['Seria_Dlugosc'] == count)]
-                        if len(subset) > 0:
-                            w_count = (subset['Wynik'] == 'Wygrane').sum()
-                            tilt_stats.append({"Typ": nazwa, "Długość serii (przed meczem)": f"{count} z rzędu", "Win%": int(round((w_count / len(subset)) * 100, 0)), "Liczba partii": len(subset)})
-                    
-                    subset_5 = df_tilt[(df_tilt['Seria_Typ'] == stype) & (df_tilt['Seria_Dlugosc'] >= 5)]
-                    if len(subset_5) > 0:
-                        w_count = (subset_5['Wynik'] == 'Wygrane').sum()
-                        tilt_stats.append({"Typ": nazwa, "Długość serii (przed meczem)": "5+ z rzędu", "Win%": int(round((w_count / len(subset_5)) * 100, 0)), "Liczba partii": len(subset_5)})
-
-                if tilt_stats:
-                    df_tilt_res = pd.DataFrame(tilt_stats)
-                    fig_tilt = px.bar(df_tilt_res, x="Długość serii (przed meczem)", y="Win%", color="Typ", barmode='group',
-                                     text="Win%", hover_data=["Liczba partii"], color_discrete_map={"Po serii Wygranych":"#1e88e5", "Po serii Porażek":"#ef553b"})
-                    fig_tilt.update_traces(textposition='outside')
-                    fig_tilt.update_layout(margin=dict(l=0, r=0, t=30, b=0))
-                    st.plotly_chart(fig_tilt, use_container_width=True)
-                else:
-                    st.info("Za mało gier do analizy wpływu serii.")
+                stype_l, scount_l, last_ts = [], [], None
+                ct, cc = None, 0
+                for _, row in df_tilt.iterrows():
+                    if last_ts and (row['Timestamp'] - last_ts).total_seconds() > 7200: ct, cc = None, 0
+                    stype_l.append(ct); scount_l.append(cc)
+                    if row['Wynik'] == 'Wygrane':
+                        if ct == 'W': cc += 1
+                        else: ct, cc = 'W', 1
+                    elif row['Wynik'] == 'Przegrane':
+                        if ct == 'L': cc += 1
+                        else: ct, cc = 'L', 1
+                    else: ct, cc = None, 0
+                    last_ts = row['Timestamp']
+                df_tilt['ST'], df_tilt['SC'] = stype_l, scount_l
+                tilt_res = []
+                for s, n in [('W', 'Po serii Wygranych'), ('L', 'Po serii Porażek')]:
+                    for c in [1, 2, 3, 4]:
+                        sub = df_tilt[(df_tilt['ST'] == s) & (df_tilt['SC'] == c)]
+                        if not sub.empty: tilt_res.append({"Typ": n, "Seria": f"{c} z rzędu", "Win%": int(round((sub['Wynik']=='Wygrane').sum()/len(sub)*100,0)), "Partie": len(sub)})
+                    sub5 = df_tilt[(df_tilt['ST'] == s) & (df_tilt['SC'] >= 5)]
+                    if not sub5.empty: tilt_res.append({"Typ": n, "Seria": "5+ z rzędu", "Win%": int(round((sub5['Wynik']=='Wygrane').sum()/len(sub5)*100,0)), "Partie": len(sub5)})
+                if tilt_res: st.plotly_chart(px.bar(pd.DataFrame(tilt_res), x="Seria", y="Win%", color="Typ", barmode='group', text="Win%", hover_data=["Partie"], color_discrete_map={"Po serii Wygranych":"#1e88e5", "Po serii Porażek":"#ef553b"}), use_container_width=True)
 
             with t7:
                 f1, f2 = st.columns(2)
@@ -351,39 +313,31 @@ else:
                     sel = st.selectbox("Mecz:", ana.sort_values("Timestamp", ascending=False)["L"])
                     g = ana[ana["L"] == sel].iloc[0]
                     if st.button("Przygotuj analizę", use_container_width=True):
-                        with st.spinner("Przekazywanie na serwer Lichess..."):
-                            st.session_state.url = import_to_lichess(g["PGN_Raw"]); st.rerun()
+                        st.session_state.url = import_to_lichess(g["PGN_Raw"]); st.rerun()
                     if 'url' in st.session_state and st.session_state.url:
-                        st.markdown(f'<a href="{st.session_state.url}" target="_blank" style="display:block; width:100%; text-align:center; background-color:#1e88e5; color:white; padding:12px; border-radius:8px; text-decoration:none; font-weight:bold; margin-top:10px;">ANALIZA: {g["Przeciwnik"]}</a>', unsafe_allow_html=True)
-                else: st.warning("Brak partii.")
+                        st.markdown(f'<a href="{st.session_state.url}" target="_blank" style="display:block; width:100%; text-align:center; background-color:#1e88e5; color:white; padding:12px; border-radius:8px; text-decoration:none; font-weight:bold;">ANALIZA: {g["Przeciwnik"]}</a>', unsafe_allow_html=True)
 
     elif st.session_state.app_mode == "⚔️ Porównanie Graczy":
         c1, c2 = st.columns(2)
         c1.info(f"Gracz 1: **{username}**")
-        n2 = c2.text_input("Rywal:", placeholder="Wpisz nick")
+        n2 = c2.text_input("Nick rywala:")
         if st.button("Pobierz dane", use_container_width=True):
             if n2:
-                with st.spinner("Pobieranie historii rywala..."):
-                    fetch_data.clear()
+                with st.spinner("Pobieranie..."):
                     f2 = fetch_data(n2)
                     if f2[2] is not None: st.session_state.data2, st.session_state.user2 = f2, n2; st.rerun()
-                    else: st.error("Nie znaleziono gracza.")
         if st.session_state.data2:
             s1, s2 = stats, st.session_state.data2[1]
             u1, u2 = username, st.session_state.user2
             t_o, t_h = st.tabs(["📊 Ogólne", "🥊 H2H"])
             with t_o:
-                c1, c2, c3 = st.columns(3)
                 def gc(s, m): return s.get(m, {}).get('last', {}).get('rating', 0)
-                c1.metric(f"Rapid: {u1} vs {u2}", f"{gc(s1, 'chess_rapid')} / {gc(s2, 'chess_rapid')}", int(gc(s1, 'chess_rapid')-gc(s2, 'chess_rapid')))
-                c2.metric(f"Blitz: {u1} vs {u2}", f"{gc(s1, 'chess_blitz')} / {gc(s2, 'chess_blitz')}", int(gc(s1, 'chess_blitz')-gc(s2, 'chess_blitz')))
-                c3.metric(f"Bullet: {u1} vs {u2}", f"{gc(s1, 'chess_bullet')} / {gc(s2, 'chess_bullet')}", int(gc(s1, 'chess_bullet')-gc(s2, 'chess_bullet')))
+                st.metric(f"Rapid: {u1} vs {u2}", f"{gc(s1, 'chess_rapid')} / {gc(s2, 'chess_rapid')}", int(gc(s1, 'chess_rapid')-gc(s2, 'chess_rapid')))
+                st.metric(f"Blitz: {u1} vs {u2}", f"{gc(s1, 'chess_blitz')} / {gc(s2, 'chess_blitz')}", int(gc(s1, 'chess_blitz')-gc(s2, 'chess_blitz')))
+                st.metric(f"Bullet: {u1} vs {u2}", f"{gc(s1, 'chess_bullet')} / {gc(s2, 'chess_bullet')}", int(gc(s1, 'chess_bullet')-gc(s2, 'chess_bullet')))
             with t_h:
                 h2 = df[df['Przeciwnik'].str.lower() == u2.lower()].copy().sort_values("Timestamp").reset_index(drop=True)
-                h2["Partia_Nr"] = h2.index + 1
                 if not h2.empty:
-                    c1, c2, c3 = st.columns(3)
-                    c1.metric(u1, (h2["Wynik"]=="Wygrane").sum()); c2.metric("Remisy", (h2["Wynik"]=="Remisy").sum()); c3.metric(u2, (h2["Wynik"]=="Przegrane").sum())
+                    st.write(f"Bilans: {u1} **{(h2['Wynik']=='Wygrane').sum()}** - **{(h2['Wynik']=='Remisy').sum()}** - **{(h2['Wynik']=='Przegrane').sum()}** {u2}")
                     h2[u1], h2[u2] = (h2["Wynik"]=="Wygrane").cumsum(), (h2["Wynik"]=="Przegrane").cumsum()
-                    st.plotly_chart(px.line(h2.melt(id_vars=["Partia_Nr"], value_vars=[u1, u2]), x="Partia_Nr", y="value", color="variable", title="Wyścig zwycięstw").update_layout(xaxis_title="Numer Partii", yaxis_title="Suma Zwycięstw"), use_container_width=True)
-                else: st.info("Brak meczów bezpośrednich pomiędzy wami.")
+                    st.plotly_chart(px.line(h2.melt(id_vars=h2.index.name, value_vars=[u1, u2]), y="value", color="variable", title="Wyścig zwycięstw"), use_container_width=True)

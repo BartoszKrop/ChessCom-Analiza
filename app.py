@@ -252,11 +252,7 @@ else:
                     <div class="asym-label">Śr. ruchów</div>
                     <div class="asym-val-b">{bs[2]}</div>
                 </div>
-                <div class="asym-row">
-                    <div class="asym-val-w" style="font-size:1.1rem;">{ws[3]}</div>
-                    <div class="asym-label">Główny błąd</div>
-                    <div class="asym-val-b" style="font-size:1.1rem;">{bs[3]}</div>
-                </div>
+            
                 """, unsafe_allow_html=True)
 
             with t6:

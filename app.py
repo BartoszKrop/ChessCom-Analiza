@@ -96,15 +96,18 @@ def import_to_lichess(pgn_text):
 @st.cache_data(show_spinner=False, ttl=3600)
 def fetch_data(user):
     try:
-        headers = {"User-Agent": f"ChessApp-V17-{user}"}
+        headers = {"User-Agent": f"ChessApp-V18-{user}"}
         p_res = requests.get(f"https://api.chess.com/pub/player/{user}", headers=headers)
         s_res = requests.get(f"https://api.chess.com/pub/player/{user}/stats", headers=headers)
         a_res = requests.get(f"https://api.chess.com/pub/player/{user}/games/archives", headers=headers)
         if p_res.status_code != 200: return None, None, None
+        
         archives = a_res.json().get("archives", [])
         all_games = []
         days_map = {0: 'Pn', 1: 'Wt', 2: 'Śr', 3: 'Czw', 4: 'Pt', 5: 'Sb', 6: 'Nd'}
-        for url in archives[-12:]:
+        
+        # POBIERANIE WSZYSTKICH ARCHIWÓW (Naprawione ograniczenie czasowe)
+        for url in archives:
             m_data = requests.get(url, headers=headers).json()
             for g in m_data.get("games", []):
                 if "end_time" in g:
@@ -136,28 +139,31 @@ if st.session_state.data is None:
     nick = st.text_input("Nick Chess.com:", value=st.session_state.user, placeholder="np. Hikaru")
     if st.button("Analizuj moje wyniki", use_container_width=True):
         if nick:
-            with st.spinner("Pobieranie danych..."):
+            with st.spinner("Pobieranie całej historii... (to może chwilę potrwać)"):
                 fetch_data.clear()
                 fetched = fetch_data(nick)
-                if fetched[2] is not None:
+                if fetched[2] is not None and not fetched[2].empty:
                     st.session_state.data, st.session_state.user = fetched, nick
                     st.rerun()
-                else: st.error("Nie znaleziono gracza.")
+                else: st.error("Nie znaleziono danych dla tego nicku.")
 else:
     profile, stats, df = st.session_state.data
     username = st.session_state.user
     
-    # --- NAWIGACJA GÓRNA ---
+    # --- NAWIGACJA GŁÓWNA ---
     c_nav1, c_nav2, c_nav3 = st.columns([2, 1, 1])
     with c_nav1:
         new_mode = st.radio("Tryb:", ["👤 Moja Analiza", "⚔️ Porównanie Graczy"], horizontal=True, label_visibility="collapsed")
     with c_nav2:
         if st.button("🔄 Odśwież dane", use_container_width=True):
-            with st.spinner("Odświeżanie..."):
+            with st.spinner("Pobieranie najnowszych partii..."):
                 fetch_data.clear()
                 fetched = fetch_data(username)
-                if fetched[2] is not None: st.session_state.data = fetched; st.rerun()
-    with c_nav3:
+                if fetched[2] is not None: 
+                    st.session_state.data = fetched
+                    st.session_state.url = None
+                    st.rerun()
+    with col_nav3 := c_nav3:
         if st.button("🚪 Zmień gracza", use_container_width=True):
             st.session_state.data = None; st.rerun()
 
@@ -192,7 +198,7 @@ else:
 
         if not df_f.empty:
             pgn_b = "\n\n".join(df_f["PGN_Raw"].dropna().tolist())
-            st.download_button("Pobierz bazę partii (Format PGN)", data=pgn_b, file_name="chess_export.pgn", use_container_width=True)
+            st.download_button("Pobierz bazę partii (Format PGN)", data=pgn_b, file_name=f"chess_{username}.pgn", use_container_width=True)
             
             t1, t2, t3, t4, t5, t6, t7 = st.tabs(["📊 Ogólne", "🏁 Technika", "⏳ Czas gry", "🔬 Debiuty", "⚖️ Black & White", "🧩 Styl i Psycha", "🧠 Analiza"])
             
@@ -212,9 +218,9 @@ else:
 
             with t3:
                 d_st = df_f.groupby(["Dzień", "Dzień_Nr"]).agg(Gry=('Wynik', 'count'), W=('Wynik', lambda x: (x == 'Wygrane').sum())).reset_index().sort_values("Dzień_Nr")
-                st.plotly_chart(px.bar(d_st, x="Dzień", y="W", color="Gry", color_continuous_scale='Blues', title="Skuteczność wg Dni"), use_container_width=True)
+                st.plotly_chart(px.bar(d_st, x="Dzień", y="W", color="Gry", color_continuous_scale='Blues', title="Wygrane wg Dni"), use_container_width=True)
                 h_st = df_f.groupby("Godzina").agg(Gry=('Wynik', 'count'), W=('Wynik', lambda x: (x == 'Wygrane').sum())).reset_index()
-                st.plotly_chart(px.bar(h_st, x="Godzina", y="W", color="Gry", color_continuous_scale='Blues', title="Skuteczność wg Godzin"), use_container_width=True)
+                st.plotly_chart(px.bar(h_st, x="Godzina", y="W", color="Gry", color_continuous_scale='Blues', title="Wygrane wg Godzin"), use_container_width=True)
 
             with t4:
                 op = df_f.groupby("Debiut").agg(Gry=('Wynik', 'count'), WinRate=('Wynik', lambda x: int(round((x == 'Wygrane').sum()/len(x)*100,0)))).reset_index()
@@ -224,10 +230,9 @@ else:
                 st.write("### Bezpośrednie porównanie kolorów")
                 def get_stats(c):
                     sub = df_f[df_f["Kolor"] == c]
-                    if sub.empty: return "0%", 0, 0, "-"
+                    if sub.empty: return "0%", 0, 0
                     wr = f"{int(round((sub['Wynik']=='Wygrane').sum()/len(sub)*100,0))}%"
-                    be = sub[sub["Wynik"]=="Przegrane"]["Powod_Konca"].mode().iloc[0] if not sub[sub["Wynik"]=="Przegrane"].empty else "Brak"
-                    return wr, len(sub), int(sub["Ruchy"].mean()), be
+                    return wr, len(sub), int(sub["Ruchy"].mean())
                 
                 ws, bs = get_stats("Białe"), get_stats("Czarne")
                 
@@ -252,7 +257,6 @@ else:
                     <div class="asym-label">Śr. ruchów</div>
                     <div class="asym-val-b">{bs[2]}</div>
                 </div>
-            
                 """, unsafe_allow_html=True)
 
             with t6:
@@ -265,7 +269,9 @@ else:
 
             with t7:
                 f1, f2 = st.columns(2)
-                ana = df_f[df_f["Przeciwnik"].str.lower() == f2.text_input("Nick rywala:").lower()] if f2.text_input("Nick rywala:") else df_f[df_f["Data"] == f1.date_input("Dzień:", value=df_f["Data"].max())]
+                sd = f1.date_input("Dzień:", value=df_f["Data"].max())
+                so = f2.text_input("Nick rywala:").strip()
+                ana = df_f[df_f["Przeciwnik"].str.lower() == so.lower()] if so else df_f[df_f["Data"] == sd]
                 if not ana.empty:
                     ana["L"] = ana.apply(lambda x: f"{x['Data']} | {x['Tryb']} vs {x['Przeciwnik']} ({x['Wynik']})", axis=1)
                     sel = st.selectbox("Mecz:", ana.sort_values("Timestamp", ascending=False)["L"])
@@ -281,7 +287,8 @@ else:
         n2 = c2.text_input("Rywal:", placeholder="Wpisz nick")
         if st.button("Pobierz dane", use_container_width=True):
             if n2:
-                with st.spinner("Pobieranie..."):
+                with st.spinner("Pobieranie historii rywala..."):
+                    fetch_data.clear()
                     f2 = fetch_data(n2)
                     if f2[2] is not None: st.session_state.data2, st.session_state.user2 = f2, n2; st.rerun()
         if st.session_state.data2:
@@ -299,3 +306,4 @@ else:
                     st.write(f"Bilans: {u1} **{(h2['Wynik']=='Wygrane').sum()}** - **{(h2['Wynik']=='Remisy').sum()}** - **{(h2['Wynik']=='Przegrane').sum()}** {u2}")
                     h2[u1], h2[u2] = (h2["Wynik"]=="Wygrane").cumsum(), (h2["Wynik"]=="Przegrane").cumsum()
                     st.plotly_chart(px.line(h2.melt(id_vars=["index"], value_vars=[u1, u2]), x="index", y="value", color="variable", title="Wyścig zwycięstw"), use_container_width=True)
+                else: st.info("Brak meczów bezpośrednich.")

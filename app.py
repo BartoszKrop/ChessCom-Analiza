@@ -14,43 +14,14 @@ st.markdown("""
     #MainMenu {visibility: hidden;}
     footer {visibility: hidden;}
     header {visibility: hidden;}
-    
-    .stMetric { 
-        background-color: #161b22; 
-        padding: 10px; 
-        border-radius: 10px; 
-        border: 1px solid #30363d;
-    }
-    
+    .stMetric { background-color: #161b22; padding: 10px; border-radius: 10px; border: 1px solid #30363d; }
     .block-container { padding: 1rem; }
-    
-    div.row-widget.stRadio > div { 
-        flex-direction: row; justify-content: center; 
-        background-color: #161b22; padding: 10px; 
-        border-radius: 10px; border: 1px solid #30363d;
-    }
-
-    .asym-row {
-        display: flex;
-        justify-content: space-between;
-        align-items: center;
-        padding: 15px;
-        border-bottom: 1px solid #30363d;
-        text-align: center;
-    }
+    div.row-widget.stRadio > div { flex-direction: row; justify-content: center; background-color: #161b22; padding: 10px; border-radius: 10px; border: 1px solid #30363d; }
+    .asym-row { display: flex; justify-content: space-between; align-items: center; padding: 15px; border-bottom: 1px solid #30363d; text-align: center; }
     .asym-val-w { width: 35%; font-size: 1.4rem; font-weight: bold; color: #ffffff; }
     .asym-label { width: 30%; font-size: 0.9rem; color: #8b949e; text-transform: uppercase; letter-spacing: 1px; }
     .asym-val-b { width: 35%; font-size: 1.4rem; font-weight: bold; color: #58a6ff; }
-    
-    .asym-header {
-        display: flex;
-        justify-content: space-between;
-        padding: 10px;
-        background-color: #161b22;
-        border-radius: 8px;
-        font-weight: bold;
-        margin-bottom: 5px;
-    }
+    .asym-header { display: flex; justify-content: space-between; padding: 10px; background-color: #161b22; border-radius: 8px; font-weight: bold; margin-bottom: 5px; }
     </style>
     """, unsafe_allow_html=True)
 
@@ -96,18 +67,26 @@ def import_to_lichess(pgn_text):
         return res.json().get("url") if res.status_code == 200 else None
     except: return None
 
+# DYNAMICZNY KALKULATOR ELO (Rozwiązuje problem Peak Lichess)
+def calc_elo(df, mode):
+    mdf = df[df["Tryb"] == mode]
+    if mdf.empty: return "-", "-"
+    peak = int(mdf["Elo_Moje"].max())
+    curr = int(mdf.sort_values("Timestamp").iloc[-1]["Elo_Moje"])
+    return peak, curr
+
 @st.cache_data(show_spinner=False, ttl=3600)
 def fetch_data(user, platform="Chess.com"):
     try:
-        headers = {"User-Agent": f"ChessApp-V24-{user}"}
+        headers = {"User-Agent": f"ChessApp-V25-{user}"}
         days_map = {0: 'Pn', 1: 'Wt', 2: 'Śr', 3: 'Czw', 4: 'Pt', 5: 'Sb', 6: 'Nd'}
         all_games = []
+        konto_id = f"{user} ({platform})"
 
         if platform == "Chess.com":
             p_res = requests.get(f"https://api.chess.com/pub/player/{user}", headers=headers)
-            s_res = requests.get(f"https://api.chess.com/pub/player/{user}/stats", headers=headers)
             a_res = requests.get(f"https://api.chess.com/pub/player/{user}/games/archives", headers=headers)
-            if p_res.status_code != 200: return None, None, None
+            if p_res.status_code != 200: return None, None
             
             archives = a_res.json().get("archives", [])
             for url in archives:
@@ -123,6 +102,7 @@ def fetch_data(user, platform="Chess.com"):
                                 out = "Wygrane" if my_res == "win" else ("Remisy" if my_res in ["agreed", "repetition", "stalemate", "insufficient", "50move", "timevsinsufficient"] else "Przegrane")
                                 pgn = g.get("pgn", "")
                                 all_games.append({
+                                    "Konto": konto_id, "Platforma": platform,
                                     "Timestamp": ts, "Godzina": ts.hour, "Dzień": days_map[ts.weekday()], "Dzień_Nr": ts.weekday(),
                                     "Data": ts.date(), "Miesiąc": ts.strftime("%Y-%m"),
                                     "Tryb": g.get("time_class", "Inne").capitalize(), "Wynik": out, 
@@ -133,22 +113,14 @@ def fetch_data(user, platform="Chess.com"):
                                     "PGN_Raw": pgn, "Link_Direct": ""
                                 })
                 except: continue 
-            if not all_games: return None, None, None
-            return p_res.json(), s_res.json(), pd.DataFrame(all_games)
+            if not all_games: return None, None
+            return {"avatar": p_res.json().get("avatar", "")}, pd.DataFrame(all_games)
 
         elif platform == "Lichess":
             p_res = requests.get(f"https://lichess.org/api/user/{user}", headers=headers)
-            if p_res.status_code != 200: return None, None, None
-            l_data = p_res.json()
-            
-            p_data = {"avatar": l_data.get("profile", {}).get("avatar", "")}
-            stats = {
-                "chess_rapid": {"last": {"rating": l_data.get("perfs", {}).get("rapid", {}).get("rating", 0)}},
-                "chess_blitz": {"last": {"rating": l_data.get("perfs", {}).get("blitz", {}).get("rating", 0)}},
-                "chess_bullet": {"last": {"rating": l_data.get("perfs", {}).get("bullet", {}).get("rating", 0)}}
-            }
+            if p_res.status_code != 200: return None, None
+            p_data = {"avatar": p_res.json().get("profile", {}).get("avatar", "")}
 
-            # Usunięto limit max=1000, pobieramy całą historię
             g_res = requests.get(f"https://lichess.org/api/games/user/{user}?opening=true", headers={"Accept": "application/x-ndjson"})
             lines = g_res.text.strip().split('\n')
             
@@ -162,9 +134,7 @@ def fetch_data(user, platform="Chess.com"):
                     is_w = (my_col == "white")
                     
                     winner = g.get("winner")
-                    if winner == my_col: out = "Wygrane"
-                    elif winner == opp_col: out = "Przegrane"
-                    else: out = "Remisy"
+                    out = "Wygrane" if winner == my_col else ("Przegrane" if winner == opp_col else "Remisy")
 
                     moves_list = g.get("moves", "").split()
                     ruchy = len(moves_list) // 2 + (1 if len(moves_list) % 2 != 0 else 0)
@@ -178,6 +148,7 @@ def fetch_data(user, platform="Chess.com"):
                     else: pk = "Inne"
 
                     all_games.append({
+                        "Konto": konto_id, "Platforma": platform,
                         "Timestamp": ts, "Godzina": ts.hour, "Dzień": days_map[ts.weekday()], "Dzień_Nr": ts.weekday(),
                         "Data": ts.date(), "Miesiąc": ts.strftime("%Y-%m"),
                         "Tryb": g.get("speed", "Inne").capitalize(), "Wynik": out, 
@@ -190,49 +161,72 @@ def fetch_data(user, platform="Chess.com"):
                     })
                 except: continue
                 
-            if not all_games: return None, None, None
-            return p_data, stats, pd.DataFrame(all_games)
+            if not all_games: return None, None
+            return p_data, pd.DataFrame(all_games)
 
-    except: return None, None, None
+    except: return None, None
 
 # --- SESSION STATE ---
 if 'data' not in st.session_state: st.session_state.data = None
 if 'user' not in st.session_state: st.session_state.user = ""
-if 'platform' not in st.session_state: st.session_state.platform = "Chess.com"
+if 'platforms' not in st.session_state: st.session_state.platforms = []
 if 'app_mode' not in st.session_state: st.session_state.app_mode = "👤 Moja Analiza"
 
 # --- LOGIN ---
 if st.session_state.data is None:
     st.title("♟️ Chess Analytics Pro")
     
-    col_plat1, col_plat2 = st.columns([1, 4])
-    with col_plat1:
-        plat = st.radio("Platforma:", ["Chess.com", "Lichess"])
-    with col_plat2:
-        nick = st.text_input("Nick gracza:", value=st.session_state.user, placeholder="np. Hikaru")
+    log_mode = st.radio("Zasięg analizy:", ["Jeden profil", "Połącz dwa profile (Agregacja kont)"], horizontal=True)
+    
+    if log_mode == "Jeden profil":
+        c1, c2 = st.columns([1, 4])
+        with c1: plat = st.selectbox("Platforma:", ["Chess.com", "Lichess"])
+        with c2: nick = st.text_input("Nick gracza:", placeholder="np. Hikaru")
         
-    if st.button("Analizuj moje wyniki", use_container_width=True):
-        if nick:
-            with st.spinner(f"Pobieranie historii z {plat}... (przy dużej ilości partii może to potrwać dłuższą chwilę)"):
-                fetch_data.clear()
-                fetched = fetch_data(nick, plat)
-                if fetched[2] is not None:
-                    st.session_state.data, st.session_state.user, st.session_state.platform = fetched, nick, plat
-                    st.rerun()
-                else: st.error("Nie znaleziono gracza lub brak publicznych partii.")
+        if st.button("Rozpocznij analizę", use_container_width=True):
+            if nick:
+                with st.spinner(f"Pobieranie historii z {plat}..."):
+                    fetch_data.clear()
+                    fetched = fetch_data(nick, plat)
+                    if fetched[1] is not None:
+                        st.session_state.data, st.session_state.user, st.session_state.platforms = fetched, nick, [plat]
+                        st.rerun()
+                    else: st.error("Nie znaleziono gracza lub brak gier.")
+    else:
+        st.info("Pobierzemy partie z obu kont i połączymy je w jedną wielką bazę statystyk!")
+        c1, c2 = st.columns(2)
+        with c1:
+            p1 = st.selectbox("Platforma 1:", ["Chess.com", "Lichess"], key="p1")
+            n1 = st.text_input("Nick 1:", key="n1")
+        with c2:
+            p2 = st.selectbox("Platforma 2:", ["Lichess", "Chess.com"], key="p2")
+            n2 = st.text_input("Nick 2:", key="n2")
+            
+        if st.button("Agreguj konta", use_container_width=True):
+            if n1 and n2:
+                with st.spinner("Pobieranie i łączenie danych z obu kont..."):
+                    fetch_data.clear()
+                    prof1, df1 = fetch_data(n1, p1)
+                    prof2, df2 = fetch_data(n2, p2)
+                    
+                    if df1 is not None and df2 is not None:
+                        combined_df = pd.concat([df1, df2], ignore_index=True)
+                        st.session_state.data = (prof1, combined_df)
+                        st.session_state.user = f"{n1} & {n2}"
+                        st.session_state.platforms = list(set([p1, p2]))
+                        st.rerun()
+                    else: st.error("Nie udało się pobrać danych z jednego z kont. Sprawdź nicki.")
+
 else:
-    profile, stats, df = st.session_state.data
+    profile, df = st.session_state.data
     username = st.session_state.user
-    plat = st.session_state.platform
+    user_plats = st.session_state.platforms
     
     c_nav1, c_nav2, c_nav3 = st.columns([2, 1, 1])
     with c_nav1: new_mode = st.radio("Tryb:", ["👤 Moja Analiza", "⚔️ Porównanie Graczy"], horizontal=True, label_visibility="collapsed")
     with c_nav2:
         if st.button("Odśwież dane", use_container_width=True):
-            with st.spinner(f"Odświeżanie danych z {plat}..."):
-                fetch_data.clear()
-                fetched = fetch_data(username, plat)
-                if fetched[2] is not None: st.session_state.data = fetched; st.rerun()
+            st.session_state.data = None; st.rerun() # Prosty wylog, bo refresh podwójnego konta wymagałby zapamiętania nicków
     with c_nav3:
         if st.button("Zmień gracza", use_container_width=True):
             st.session_state.data = None; st.rerun()
@@ -243,16 +237,22 @@ else:
     if st.session_state.app_mode == "👤 Moja Analiza":
         c_h1, c_h2 = st.columns([1, 4])
         if profile.get("avatar"): c_h1.image(profile.get("avatar"), width=70)
-        c_h2.subheader(f"{username} ({plat})")
+        c_h2.subheader(username)
         
         m1, m2, m3 = st.columns(3)
-        def gv(c): s = stats.get(c, {}); return f"{s.get('best', {}).get('rating', '-')} / {s.get('last', {}).get('rating', '-')}"
-        m1.metric("Rapid", gv("chess_rapid")); m2.metric("Blitz", gv("chess_blitz")); m3.metric("Bullet", gv("chess_bullet"))
+        p_r, c_r = calc_elo(df, "Rapid")
+        p_b, c_b = calc_elo(df, "Blitz")
+        p_bl, c_bl = calc_elo(df, "Bullet")
+        m1.metric("Rapid (Peak / Teraz)", f"{p_r} / {c_r}")
+        m2.metric("Blitz (Peak / Teraz)", f"{p_b} / {c_b}")
+        m3.metric("Bullet (Peak / Teraz)", f"{p_bl} / {c_bl}")
 
         with st.expander("⚙️ Filtry"):
-            f1, f2 = st.columns(2)
+            f1, f2, f3 = st.columns(3)
             d_range = f1.date_input("Zakres:", value=(df["Data"].min(), df["Data"].max()))
             s_mode = f2.selectbox("Tryb:", ["Wszystkie"] + sorted(df["Tryb"].unique().tolist()))
+            s_acc = f3.multiselect("Konto:", df["Konto"].unique().tolist(), default=df["Konto"].unique().tolist())
+            
             s_color = st.multiselect("Kolor:", ["Białe", "Czarne"], default=["Białe", "Czarne"])
             s_days = st.multiselect("Dni:", ['Pn', 'Wt', 'Śr', 'Czw', 'Pt', 'Sb', 'Nd'], default=['Pn', 'Wt', 'Śr', 'Czw', 'Pt', 'Sb', 'Nd'])
             s_hours = st.slider("Godziny:", 0, 23, (0, 23))
@@ -260,12 +260,12 @@ else:
         df_f = df.copy()
         if isinstance(d_range, (list, tuple)) and len(d_range) == 2:
             df_f = df_f[(df_f["Data"] >= d_range[0]) & (df_f["Data"] <= d_range[1])]
-        df_f = df_f[df_f["Kolor"].isin(s_color) & df_f["Dzień"].isin(s_days) & (df_f["Godzina"] >= s_hours[0]) & (df_f["Godzina"] <= s_hours[1])]
+        df_f = df_f[df_f["Kolor"].isin(s_color) & df_f["Dzień"].isin(s_days) & (df_f["Godzina"] >= s_hours[0]) & (df_f["Godzina"] <= s_hours[1]) & df_f["Konto"].isin(s_acc)]
         if s_mode != "Wszystkie": df_f = df_f[df_f["Tryb"] == s_mode]
 
         if not df_f.empty:
             pgn_b = "\n\n".join(df_f["PGN_Raw"].dropna().tolist())
-            st.download_button("Pobierz wybrane partie (Zapis Raw/PGN)", data=pgn_b, file_name=f"{plat}_{username}.pgn", use_container_width=True)
+            st.download_button("Pobierz wybrane partie (PGN)", data=pgn_b, file_name="agregacja_szachy.pgn", use_container_width=True)
             
             t1, t_hist, t2, t3, t4, t5, t6, t7 = st.tabs(["📊 Statystyki", "📅 Historia", "🏁 Technika", "⏳ Czas gry", "🔬 Debiuty", "⚖️ Black & White", "🧩 Styl i Psycha", "🧠 Analiza"])
             
@@ -276,15 +276,13 @@ else:
                 for m in ["Rapid", "Blitz", "Bullet"]:
                     mdf = df_f[df_f["Tryb"] == m].sort_values("Timestamp")
                     if not mdf.empty:
-                        st.plotly_chart(px.line(mdf, x="Timestamp", y="Elo_Moje", title=f"Ranking {m}", color_discrete_sequence=["#1e88e5"]).update_layout(height=250, margin=dict(l=0, r=0, t=30, b=0), xaxis_title=None, yaxis_title="ELO"), use_container_width=True)
+                        st.plotly_chart(px.line(mdf, x="Timestamp", y="Elo_Moje", color="Konto", title=f"Ranking {m}", markers=True).update_layout(height=300, margin=dict(l=0, r=0, t=30, b=0), xaxis_title=None, yaxis_title="ELO"), use_container_width=True)
 
             with t_hist:
                 st.write("### Podsumowanie miesięczne")
                 monthly = df_f.groupby("Miesiąc").agg(
-                    Partie=('Wynik', 'count'),
-                    Wygrane=('Wynik', lambda x: (x == 'Wygrane').sum()),
-                    Remisy=('Wynik', lambda x: (x == 'Remisy').sum()),
-                    Przegrane=('Wynik', lambda x: (x == 'Przegrane').sum()),
+                    Partie=('Wynik', 'count'), Wygrane=('Wynik', lambda x: (x == 'Wygrane').sum()),
+                    Remisy=('Wynik', lambda x: (x == 'Remisy').sum()), Przegrane=('Wynik', lambda x: (x == 'Przegrane').sum()),
                     Elo=('Elo_Moje', 'mean')
                 ).reset_index().sort_values("Miesiąc", ascending=False)
                 
@@ -293,12 +291,10 @@ else:
                 st.dataframe(monthly[["Miesiąc", "Partie", "Bilans", "Win%"]], use_container_width=True, hide_index=True)
                 
                 st.divider()
-                sel_m = st.selectbox("Wybierz miesiąc do szczegółowej analizy:", monthly["Miesiąc"].unique())
+                sel_m = st.selectbox("Wybierz miesiąc do analizy:", monthly["Miesiąc"].unique())
                 daily = df_f[df_f["Miesiąc"] == sel_m].groupby("Data").agg(
-                    Gry=('Wynik', 'count'),
-                    Wygrane=('Wynik', lambda x: (x == 'Wygrane').sum()),
-                    Remisy=('Wynik', lambda x: (x == 'Remisy').sum()),
-                    Przegrane=('Wynik', lambda x: (x == 'Przegrane').sum()),
+                    Gry=('Wynik', 'count'), Wygrane=('Wynik', lambda x: (x == 'Wygrane').sum()),
+                    Remisy=('Wynik', lambda x: (x == 'Remisy').sum()), Przegrane=('Wynik', lambda x: (x == 'Przegrane').sum()),
                     Elo_Sr=('Elo_Moje', 'mean')
                 ).reset_index().sort_values("Data", ascending=False)
                 daily["Bilans"] = daily.apply(lambda x: f"{int(x['Wygrane'])}/{int(x['Remisy'])}/{int(x['Przegrane'])}", axis=1)
@@ -376,47 +372,65 @@ else:
                 so = f2.text_input("Nick rywala:").strip()
                 ana = df_f[df_f["Przeciwnik"].str.lower() == so.lower()].copy() if so else df_f[df_f["Data"] == sd].copy()
                 if not ana.empty:
-                    ana["L"] = ana.apply(lambda x: f"{x['Data']} | {x['Tryb']} vs {x['Przeciwnik']} ({x['Wynik']})", axis=1)
+                    ana["L"] = ana.apply(lambda x: f"{x['Data']} | {x['Tryb']} vs {x['Przeciwnik']} ({x['Platforma']})", axis=1)
                     sel = st.selectbox("Mecz:", ana.sort_values("Timestamp", ascending=False)["L"])
                     g = ana[ana["L"] == sel].iloc[0]
                     if st.button("Przygotuj analizę", use_container_width=True):
-                        if plat == "Lichess":
-                            st.session_state.url = g["Link_Direct"]
-                            st.rerun()
+                        if g["Platforma"] == "Lichess": st.session_state.url = g["Link_Direct"]; st.rerun()
                         else:
                             with st.spinner("Przekazywanie na serwer Lichess..."):
-                                st.session_state.url = import_to_lichess(g["PGN_Raw"])
-                                st.rerun()
+                                st.session_state.url = import_to_lichess(g["PGN_Raw"]); st.rerun()
                     if 'url' in st.session_state and st.session_state.url:
-                        st.markdown(f'<a href="{st.session_state.url}" target="_blank" style="display:block; width:100%; text-align:center; background-color:#1e88e5; color:white; padding:12px; border-radius:8px; text-decoration:none; font-weight:bold; margin-top:10px;">ANALIZA NA LICHESS.ORG ➡️</a>', unsafe_allow_html=True)
+                        st.markdown(f'<a href="{st.session_state.url}" target="_blank" style="display:block; width:100%; text-align:center; background-color:#1e88e5; color:white; padding:12px; border-radius:8px; text-decoration:none; font-weight:bold; margin-top:10px;">ANALIZA {g["Platforma"].upper()} ➡️</a>', unsafe_allow_html=True)
                 else: st.warning("Brak partii.")
 
     elif st.session_state.app_mode == "⚔️ Porównanie Graczy":
         c1, c2 = st.columns(2)
-        c1.info(f"Gracz 1: **{username}** ({plat})")
-        n2 = c2.text_input("Rywal (z tej samej platformy):")
+        c1.info(f"Twoje aktywne platformy: **{', '.join(user_plats)}**")
+        p2 = c2.selectbox("Platforma rywala:", ["Chess.com", "Lichess"])
+        n2 = c2.text_input("Nick rywala:")
+        
         if st.button("Pobierz dane", use_container_width=True):
             if n2:
-                with st.spinner(f"Pobieranie danych z {plat}..."):
+                with st.spinner(f"Pobieranie z {p2}..."):
                     fetch_data.clear()
-                    f2 = fetch_data(n2, plat)
-                    if f2[2] is not None: st.session_state.data2, st.session_state.user2 = f2, n2; st.rerun()
-                    else: st.error("Nie znaleziono gracza na podanej platformie.")
-        if st.session_state.data2:
-            s1, s2 = stats, st.session_state.data2[1]
+                    prof2, df2 = fetch_data(n2, p2)
+                    if df2 is not None: st.session_state.data2, st.session_state.user2, st.session_state.plat2 = df2, n2, p2; st.rerun()
+                    else: st.error("Nie znaleziono gracza.")
+                    
+        if st.session_state.data2 is not None:
+            df2 = st.session_state.data2
             u1, u2 = username, st.session_state.user2
-            t_o, t_h = st.tabs(["📊 Ogólne", "🥊 H2H"])
-            with t_o:
-                def gc(s, m): return s.get(m, {}).get('last', {}).get('rating', 0)
-                st.metric(f"Rapid: {u1} vs {u2}", f"{gc(s1, 'chess_rapid')} / {gc(s2, 'chess_rapid')}", int(gc(s1, 'chess_rapid')-gc(s2, 'chess_rapid')))
-                st.metric(f"Blitz: {u1} vs {u2}", f"{gc(s1, 'chess_blitz')} / {gc(s2, 'chess_blitz')}", int(gc(s1, 'chess_blitz')-gc(s2, 'chess_blitz')))
-                st.metric(f"Bullet: {u1} vs {u2}", f"{gc(s1, 'chess_bullet')} / {gc(s2, 'chess_bullet')}", int(gc(s1, 'chess_bullet')-gc(s2, 'chess_bullet')))
-            with t_h:
-                h2 = df[df['Przeciwnik'].str.lower() == u2.lower()].copy().sort_values("Timestamp").reset_index(drop=True)
-                h2["Partia_Nr"] = h2.index + 1
-                if not h2.empty:
-                    c1, c2, c3 = st.columns(3)
-                    c1.metric(u1, (h2["Wynik"]=="Wygrane").sum()); c2.metric("Remisy", (h2["Wynik"]=="Remisy").sum()); c3.metric(u2, (h2["Wynik"]=="Przegrane").sum())
-                    h2[u1], h2[u2] = (h2["Wynik"]=="Wygrane").cumsum(), (h2["Wynik"]=="Przegrane").cumsum()
-                    st.plotly_chart(px.line(h2.melt(id_vars=["Partia_Nr"], value_vars=[u1, u2]), x="Partia_Nr", y="value", color="variable", title="Wyścig zwycięstw").update_layout(xaxis_title="Numer Partii", yaxis_title="Suma Zwycięstw"), use_container_width=True)
-                else: st.info("Brak meczów bezpośrednich pomiędzy wami.")
+            p2_plat = st.session_state.plat2
+            
+            # Decyzja o wyświetleniu H2H
+            show_h2h = p2_plat in user_plats
+            tabs = st.tabs(["📊 Ogólne", "🥊 H2H"]) if show_h2h else st.tabs(["📊 Ogólne"])
+            
+            with tabs[0]:
+                c1, c2, c3 = st.columns(3)
+                p_r1, c_r1 = calc_elo(df[df["Platforma"] == p2_plat] if not df[df["Platforma"] == p2_plat].empty else df, "Rapid")
+                p_r2, c_r2 = calc_elo(df2, "Rapid")
+                c1.metric(f"Rapid: Ty vs {u2}", f"{c_r1} / {c_r2}", c_r1 - c_r2 if isinstance(c_r1, int) and isinstance(c_r2, int) else None)
+                
+                p_b1, c_b1 = calc_elo(df[df["Platforma"] == p2_plat] if not df[df["Platforma"] == p2_plat].empty else df, "Blitz")
+                p_b2, c_b2 = calc_elo(df2, "Blitz")
+                c2.metric(f"Blitz: Ty vs {u2}", f"{c_b1} / {c_b2}", c_b1 - c_b2 if isinstance(c_b1, int) and isinstance(c_b2, int) else None)
+                
+                p_bl1, c_bl1 = calc_elo(df[df["Platforma"] == p2_plat] if not df[df["Platforma"] == p2_plat].empty else df, "Bullet")
+                p_bl2, c_bl2 = calc_elo(df2, "Bullet")
+                c3.metric(f"Bullet: Ty vs {u2}", f"{c_bl1} / {c_bl2}", c_bl1 - c_bl2 if isinstance(c_bl1, int) and isinstance(c_bl2, int) else None)
+                
+            if show_h2h:
+                with tabs[1]:
+                    h2 = df[(df['Przeciwnik'].str.lower() == u2.lower()) & (df['Platforma'] == p2_plat)].copy().sort_values("Timestamp").reset_index(drop=True)
+                    if not h2.empty:
+                        h2["Partia_Nr"] = h2.index + 1
+                        c1, c2, c3 = st.columns(3)
+                        c1.metric("Ty (Wygrane)", (h2["Wynik"]=="Wygrane").sum()); c2.metric("Remisy", (h2["Wynik"]=="Remisy").sum()); c3.metric(u2, (h2["Wynik"]=="Przegrane").sum())
+                        h2["Ty"] = (h2["Wynik"]=="Wygrane").cumsum()
+                        h2[u2] = (h2["Wynik"]=="Przegrane").cumsum()
+                        
+                        chart_df = h2.melt(id_vars=["Partia_Nr"], value_vars=["Ty", u2])
+                        st.plotly_chart(px.line(chart_df, x="Partia_Nr", y="value", color="variable", title="Wyścig zwycięstw (H2H)").update_layout(xaxis_title="Numer Partii", yaxis_title="Suma Zwycięstw"), use_container_width=True)
+                    else: st.info("Brak bezpośrednich partii między wami na tej platformie.")

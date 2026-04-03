@@ -62,7 +62,6 @@ def get_opening_group(opening_name):
     if "bird" in name: return "Bird's Opening"
     if "king's pawn" in name or "kings pawn" in name: return "King's Pawn Opening"
     if "queen's pawn" in name or "queens pawn" in name: return "Queen's Pawn Opening"
-    # Jeśli nie ma grupy, zwraca główny rdzeń debiutu (przed dwukropkiem)
     return opening_name.split(':')[0].strip()
 
 def extract_opening(pgn):
@@ -211,7 +210,23 @@ else:
     c_n1, c_n2, c_n3 = st.columns([2, 1, 1])
     with c_n1: app_m = st.radio("M:", ["👤 Moja Analiza", "⚔️ Porównanie Graczy"], horizontal=True, label_visibility="collapsed")
     with c_n2: 
-        if st.button("Odśwież", use_container_width=True): st.session_state.data = None; st.rerun()
+        if st.button("Odśwież", use_container_width=True):
+            fetch_data.clear() # Wymuszamy ominięcie cache przy nowym zapytaniu
+            with st.spinner("Odświeżanie danych..."):
+                nowe_dane = []
+                nowy_profil = profile
+                for konto in df["Konto"].unique():
+                    # Format z 'Konto' to "Nick (C)" lub "Nick (L)"
+                    u_nick = konto[:-4]
+                    u_plat = "Chess.com" if konto[-2] == 'C' else "Lichess"
+                    f_res = fetch_data(u_nick, u_plat)
+                    if f_res[1] is not None:
+                        nowe_dane.append(f_res[1])
+                        nowy_profil = f_res[0]
+                if nowe_dane:
+                    st.session_state.data = (nowy_profil, pd.concat(nowe_dane, ignore_index=True))
+            st.rerun()
+            
     with c_n3:
         if st.button("Zmień gracza", use_container_width=True):
             for k in ['data','data2','url','user','user2','plat2']: st.session_state[k] = None if k in ['data','data2','url'] else ""

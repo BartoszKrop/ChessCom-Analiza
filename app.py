@@ -35,27 +35,35 @@ st.markdown("""
 # --- FUNKCJE POMOCNICZE ---
 def get_opening_group(opening_name):
     name = opening_name.lower()
-    if "sicilian" in name: return "Obrona Sycylijska"
-    if "french" in name: return "Obrona Francuska"
-    if "caro-kann" in name or "caro kann" in name: return "Obrona Caro-Kann"
-    if "queens gambit" in name or "queen's gambit" in name: return "Gambit Hetmański"
-    if "queen's pawn" in name or "queens pawn" in name: return "Pion Hetmański"
-    if "kings gambit" in name or "king's gambit" in name: return "Gambit Królewski"
-    if "kings indian" in name or "king's indian" in name: return "Obrona Królewsko-Indyjska"
-    if "king's pawn" in name or "kings pawn" in name: return "Pion Królewski"
-    if "ruy lopez" in name or "spanish" in name: return "Partia Hiszpańska"
-    if "italian" in name: return "Partia Włoska"
-    if "english" in name: return "Partia Angielska"
-    if "scandinavian" in name: return "Obrona Skandynawska"
-    if "alekhine" in name: return "Obrona Alechina"
-    if "pirc" in name: return "Obrona Pirca"
-    if "slav" in name: return "Obrona Słowiańska"
-    if "nimzo" in name: return "Obrona Nimzowitscha"
-    if "dutch" in name: return "Obrona Holenderska"
-    if "reti" in name or "réti" in name: return "Otwarcie Rétiego"
-    if "vienna" in name: return "Partia Wiedeńska"
-    if "scotch" in name: return "Partia Szkocka"
-    return "Inne / Mniej popularne"
+    if "sicilian" in name: return "Sicilian Defense"
+    if "french" in name: return "French Defense"
+    if "caro-kann" in name or "caro kann" in name: return "Caro-Kann Defense"
+    if "queens gambit" in name or "queen's gambit" in name: return "Queen's Gambit"
+    if "kings gambit" in name or "king's gambit" in name: return "King's Gambit"
+    if "kings indian" in name or "king's indian" in name: return "King's Indian Defense"
+    if "queens indian" in name or "queen's indian" in name: return "Queen's Indian Defense"
+    if "nimzo" in name: return "Nimzo-Indian Defense"
+    if "ruy lopez" in name or "spanish" in name: return "Ruy Lopez"
+    if "italian" in name: return "Italian Game"
+    if "english" in name: return "English Opening"
+    if "scandinavian" in name: return "Scandinavian Defense"
+    if "alekhine" in name: return "Alekhine's Defense"
+    if "pirc" in name: return "Pirc Defense"
+    if "slav" in name: return "Slav Defense"
+    if "dutch" in name: return "Dutch Defense"
+    if "reti" in name or "réti" in name: return "Réti Opening"
+    if "vienna" in name: return "Vienna Game"
+    if "scotch" in name: return "Scotch Game"
+    if "london" in name: return "London System"
+    if "trompowsky" in name: return "Trompowsky Attack"
+    if "catalan" in name: return "Catalan Opening"
+    if "bogo-indian" in name: return "Bogo-Indian Defense"
+    if "grunfeld" in name or "grünfeld" in name: return "Grünfeld Defense"
+    if "bird" in name: return "Bird's Opening"
+    if "king's pawn" in name or "kings pawn" in name: return "King's Pawn Opening"
+    if "queen's pawn" in name or "queens pawn" in name: return "Queen's Pawn Opening"
+    # Jeśli nie ma grupy, zwraca główny rdzeń debiutu (przed dwukropkiem)
+    return opening_name.split(':')[0].strip()
 
 def extract_opening(pgn):
     if not pgn: return "Nieznany"
@@ -97,8 +105,8 @@ def calc_elo(df, mode):
     p_plat, c_plat = "", ""
     for plat in mdf["Platforma"].unique():
         pdf = mdf[mdf["Platforma"] == plat]
-        peak = int(pdf["Elo_Moje"].max())
-        curr = int(pdf.sort_values("Timestamp").iloc[-1]["Elo_Moje"])
+        peak = int(pdf["ELO"].max())
+        curr = int(pdf.sort_values("Timestamp").iloc[-1]["ELO"])
         if peak > best_peak: best_peak, p_plat = peak, plat
         if curr > best_curr: best_curr, c_plat = curr, plat
     is_m = len(df["Platforma"].unique()) > 1
@@ -132,7 +140,7 @@ def fetch_data(user, platform="Chess.com"):
                                 all_games.append({
                                     "Konto": k_id, "Platforma": platform, "Timestamp": ts, "Godzina": ts.hour, "Dzień": days_map[ts.weekday()], "Dzień_Nr": ts.weekday(),
                                     "Data": ts.date(), "Miesiąc": ts.strftime("%Y-%m"), "Tryb": g.get("time_class", "Inne").capitalize(), "Wynik": out, 
-                                    "Elo_Moje": g["white" if is_w else "black"].get("rating", 0), "Elo_Rywala": g["black" if is_w else "white"].get("rating", 0),
+                                    "ELO": g["white" if is_w else "black"].get("rating", 0), "Elo_Rywala": g["black" if is_w else "white"].get("rating", 0),
                                     "Ruchy": extract_moves_count(pgn), "Debiut": deb, "Debiut_Grupa": get_opening_group(deb), "Przeciwnik": g["black" if is_w else "white"]["username"],
                                     "Kolor": "Białe" if is_w else "Czarne", "Powod": my_r if out=="Przegrane" else opp_r, "PGN_Raw": pgn, "Link": ""
                                 })
@@ -155,7 +163,7 @@ def fetch_data(user, platform="Chess.com"):
                     all_games.append({
                         "Konto": k_id, "Platforma": platform, "Timestamp": ts, "Godzina": ts.hour, "Dzień": days_map[ts.weekday()], "Dzień_Nr": ts.weekday(),
                         "Data": ts.date(), "Miesiąc": ts.strftime("%Y-%m"), "Tryb": g.get("speed", "Inne").capitalize(), "Wynik": out, 
-                        "Elo_Moje": g["players"][my_col].get("rating", 0), "Elo_Rywala": g["players"][opp_col].get("rating", 0),
+                        "ELO": g["players"][my_col].get("rating", 0), "Elo_Rywala": g["players"][opp_col].get("rating", 0),
                         "Ruchy": len(m_l)//2 + len(m_l)%2, "Debiut": deb, "Debiut_Grupa": get_opening_group(deb),
                         "Przeciwnik": g["players"][opp_col].get("user", {}).get("name", "Anonim"), "Kolor": "Białe" if my_col == "white" else "Czarne",
                         "Powod": g.get("status"), "PGN_Raw": g.get("moves", ""), "Link": f"https://lichess.org/{g['id']}"
@@ -246,7 +254,7 @@ else:
                 for m in ["Rapid", "Blitz", "Bullet"]:
                     mdf = df_f[df_f["Tryb"] == m].sort_values("Timestamp")
                     if not mdf.empty:
-                        st.plotly_chart(px.line(mdf, x="Timestamp", y="Elo_Moje", color="Konto", title=f"Ranking {m}", markers=True).update_layout(height=300, margin=dict(l=0, r=0, t=20, b=0), legend=dict(orientation="h", yanchor="top", y=-0.25, xanchor="center", x=0.5, title=None)), use_container_width=True)
+                        st.plotly_chart(px.line(mdf, x="Timestamp", y="ELO", color="Konto", title=f"Ranking {m}", markers=True).update_layout(xaxis_title="", yaxis_title="ELO", height=300, margin=dict(l=0, r=0, t=20, b=0), legend=dict(orientation="h", yanchor="top", y=-0.25, xanchor="center", x=0.5, title=None)), use_container_width=True)
 
             with t_h:
                 st.write("### Aktywność i wyniki dzienne")
@@ -296,7 +304,9 @@ else:
                 dst = df_f.groupby("Bin").agg(G=('Wynik', 'count'), W=('Wynik', lambda x: (x == 'Wygrane').sum())).reset_index()
                 dst["Win%"] = (dst["W"] / dst["G"] * 100).round(0).astype(int)
                 order = ["0-20", "21-30", "31-40", "41-50", "51-60", "61-70", "71+"]
-                st.plotly_chart(px.bar(dst.sort_values("Bin", key=lambda x: [order.index(i) for i in x]), x="Bin", y="Win%", color="G", color_continuous_scale='Blues', title="Długość partii vs Win%").update_layout(coloraxis_showscale=False), use_container_width=True)
+                fig_dur = px.bar(dst.sort_values("Bin", key=lambda x: [order.index(i) for i in x]), x="Bin", y="Win%", color="G", color_continuous_scale='Blues', title="Długość partii vs Win%")
+                fig_dur.update_layout(coloraxis_colorbar=dict(title="Ilość gier", len=0.5, yanchor="bottom", y=0.4, thickness=10), xaxis_title="")
+                st.plotly_chart(fig_dur, use_container_width=True)
                 
                 st.write("### Wpływ serii (Sesja 2h)")
                 df_t = df_f.sort_values('Timestamp').copy()
@@ -382,7 +392,7 @@ else:
             # --- WIDOKI (ZAKŁADKI) ---
             tabs_names = ["📊 Ogólne Statystyki", "📅 Historia", "♟️ Styl i Czas", "🔬 Debiuty"]
             if p2_p in user_plats:
-                tabs_names.append("🥊 Head-to-Head (H2H)")
+                tabs_names.append("🥊 H2H")
             tabs = st.tabs(tabs_names)
 
             # --- ZAKŁADKA 1: OGÓLNE ---
@@ -407,7 +417,7 @@ else:
                 k4.metric("Średnia długość partii (ruchy)", f"{m1} / {m2}", m1 - m2)
 
                 st.divider()
-                st.markdown("**Aktualny Ranking (Moje konto dopasowane do platformy rywala):**")
+                st.markdown("**Aktualny Ranking:**")
                 cx1, cx2, cx3 = st.columns(3)
                 df1_p = df1_c[df1_c["Platforma"] == p2_p] if not df1_c[df1_c["Platforma"] == p2_p].empty else df1_c
                 _, r1_s, r1_i = calc_elo(df1_p, "Rapid"); _, r2_s, r2_i = calc_elo(df2_c, "Rapid")
@@ -494,7 +504,7 @@ else:
                 with tabs[4]:
                     h2 = df1_c[(df1_c['Przeciwnik'].str.lower() == u2.lower()) & (df1_c['Platforma'] == p2_p)].copy().sort_values("Timestamp").reset_index(drop=True)
                     if not h2.empty:
-                        st.markdown(f"### Bezpośrednie starcia: {u1} vs {u2}")
+                        st.markdown(f"### H2H: {u1} vs {u2}")
                         h2_w, h2_d, h2_l = (h2["Wynik"] == "Wygrane").sum(), (h2["Wynik"] == "Remisy").sum(), (h2["Wynik"] == "Przegrane").sum()
                         
                         st.markdown(f"""
@@ -513,7 +523,7 @@ else:
                                           x="Partia_Nr", y="value", color="variable", 
                                           title="Wyścig zwycięstw H2H",
                                           color_discrete_sequence=["#1e88e5", "#ef553b"])
-                        fig_h2h.update_layout(xaxis_title="Numer partii H2H", yaxis_title="Suma wygranych", 
+                        fig_h2h.update_layout(xaxis_title="Numer partii", yaxis_title="Suma wygranych", 
                                               legend=dict(orientation="h", yanchor="top", y=-0.25, xanchor="center", x=0.5, title=None))
                         st.plotly_chart(fig_h2h, use_container_width=True)
                         

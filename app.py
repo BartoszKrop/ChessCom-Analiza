@@ -288,6 +288,11 @@ else:
                 w, d, l = (df_f["Wynik"]=="Wygrane").sum(), (df_f["Wynik"]=="Remisy").sum(), (df_f["Wynik"]=="Przegrane").sum()
                 k1, k2, k3 = st.columns(3)
                 k1.metric("Partie", len(df_f)); k2.metric("W/R/P", f"{w}/{d}/{l}"); k3.metric("Win%", f"{int(round(w/len(df_f)*100,0))}%")
+                
+                fav_w = df_f[df_f["Kolor"] == "Białe"]["Debiut_Grupa"].mode()[0] if not df_f[df_f["Kolor"] == "Białe"].empty else "Brak"
+                fav_b = df_f[df_f["Kolor"] == "Czarne"]["Debiut_Grupa"].mode()[0] if not df_f[df_f["Kolor"] == "Czarne"].empty else "Brak"
+                st.info(f"**Ulubiona grupa otwarć:** ⚪ Białe: **{fav_w}**  |  ⚫ Czarne: **{fav_b}**")
+                
                 for m in ["Rapid", "Blitz", "Bullet"]:
                     mdf = df_f[df_f["Tryb"] == m].sort_values("Timestamp")
                     if not mdf.empty:
@@ -444,8 +449,11 @@ else:
                 m1 = int(df1_c["Ruchy"].mean()) if g1 > 0 else 0
                 m2 = int(df2_c["Ruchy"].mean()) if g2 > 0 else 0
                 
-                fav_op1 = df1_c["Debiut_Grupa"].mode()[0] if g1 > 0 else "Brak"
-                fav_op2 = df2_c["Debiut_Grupa"].mode()[0] if g2 > 0 else "Brak"
+                fav_op1_w = df1_c[df1_c["Kolor"] == "Białe"]["Debiut_Grupa"].mode()[0] if not df1_c[df1_c["Kolor"] == "Białe"].empty else "Brak"
+                fav_op1_b = df1_c[df1_c["Kolor"] == "Czarne"]["Debiut_Grupa"].mode()[0] if not df1_c[df1_c["Kolor"] == "Czarne"].empty else "Brak"
+                
+                fav_op2_w = df2_c[df2_c["Kolor"] == "Białe"]["Debiut_Grupa"].mode()[0] if not df2_c[df2_c["Kolor"] == "Białe"].empty else "Brak"
+                fav_op2_b = df2_c[df2_c["Kolor"] == "Czarne"]["Debiut_Grupa"].mode()[0] if not df2_c[df2_c["Kolor"] == "Czarne"].empty else "Brak"
 
                 k1, k2, k3, k4 = st.columns(4)
                 k1.metric("Liczba rozegranych partii", f"{g1} / {g2}", g1 - g2)
@@ -468,8 +476,8 @@ else:
                 
                 st.divider()
                 o1, o2 = st.columns(2)
-                o1.info(f"**Ulubiona grupa otwarć ({u1}):**\n\n{fav_op1}")
-                o2.info(f"**Ulubiona grupa otwarć ({u2}):**\n\n{fav_op2}")
+                o1.info(f"**Ulubiona grupa otwarć ({u1}):**\n\n⚪ Białe: **{fav_op1_w}**\n\n⚫ Czarne: **{fav_op1_b}**")
+                o2.info(f"**Ulubiona grupa otwarć ({u2}):**\n\n⚪ Białe: **{fav_op2_w}**\n\n⚫ Czarne: **{fav_op2_b}**")
 
             # --- ZAKŁADKA 2: HISTORIA ---
             with tabs[1]:

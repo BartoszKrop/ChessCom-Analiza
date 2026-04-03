@@ -1,4 +1,4 @@
-import streamlit as st
+import streamlit as st 
 import requests
 import pandas as pd
 import plotly.express as px
@@ -281,13 +281,13 @@ else:
                         else: ct, cc = 'L', 1
                     else: ct, cc = None, 0
                     l_ts = r['Timestamp']
-                df_t['ST'], df_t['SC'] = st_l, sc_l
+                df_t['ST'], df_t['SC'] = st_l, sc_l # NAPRAWIONO LITERÓWKĘ
                 t_res = []
                 for s, n in [('W', 'Po serii Wygranych'), ('L', 'Po serii Porażek')]:
                     for c in [1, 2, 3, 4]:
                         sub = df_t[(df_t['ST'] == s) & (df_t['SC'] == c)]
                         if not sub.empty: t_res.append({"Typ": n, "Seria": f"{c} z rzędu", "Win%": int(round((sub['Wynik']=='Wygrane').sum()/len(sub)*100,0)), "Partie": len(sub)})
-                    sub5 = df_t[(df_t['ST'] == s) & (df_t['SC'] >= 5)]
+                    sub5 = df_t[(df_t['ST'] == s) & (df_t['SC'] >= 5)] # NAPRAWIONO LITERÓWKĘ
                     if not sub5.empty: t_res.append({"Typ": n, "Seria": "5+ z rzędu", "Win%": int(round((sub5['Wynik']=='Wygrane').sum()/len(sub5)*100,0)), "Partie": len(sub5)})
                 if t_res: st.plotly_chart(px.bar(pd.DataFrame(t_res), x="Seria", y="Win%", color="Typ", barmode='group', text="Win%", hover_data=["Partie"], color_discrete_map={"Po serii Wygranych":"#1e88e5", "Po serii Porażek":"#ef553b"}).update_layout(legend=dict(orientation="h", yanchor="top", y=-0.2, xanchor="center", x=0.5, title=None)), use_container_width=True)
 
@@ -307,35 +307,172 @@ else:
         c1, c2 = st.columns(2)
         p2 = c2.selectbox("Platforma rywala:", ["Chess.com", "Lichess"])
         n2 = c2.text_input("Nick rywala:")
+        
         if st.button("Pobierz dane rywala", use_container_width=True):
             if n2:
-                with st.spinner("Pobieranie..."):
+                with st.spinner(f"Pobieranie danych dla {n2}..."):
                     f2 = fetch_data(n2, p2)
-                    if f2[1] is not None: st.session_state.data2, st.session_state.user2, st.session_state.plat2 = f2[1], n2, p2; st.rerun()
+                    if f2[1] is not None: 
+                        st.session_state.data2, st.session_state.user2, st.session_state.plat2 = f2[1], n2, p2
+                        st.rerun()
+                    else:
+                        st.error("Nie udało się pobrać danych rywala. Sprawdź nick i platformę.")
+
         if st.session_state.data2 is not None:
-            df2 = st.session_state.data2; u1, u2, p2_p = username, st.session_state.user2, st.session_state.plat2
-            with st.expander("⚙️ Filtry"):
-                fx1, fx2 = st.columns(2)
-                dr_c = fx1.date_input("Daty:", value=(min(df["Data"].min(), df2["Data"].min()), max(df["Data"].max(), df2["Data"].max())), key="c_dr")
+            df2 = st.session_state.data2
+            u1, u2, p2_p = username, st.session_state.user2, st.session_state.plat2
+            
+            # --- FILTRY DLA OBU GRACZY ---
+            with st.expander("⚙️ Filtry Porównawcze", expanded=True):
+                fx1, fx2, fx3 = st.columns(3)
+                # Ustalenie wspólnego zakresu dat
+                min_date = min(df["Data"].min(), df2["Data"].min())
+                max_date = max(df["Data"].max(), df2["Data"].max())
+                
+                dr_c = fx1.date_input("Zakres dat:", value=(min_date, max_date), key="c_dr")
                 sc_c = fx2.multiselect("Kolor:", ["Białe", "Czarne"], default=["Białe", "Czarne"], key="c_sc")
+                
+                # Wspólne tryby gry
+                wspolne_tryby = list(set(df["Tryb"].unique()) | set(df2["Tryb"].unique()))
+                sm_c = fx3.selectbox("Tryb:", ["Wszystkie"] + sorted(wspolne_tryby), key="c_sm")
+
+            # --- APLIKACJA FILTRÓW ---
             df1_c, df2_c = df.copy(), df2.copy()
-            df1_c = df1_c[df1_c["Kolor"].isin(sc_c)]; df2_c = df2_c[df2_c["Kolor"].isin(sc_c)]
-            tabs = st.tabs(["📊 Ogólne", "🥊 H2H"]) if p2_p in user_plats else st.tabs(["📊 Ogólne"])
+            
+            if isinstance(dr_c, (list, tuple)) and len(dr_c) == 2:
+                df1_c = df1_c[(df1_c["Data"] >= dr_c[0]) & (df1_c["Data"] <= dr_c[1])]
+                df2_c = df2_c[(df2_c["Data"] >= dr_c[0]) & (df2_c["Data"] <= dr_c[1])]
+                
+            df1_c = df1_c[df1_c["Kolor"].isin(sc_c)]
+            df2_c = df2_c[df2_c["Kolor"].isin(sc_c)]
+            
+            if sm_c != "Wszystkie":
+                df1_c = df1_c[df1_c["Tryb"] == sm_c]
+                df2_c = df2_c[df2_c["Tryb"] == sm_c]
+
+            # --- WIDOKI (ZAKŁADKI) ---
+            tabs_names = ["📊 Ogólne Statystyki", "♟️ Styl i Czas"]
+            if p2_p in user_plats:
+                tabs_names.append("🥊 Head-to-Head (H2H)")
+            tabs = st.tabs(tabs_names)
+
+            # --- ZAKŁADKA 1: OGÓLNE ---
             with tabs[0]:
-                wr1 = int(round((df1_c["Wynik"]=="Wygrane").sum()/len(df1_c)*100,0)) if not df1_c.empty else 0
-                wr2 = int(round((df2_c["Wynik"]=="Wygrane").sum()/len(df2_c)*100,0)) if not df2_c.empty else 0
-                st.metric(f"Win Rate: Ty vs {u2}", f"{wr1}% / {wr2}%", wr1 - wr2)
+                st.markdown(f"### 🏆 Podsumowanie: {u1} vs {u2}")
+                
+                # Obliczenia podstawowe
+                g1, g2 = len(df1_c), len(df2_c)
+                w1 = int(round((df1_c["Wynik"]=="Wygrane").sum()/g1*100,0)) if g1 > 0 else 0
+                w2 = int(round((df2_c["Wynik"]=="Wygrane").sum()/g2*100,0)) if g2 > 0 else 0
+                d1 = int(round((df1_c["Wynik"]=="Remisy").sum()/g1*100,0)) if g1 > 0 else 0
+                d2 = int(round((df2_c["Wynik"]=="Remisy").sum()/g2*100,0)) if g2 > 0 else 0
+                m1 = int(df1_c["Ruchy"].mean()) if g1 > 0 else 0
+                m2 = int(df2_c["Ruchy"].mean()) if g2 > 0 else 0
+                
+                fav_op1 = df1_c["Debiut"].mode()[0] if g1 > 0 else "Brak"
+                fav_op2 = df2_c["Debiut"].mode()[0] if g2 > 0 else "Brak"
+
+                # Rząd 1: Partie i Wyniki
+                k1, k2, k3, k4 = st.columns(4)
+                k1.metric("Liczba rozegranych partii", f"{g1} / {g2}", g1 - g2)
+                k2.metric("Win Rate (%)", f"{w1}% / {w2}%", w1 - w2)
+                k3.metric("Draw Rate (%)", f"{d1}% / {d2}%", d1 - d2)
+                k4.metric("Średnia długość partii (ruchy)", f"{m1} / {m2}", m1 - m2)
+
                 st.divider()
+                
+                # Rząd 2: Rankingi
+                st.markdown("**Aktualny Ranking (Moje konto dopasowane do platformy rywala):**")
                 cx1, cx2, cx3 = st.columns(3)
                 df1_p = df1_c[df1_c["Platforma"] == p2_p] if not df1_c[df1_c["Platforma"] == p2_p].empty else df1_c
-                _, r1_s, r1_i = calc_elo(df1_p, "Rapid"); _, r2_s, r2_i = calc_elo(df2_c, "Rapid"); cx1.metric(f"Rapid", f"{r1_s} / {r2_s}", r1_i - r2_i if r1_i and r2_i else None)
-                _, b1_s, b1_i = calc_elo(df1_p, "Blitz"); _, b2_s, b2_i = calc_elo(df2_c, "Blitz"); cx2.metric(f"Blitz", f"{b1_s} / {b2_s}", b1_i - b2_i if b1_i and b2_i else None)
-                _, l1_s, l1_i = calc_elo(df1_p, "Bullet"); _, l2_s, l2_i = calc_elo(df2_c, "Bullet"); cx3.metric(f"Bullet", f"{l1_s} / {l2_s}", l1_i - l2_i if l1_i and l2_i else None)
-            if len(tabs) > 1:
-                with tabs[1]:
+                _, r1_s, r1_i = calc_elo(df1_p, "Rapid"); _, r2_s, r2_i = calc_elo(df2_c, "Rapid")
+                cx1.metric(f"Rapid", f"{r1_s} / {r2_s}", r1_i - r2_i if r1_i and r2_i else None)
+                
+                _, b1_s, b1_i = calc_elo(df1_p, "Blitz"); _, b2_s, b2_i = calc_elo(df2_c, "Blitz")
+                cx2.metric(f"Blitz", f"{b1_s} / {b2_s}", b1_i - b2_i if b1_i and b2_i else None)
+                
+                _, l1_s, l1_i = calc_elo(df1_p, "Bullet"); _, l2_s, l2_i = calc_elo(df2_c, "Bullet")
+                cx3.metric(f"Bullet", f"{l1_s} / {l2_s}", l1_i - l2_i if l1_i and l2_i else None)
+                
+                st.divider()
+                
+                # Rząd 3: Ulubione otwarcia
+                o1, o2 = st.columns(2)
+                o1.info(f"**Ulubiony debiut ({u1}):**\n\n{fav_op1}")
+                o2.info(f"**Ulubiony debiut ({u2}):**\n\n{fav_op2}")
+
+            # --- ZAKŁADKA 2: STYL I CZAS ---
+            with tabs[1]:
+                c_t1, c_t2 = st.columns(2)
+                
+                # Wykres 1: Aktywność godzinowa
+                if not df1_c.empty and not df2_c.empty:
+                    h_df1 = df1_c.groupby("Godzina").size().reset_index(name="Partie")
+                    h_df1["Gracz"] = u1
+                    h_df2 = df2_c.groupby("Godzina").size().reset_index(name="Partie")
+                    h_df2["Gracz"] = u2
+                    h_comb = pd.concat([h_df1, h_df2])
+                    
+                    fig_h = px.bar(h_comb, x="Godzina", y="Partie", color="Gracz", barmode="group", 
+                                   title="O jakich porach najczęściej gracie?",
+                                   color_discrete_sequence=["#1e88e5", "#ef553b"])
+                    fig_h.update_layout(xaxis=dict(tickmode='linear', tick0=0, dtick=1))
+                    c_t1.plotly_chart(fig_h, use_container_width=True)
+                
+                # Wykres 2: Rozkład długości partii (biny)
+                if not df1_c.empty and not df2_c.empty:
+                    df1_c["Bin"] = df1_c["Ruchy"].apply(get_duration_bin)
+                    df2_c["Bin"] = df2_c["Ruchy"].apply(get_duration_bin)
+                    
+                    b_df1 = df1_c.groupby("Bin").size().reset_index(name="Ilość")
+                    b_df1["Gracz"] = u1
+                    b_df2 = df2_c.groupby("Bin").size().reset_index(name="Ilość")
+                    b_df2["Gracz"] = u2
+                    b_comb = pd.concat([b_df1, b_df2])
+                    
+                    order = ["0-20", "21-30", "31-40", "41-50", "51-60", "61-70", "71+"]
+                    fig_b = px.bar(b_comb.sort_values("Bin", key=lambda x: [order.index(i) for i in x]), 
+                                   x="Bin", y="Ilość", color="Gracz", barmode="group", 
+                                   title="Jak długie partie rozgrywacie?",
+                                   color_discrete_sequence=["#1e88e5", "#ef553b"])
+                    c_t2.plotly_chart(fig_b, use_container_width=True)
+
+            # --- ZAKŁADKA 3: H2H (Opcjonalna) ---
+            if len(tabs) > 2:
+                with tabs[2]:
+                    # Szukamy partii, gdzie Ty jesteś graczem 1, a przeciwnikiem jest wpisany u2
                     h2 = df1_c[(df1_c['Przeciwnik'].str.lower() == u2.lower()) & (df1_c['Platforma'] == p2_p)].copy().sort_values("Timestamp").reset_index(drop=True)
+                    
                     if not h2.empty:
+                        st.markdown(f"### Bezpośrednie starcia: {u1} vs {u2}")
+                        
+                        h2_w = (h2["Wynik"] == "Wygrane").sum()
+                        h2_d = (h2["Wynik"] == "Remisy").sum()
+                        h2_l = (h2["Wynik"] == "Przegrane").sum()
+                        
+                        st.markdown(f"""
+                        <div class="asym-header" style="font-size:1.1rem;">
+                            <div style="width:30%; text-align:center; color:#1e88e5;">{u1} ({h2_w})</div>
+                            <div style="width:40%; text-align:center; color:#8b949e;">REMISY: {h2_d} | RAZEM: {len(h2)}</div>
+                            <div style="width:30%; text-align:center; color:#ef553b;">{u2} ({h2_l})</div>
+                        </div>
+                        """, unsafe_allow_html=True)
+                        
+                        st.write("") # Odstęp
+                        
                         h2["Partia_Nr"] = h2.index + 1
                         h2["Ty"], h2[u2] = (h2["Wynik"]=="Wygrane").cumsum(), (h2["Wynik"]=="Przegrane").cumsum()
-                        st.plotly_chart(px.line(h2.melt(id_vars=["Partia_Nr"], value_vars=["Ty", u2]), x="Partia_Nr", y="value", color="variable", title="Wyścig zwycięstw").update_layout(xaxis_title="Nr Partii", yaxis_title="Wygrane", legend=dict(orientation="h", yanchor="top", y=-0.25, xanchor="center", x=0.5, title=None)), use_container_width=True)
-                    else: st.info("Brak partii.")
+                        
+                        fig_h2h = px.line(h2.melt(id_vars=["Partia_Nr"], value_vars=["Ty", u2]), 
+                                          x="Partia_Nr", y="value", color="variable", 
+                                          title="Wyścig zwycięstw H2H",
+                                          color_discrete_sequence=["#1e88e5", "#ef553b"])
+                        fig_h2h.update_layout(xaxis_title="Numer partii H2H", yaxis_title="Suma wygranych", 
+                                              legend=dict(orientation="h", yanchor="top", y=-0.25, xanchor="center", x=0.5, title=None))
+                        st.plotly_chart(fig_h2h, use_container_width=True)
+                        
+                        # Tabela z historią H2H
+                        st.write("**Historia spotkań:**")
+                        st.dataframe(h2[["Data", "Tryb", "Kolor", "Wynik", "Ruchy", "Debiut"]].sort_values("Data", ascending=False), use_container_width=True, hide_index=True)
+                    else: 
+                        st.info(f"Brak zarejestrowanych bezpośrednich partii pomiędzy **{u1}** a **{u2}** (przy obecnych filtrach).")

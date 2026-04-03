@@ -291,7 +291,7 @@ else:
                 
                 fav_w = df_f[df_f["Kolor"] == "Białe"]["Debiut_Grupa"].mode()[0] if not df_f[df_f["Kolor"] == "Białe"].empty else "Brak"
                 fav_b = df_f[df_f["Kolor"] == "Czarne"]["Debiut_Grupa"].mode()[0] if not df_f[df_f["Kolor"] == "Czarne"].empty else "Brak"
-                st.info(f"**Ulubiona grupa otwarć:** ⚪ Białe: **{fav_w}**  |  ⚫ Czarne: **{fav_b}**")
+                st.info(f"**Ulubione debiuty:** ⚪ **{fav_w}**  |  ⚫ **{fav_b}**")
                 
                 for m in ["Rapid", "Blitz", "Bullet"]:
                     mdf = df_f[df_f["Tryb"] == m].sort_values("Timestamp")
@@ -476,8 +476,8 @@ else:
                 
                 st.divider()
                 o1, o2 = st.columns(2)
-                o1.info(f"**Ulubiona grupa otwarć ({u1}):**\n\n⚪ Białe: **{fav_op1_w}**\n\n⚫ Czarne: **{fav_op1_b}**")
-                o2.info(f"**Ulubiona grupa otwarć ({u2}):**\n\n⚪ Białe: **{fav_op2_w}**\n\n⚫ Czarne: **{fav_op2_b}**")
+                o1.info(f"**Ulubione debiuty ({u1}):**\n\n⚪ **{fav_op1_w}**\n\n⚫ **{fav_op1_b}**")
+                o2.info(f"**Ulubione debiuty ({u2}):**\n\n⚪ **{fav_op2_w}**\n\n⚫ **{fav_op2_b}**")
 
             # --- ZAKŁADKA 2: HISTORIA ---
             with tabs[1]:

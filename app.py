@@ -291,7 +291,13 @@ else:
                 
                 fav_w = df_f[df_f["Kolor"] == "Białe"]["Debiut_Grupa"].mode()[0] if not df_f[df_f["Kolor"] == "Białe"].empty else "Brak"
                 fav_b = df_f[df_f["Kolor"] == "Czarne"]["Debiut_Grupa"].mode()[0] if not df_f[df_f["Kolor"] == "Czarne"].empty else "Brak"
-                st.info(f"**Ulubione debiuty:** ⚪ **{fav_w}**  |  ⚫ **{fav_b}**")
+                
+                st.markdown(f"""
+                <div style="padding: 12px; border-radius: 8px; background-color: rgba(88, 166, 255, 0.1); border-left: 4px solid #58a6ff; margin-bottom: 16px;">
+                    <div style="font-weight: bold; margin-bottom: 6px; color: #58a6ff;">Ulubione debiuty:</div>
+                    <div style="font-size: 0.85rem; color: #e6edf3;">⚪ <b>{fav_w}</b> &emsp;|&emsp; ⚫ <b>{fav_b}</b></div>
+                </div>
+                """, unsafe_allow_html=True)
                 
                 for m in ["Rapid", "Blitz", "Bullet"]:
                     mdf = df_f[df_f["Tryb"] == m].sort_values("Timestamp")
@@ -476,8 +482,20 @@ else:
                 
                 st.divider()
                 o1, o2 = st.columns(2)
-                o1.info(f"**Ulubione debiuty ({u1}):**\n\n⚪ **{fav_op1_w}**\n\n⚫ **{fav_op1_b}**")
-                o2.info(f"**Ulubione debiuty ({u2}):**\n\n⚪ **{fav_op2_w}**\n\n⚫ **{fav_op2_b}**")
+                
+                o1.markdown(f"""
+                <div style="padding: 12px; border-radius: 8px; background-color: rgba(88, 166, 255, 0.1); border-left: 4px solid #58a6ff; margin-bottom: 16px;">
+                    <div style="font-weight: bold; margin-bottom: 6px; color: #58a6ff;">Ulubione debiuty ({u1}):</div>
+                    <div style="font-size: 0.85rem; color: #e6edf3;">⚪ <b>{fav_op1_w}</b><br>⚫ <b>{fav_op1_b}</b></div>
+                </div>
+                """, unsafe_allow_html=True)
+                
+                o2.markdown(f"""
+                <div style="padding: 12px; border-radius: 8px; background-color: rgba(88, 166, 255, 0.1); border-left: 4px solid #58a6ff; margin-bottom: 16px;">
+                    <div style="font-weight: bold; margin-bottom: 6px; color: #58a6ff;">Ulubione debiuty ({u2}):</div>
+                    <div style="font-size: 0.85rem; color: #e6edf3;">⚪ <b>{fav_op2_w}</b><br>⚫ <b>{fav_op2_b}</b></div>
+                </div>
+                """, unsafe_allow_html=True)
 
             # --- ZAKŁADKA 2: HISTORIA ---
             with tabs[1]:

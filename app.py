@@ -49,7 +49,7 @@ ui_dict = {
     "win_by_day": {"pl": "Skuteczność wg dni", "en": "Win Rate by day", "de": "Erfolgsquote nach Tagen"},
     "win_reason": {"pl": "Sposób wygranej", "en": "Win reason", "de": "Gewinngrund"},
     "loss_reason": {"pl": "Sposób porażki", "en": "Loss reason", "de": "Verlustgrund"},
-    "chart_desc": {"pl": "Wysokość słupka to Win Rate (%), a kolor oznacza ilość rozegranych partii. Najedź na słupek, aby zobaczyć szczegóły.", "en": "Bar height is Win Rate (%), and color indicates the number of games played. Hover over a bar for details.", "de": "Die Balkenhöhe ist die Erfolgsquote (%) und die Farbe gibt die Anzahl der gespielten Partien an. Fahren Sie über einen Balken für Details."},
+    "chart_desc": {"pl": "Wysokość słupka to Win Rate (%), a kolor oznacza ilość rozegranych partii.", "en": "Bar height is Win Rate (%), and color indicates the number of games played.", "de": "Die Balkenhöhe ist die Erfolgsquote (%) und die Farbe gibt die Anzahl der gespielten Partien an."},
     "chart_desc_comp": {"pl": "Wysokość słupka to Win Rate (%), a kolory oznaczają graczy.", "en": "Bar height is Win Rate (%), and colors represent players.", "de": "Die Balkenhöhe ist die Erfolgsquote (%) und die Farben stehen für die Spieler."},
     "games_count": {"pl": "Ilość partii", "en": "Games count", "de": "Anzahl Partien"},
     "win_rate": {"pl": "Skuteczność (%)", "en": "Win Rate (%)", "de": "Erfolgsquote (%)"},
@@ -102,24 +102,38 @@ st.markdown(f"""
     .custom-info-box {{ padding: 12px; border-radius: 8px; margin-bottom: 16px; }}
     .custom-info-title {{ font-weight: bold; margin-bottom: 6px; }}
     
-    /* Wymuszamy brak zawijania (flex-wrap: nowrap) dla nagłówka na mobilkach */
-    div[data-testid="stHorizontalBlock"]:has(> div > div > div > div > div[data-testid="stPopover"]) {{
-        flex-wrap: nowrap !important;
-        align-items: center !important;
-    }}
-    
-    /* Zębatka idealnie wtapiająca się w tło, bez krawędzi i tła */
+    /* Ukrywanie obramowania i tła zębatki ustawień */
     [data-testid="stPopover"] > button {{
         background-color: transparent !important;
         border: none !important;
         box-shadow: none !important;
         padding: 0 !important;
         color: inherit !important;
-        font-size: 1.5rem !important; 
     }}
     [data-testid="stPopover"] > button:hover {{
         color: #58a6ff !important;
-        background-color: transparent !important;
+    }}
+    
+    /* FIX: Obrazek, nick i zębatka w jednej linii horizontalnie */
+    .profile-container {{
+        display: flex;
+        align-items: center;
+        gap: 15px;
+        margin-bottom: 15px;
+    }}
+    .profile-container img {{
+        border-radius: 50%;
+        width: 60px;
+        height: 60px;
+        object-fit: cover;
+    }}
+    .profile-container h3 {{
+        margin: 0;
+        padding: 0;
+        font-size: 1.8rem;
+    }}
+    .profile-container [data-testid="stPopover"] {{
+        margin-left: -5px; /* Przybliża zębatkę do nicku */
     }}
     
     {css_light if st.session_state.theme == "Jasny" else css_dark}
@@ -329,10 +343,9 @@ for k in ['user','user2','plat2']:
 if 'platforms' not in st.session_state: st.session_state.platforms = []
 
 if st.session_state.data is None:
-    # EKRAN LOGOWANIA
-    c_l1, c_l2, _ = st.columns([6, 1, 4])
-    c_l1.markdown(f"<h2>♟️ {t('title')}</h2>", unsafe_allow_html=True)
-    with c_l2.popover("⚙️"):
+    col_l1, col_l2 = st.columns([10, 1])
+    col_l1.title(f"♟️ {t('title')}")
+    with col_l2.popover("⚙️"):
         st.selectbox("🌍 Język UI", ["Polski", "English", "Deutsch"], key="ui_lang")
         st.selectbox("♟️ Język Debiutów", ["Polski", "English", "Deutsch"], key="op_lang")
         st.radio("🎨 Motyw", ["Ciemny", "Jasny"], key="theme")
@@ -366,20 +379,23 @@ else:
     df_loc = df.copy()
     df_loc["Debiut_Grupa"] = df_loc["Debiut_Grupa"].apply(t_op)
     
-    # EKRAN GŁÓWNY APLIKACJI - AWATAR, NICK I ZĘBATKA W JEDNEJ LINII
-    c_logo, c_nick, c_gear, c_empty = st.columns([1, 6, 1, 2])
-    
+    # Customowy render Avatara, Nicku i Ustawień w jednej linii poziomej!
     avatar_url = profile.get("avatar", "")
-    if avatar_url:
-        c_logo.image(avatar_url, use_container_width=True)
-    c_nick.markdown(f"<h3 style='margin:0; padding:0; padding-top:10px;'>{username}</h3>", unsafe_allow_html=True)
+    img_html = f"<img src='{avatar_url}'>" if avatar_url else ""
     
+    st.markdown(f"""
+    <div class="profile-container">
+        {img_html}
+        <h3>{username}</h3>
+    </div>
+    """, unsafe_allow_html=True)
+    
+    # Przycisk "⚙️" renderuje się standardowo po prawej, używając Streamlita, a CSS połączy go z w/w elementami
+    c_empty, c_gear = st.columns([15, 1])
     with c_gear.popover("⚙️"):
         st.selectbox("🌍 Język UI", ["Polski", "English", "Deutsch"], key="ui_lang")
         st.selectbox("♟️ Język Debiutów", ["Polski", "English", "Deutsch"], key="op_lang")
         st.radio("🎨 Motyw", ["Ciemny", "Jasny"], key="theme")
-    
-    st.write("") # Odstęp
     
     c_n1, c_n2, c_n3 = st.columns([2, 1, 1])
     with c_n1: app_m = st.radio("M:", ["👤 Moja Analiza", "⚔️ Porównanie Graczy"], horizontal=True, label_visibility="collapsed")
@@ -587,7 +603,7 @@ else:
                 fa1, fa2, fa3 = st.columns([1,1,1])
                 d_val = fa1.date_input("Dzień:", value=df_f["Data"].max())
                 opp_search = fa2.text_input("Nick rywala (opcjonalnie):")
-                deb_search = fa3.selectbox("Debiut (opcjonalnie):", ["Wszystkie"] + sorted(df_f["Debiut_Grupa"].unique().tolist()))
+                deb_search = fa3.selectbox("Grupa debiutu:", ["Wszystkie"] + sorted(df_f["Debiut_Grupa"].unique().tolist()))
                 
                 ana = df_f.copy()
                 if opp_search or deb_search != "Wszystkie":
@@ -753,7 +769,7 @@ else:
                     
                     h_comb = pd.concat([h_df1, h_df2])
                     
-                    st.subheader("O jakich porach najczęściej gracie?", help=t("chart_desc_comp"))
+                    st.subheader(t("win_by_hour"), help=t("chart_desc_comp"))
                     fig_h = px.bar(h_comb, x="Godzina", y="Win%", color="Gracz", barmode="group", 
                                    labels={"Godzina": t("hour"), "Win%": t("win_rate"), "G": t("games_count"), "Gracz": t("player")},
                                    hover_data={"G": True},

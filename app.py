@@ -198,10 +198,10 @@ def t_op(eng_name):
     if l == "en": return eng_name
     return op_translations.get(eng_name, {}).get(l, eng_name)
 
-# --- CSS (DYNAMICZNY MOTYW) ---
+# --- CSS (DYNAMICZNY MOTYW Z WYMUSZENIEM ROOT/HTML/BODY) ---
 css_dark = """
-    html, body, .stApp { background-color: #0e1117 !important; color: #ffffff; }
-    [data-testid="stHeader"] { background-color: rgba(14, 17, 23, 0); }
+    html, body, [class*="st-"], .stApp, #root, [data-testid="stAppViewContainer"] { background-color: #0e1117 !important; color: #ffffff; }
+    [data-testid="stHeader"] { background-color: rgba(14, 17, 23, 0) !important; }
     .stMetric, div.row-widget.stRadio > div { background-color: #161b22; border: 1px solid #30363d; border-radius: 8px;}
     [data-testid="stMetricValue"] { color: #ffffff !important; }
     .custom-info-box { background-color: rgba(30, 136, 229, 0.1); border-left: 4px solid #1e88e5; color: #e6edf3; }
@@ -209,8 +209,8 @@ css_dark = """
     .stButton>button[kind="primary"] { background-color: #1e88e5; color: white; border: none; }
 """
 css_light = """
-    html, body, .stApp { background-color: #f3f4f6 !important; color: #000000; }
-    [data-testid="stHeader"] { background-color: rgba(255, 255, 255, 0); }
+    html, body, [class*="st-"], .stApp, #root, [data-testid="stAppViewContainer"] { background-color: #f3f4f6 !important; color: #000000; }
+    [data-testid="stHeader"] { background-color: rgba(255, 255, 255, 0) !important; }
     .stMetric, div.row-widget.stRadio > div { background-color: #ffffff; border: 1px solid #d1d5db; border-radius: 8px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); }
     [data-testid="stMetricValue"], [data-testid="stMarkdownContainer"] p, h1, h2, h3, h4, h5 { color: #000000 !important; }
     [data-testid="stMetricLabel"] { color: #4b5563 !important; }
@@ -220,12 +220,12 @@ css_light = """
     .stTabs [data-baseweb="tab-list"] button[aria-selected="true"] { color: #000000; }
 """
 css_chesscom = """
-    html, body, .stApp { 
+    html, body, [class*="st-"], .stApp, #root, [data-testid="stAppViewContainer"] { 
         background-color: #312e2b !important;
         color: #ffffff; 
         font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
     }
-    [data-testid="stHeader"] { background-color: rgba(0, 0, 0, 0); }
+    [data-testid="stHeader"] { background-color: rgba(0, 0, 0, 0) !important; }
     .stMetric, div.row-widget.stRadio > div { 
         background-color: #262421; 
         border: none; 
@@ -237,31 +237,31 @@ css_chesscom = """
     .stTabs [data-baseweb="tab-list"] button { color: #8b8987; font-weight: 600; padding-bottom: 10px; }
     .stTabs [data-baseweb="tab-list"] button[aria-selected="true"] { color: #ffffff; border-bottom: 3px solid #81b64c; }
     .stButton>button[kind="primary"] { 
-        background-color: #81b64c; 
-        color: white; 
-        border: none; 
-        border-bottom: 4px solid #537b2f;
-        border-radius: 5px;
-        font-weight: bold;
-        font-size: 1.1rem;
-        transition: all 0.1s;
+        background-color: #81b64c !important; 
+        color: white !important; 
+        border: none !important; 
+        border-bottom: 4px solid #537b2f !important;
+        border-radius: 5px !important;
+        font-weight: bold !important;
+        font-size: 1.1rem !important;
+        transition: all 0.1s !important;
     }
-    .stButton>button[kind="primary"]:active { border-bottom: 0px; transform: translateY(4px); }
+    .stButton>button[kind="primary"]:active { border-bottom: 0px !important; transform: translateY(4px) !important; }
     .stButton>button[kind="secondary"] {
-        background-color: #3d3b38;
-        color: #c3c3c0;
-        border: none;
-        border-radius: 5px;
+        background-color: #3d3b38 !important;
+        color: #c3c3c0 !important;
+        border: none !important;
+        border-radius: 5px !important;
     }
 """
 css_neon = """
-    html, body, .stApp { 
+    html, body, [class*="st-"], .stApp, #root, [data-testid="stAppViewContainer"] { 
         background-color: #0a0a14 !important; 
         background-image: radial-gradient(circle at top right, #1a0b2e, #0a0a14);
         background-attachment: fixed;
         color: #e0e0ff; 
     }
-    [data-testid="stHeader"] { background-color: rgba(0, 0, 0, 0); }
+    [data-testid="stHeader"] { background-color: rgba(0, 0, 0, 0) !important; }
     .stMetric, div.row-widget.stRadio > div { 
         background-color: rgba(18, 18, 38, 0.85); 
         border: 1px solid #8c43ff; 
@@ -276,15 +276,15 @@ css_neon = """
     .stTabs [data-baseweb="tab-list"] button { color: #6a6a8c; text-transform: uppercase; letter-spacing: 1px;}
     .stTabs [data-baseweb="tab-list"] button[aria-selected="true"] { color: #00ffff; border-bottom-color: #00ffff; text-shadow: 0 0 8px rgba(0,255,255,0.6); }
     .stButton>button[kind="primary"] { 
-        background-color: rgba(0, 255, 255, 0.1); 
-        color: #00ffff; 
-        border: 1px solid #00ffff; 
-        border-radius: 4px;
-        box-shadow: 0 0 10px rgba(0, 255, 255, 0.3);
-        text-transform: uppercase;
-        letter-spacing: 1px;
+        background-color: rgba(0, 255, 255, 0.1) !important; 
+        color: #00ffff !important; 
+        border: 1px solid #00ffff !important; 
+        border-radius: 4px !important;
+        box-shadow: 0 0 10px rgba(0, 255, 255, 0.3) !important;
+        text-transform: uppercase !important;
+        letter-spacing: 1px !important;
     }
-    .stButton>button[kind="primary"]:hover { background-color: rgba(0, 255, 255, 0.3); box-shadow: 0 0 20px rgba(0, 255, 255, 0.6); }
+    .stButton>button[kind="primary"]:hover { background-color: rgba(0, 255, 255, 0.3) !important; box-shadow: 0 0 20px rgba(0, 255, 255, 0.6) !important; }
 """
 
 active_css = css_dark

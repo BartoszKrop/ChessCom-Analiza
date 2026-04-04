@@ -27,34 +27,29 @@ bg_dict = {
 }
 bg_color = bg_dict.get(st.session_state.theme, "#312e2b")
 
-# --- WYMUSZENIE KOLORÓW PASKÓW MOBILNYCH (THEME-COLOR) ---
 components.html(
     f"""
     <script>
-        const head = window.parent.document.getElementsByTagName('head')[0];
-        
-        let metaTheme = window.parent.document.querySelector('meta[name="theme-color"]');
-        if (!metaTheme) {{
-            metaTheme = window.parent.document.createElement('meta');
-            metaTheme.name = "theme-color";
-            head.appendChild(metaTheme);
-        }}
-        metaTheme.content = "{bg_color}";
-        
-        let metaApple = window.parent.document.querySelector('meta[name="apple-mobile-web-app-status-bar-style"]');
-        if (!metaApple) {{
-            metaApple = window.parent.document.createElement('meta');
-            metaApple.name = "apple-mobile-web-app-status-bar-style";
-            head.appendChild(metaApple);
-        }}
-        metaApple.content = "black-translucent";
-        
-        let metaWebApp = window.parent.document.querySelector('meta[name="apple-mobile-web-app-capable"]');
-        if (!metaWebApp) {{
-            metaWebApp = window.parent.document.createElement('meta');
-            metaWebApp.name = "apple-mobile-web-app-capable";
-            metaWebApp.content = "yes";
-            head.appendChild(metaWebApp);
+        try {{
+            const head = window.parent.document.getElementsByTagName('head')[0];
+            
+            let metaTheme = window.parent.document.querySelector('meta[name="theme-color"]');
+            if (!metaTheme) {{
+                metaTheme = window.parent.document.createElement('meta');
+                metaTheme.name = "theme-color";
+                head.appendChild(metaTheme);
+            }}
+            metaTheme.content = "{bg_color}";
+            
+            let metaApple = window.parent.document.querySelector('meta[name="apple-mobile-web-app-status-bar-style"]');
+            if (!metaApple) {{
+                metaApple = window.parent.document.createElement('meta');
+                metaApple.name = "apple-mobile-web-app-status-bar-style";
+                head.appendChild(metaApple);
+            }}
+            metaApple.content = "black-translucent";
+        }} catch(e) {{
+            console.log("Meta tags block bypass");
         }}
     </script>
     """, height=0, width=0
@@ -205,24 +200,28 @@ def t_op(eng_name):
 
 # --- CSS (DYNAMICZNY MOTYW) ---
 css_dark = """
-    .stApp { background-color: #0e1117; color: #ffffff; }
+    html, body, .stApp { background-color: #0e1117 !important; color: #ffffff; }
     [data-testid="stHeader"] { background-color: rgba(14, 17, 23, 0); }
     .stMetric, div.row-widget.stRadio > div { background-color: #161b22; border: 1px solid #30363d; border-radius: 8px;}
     [data-testid="stMetricValue"] { color: #ffffff !important; }
+    .custom-info-box { background-color: rgba(30, 136, 229, 0.1); border-left: 4px solid #1e88e5; color: #e6edf3; }
+    .custom-info-title { color: #1e88e5; }
     .stButton>button[kind="primary"] { background-color: #1e88e5; color: white; border: none; }
 """
 css_light = """
-    .stApp { background-color: #f3f4f6; color: #000000; }
+    html, body, .stApp { background-color: #f3f4f6 !important; color: #000000; }
     [data-testid="stHeader"] { background-color: rgba(255, 255, 255, 0); }
     .stMetric, div.row-widget.stRadio > div { background-color: #ffffff; border: 1px solid #d1d5db; border-radius: 8px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); }
     [data-testid="stMetricValue"], [data-testid="stMarkdownContainer"] p, h1, h2, h3, h4, h5 { color: #000000 !important; }
     [data-testid="stMetricLabel"] { color: #4b5563 !important; }
+    .custom-info-box { background-color: #eff6ff; border-left: 4px solid #1d4ed8; color: #1f2937; }
+    .custom-info-title { color: #1d4ed8; }
     .stTabs [data-baseweb="tab-list"] button { color: #4b5563; }
     .stTabs [data-baseweb="tab-list"] button[aria-selected="true"] { color: #000000; }
 """
 css_chesscom = """
-    .stApp { 
-        background-color: #312e2b;
+    html, body, .stApp { 
+        background-color: #312e2b !important;
         color: #ffffff; 
         font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
     }
@@ -256,8 +255,8 @@ css_chesscom = """
     }
 """
 css_neon = """
-    .stApp { 
-        background-color: #0a0a14; 
+    html, body, .stApp { 
+        background-color: #0a0a14 !important; 
         background-image: radial-gradient(circle at top right, #1a0b2e, #0a0a14);
         background-attachment: fixed;
         color: #e0e0ff; 
@@ -310,7 +309,28 @@ st.markdown(f"""
         padding: 0 !important;
         color: inherit !important;
     }}
+    .custom-info-box {{ padding: 16px; border-radius: 8px; margin-bottom: 16px; }}
+    .custom-info-title {{ font-weight: bold; margin-bottom: 8px; font-size: 1.1rem; }}
     
+    .asym-header {{
+        display: flex;
+        flex-direction: row;
+        flex-wrap: wrap;
+        justify-content: space-around;
+        align-items: center;
+        background-color: {chart_bg};
+        padding: 15px;
+        border-radius: 5px;
+        margin-bottom: 15px;
+        gap: 10px;
+        border: {"none" if st.session_state.theme == "Chess.com" else "1px solid " + grid_color};
+    }}
+    .asym-header > div {{
+        flex: 1 1 auto;
+        min-width: 100px;
+        text-align: center;
+        font-weight: bold;
+    }}
     {active_css}
     </style>
     """, unsafe_allow_html=True)

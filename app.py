@@ -327,12 +327,47 @@ else:
 
             with t4:
                 st.write("### 🛡️ Główne Grupy Debiutów")
-                op_g = df_f.groupby("Debiut_Grupa").agg(Gry=('Wynik', 'count'), WinRate=('Wynik', lambda x: int(round((x == 'Wygrane').sum()/len(x)*100,0)))).reset_index()
-                st.dataframe(op_g.sort_values("Gry", ascending=False).head(15), use_container_width=True, hide_index=True)
+                c_w1, c_b1 = st.columns(2)
+                
+                df_w = df_f[df_f["Kolor"] == "Białe"]
+                df_b = df_f[df_f["Kolor"] == "Czarne"]
+                
+                with c_w1:
+                    st.markdown("<h5 style='text-align: center; color: #ffffff;'>⚪ Białe</h5>", unsafe_allow_html=True)
+                    if not df_w.empty:
+                        op_g_w = df_w.groupby("Debiut_Grupa").agg(Gry=('Wynik', 'count'), WinRate=('Wynik', lambda x: int(round((x == 'Wygrane').sum()/len(x)*100,0)))).reset_index()
+                        st.dataframe(op_g_w.sort_values("Gry", ascending=False).head(15), use_container_width=True, hide_index=True)
+                    else:
+                        st.info("Brak partii białymi w wybranym filtrze.")
+                        
+                with c_b1:
+                    st.markdown("<h5 style='text-align: center; color: #58a6ff;'>⚫ Czarne</h5>", unsafe_allow_html=True)
+                    if not df_b.empty:
+                        op_g_b = df_b.groupby("Debiut_Grupa").agg(Gry=('Wynik', 'count'), WinRate=('Wynik', lambda x: int(round((x == 'Wygrane').sum()/len(x)*100,0)))).reset_index()
+                        st.dataframe(op_g_b.sort_values("Gry", ascending=False).head(15), use_container_width=True, hide_index=True)
+                    else:
+                        st.info("Brak partii czarnymi w wybranym filtrze.")
 
+                st.divider()
+                
                 st.write("### 🔬 Szczegółowe Warianty")
-                op = df_f.groupby("Debiut").agg(Gry=('Wynik', 'count'), WinRate=('Wynik', lambda x: int(round((x == 'Wygrane').sum()/len(x)*100,0)))).reset_index()
-                st.dataframe(op.sort_values("Gry", ascending=False).head(20), use_container_width=True, hide_index=True)
+                c_w2, c_b2 = st.columns(2)
+                
+                with c_w2:
+                    st.markdown("<h5 style='text-align: center; color: #ffffff;'>⚪ Białe</h5>", unsafe_allow_html=True)
+                    if not df_w.empty:
+                        op_w = df_w.groupby("Debiut").agg(Gry=('Wynik', 'count'), WinRate=('Wynik', lambda x: int(round((x == 'Wygrane').sum()/len(x)*100,0)))).reset_index()
+                        st.dataframe(op_w.sort_values("Gry", ascending=False).head(20), use_container_width=True, hide_index=True)
+                    else:
+                        st.info("Brak partii białymi w wybranym filtrze.")
+                        
+                with c_b2:
+                    st.markdown("<h5 style='text-align: center; color: #58a6ff;'>⚫ Czarne</h5>", unsafe_allow_html=True)
+                    if not df_b.empty:
+                        op_b = df_b.groupby("Debiut").agg(Gry=('Wynik', 'count'), WinRate=('Wynik', lambda x: int(round((x == 'Wygrane').sum()/len(x)*100,0)))).reset_index()
+                        st.dataframe(op_b.sort_values("Gry", ascending=False).head(20), use_container_width=True, hide_index=True)
+                    else:
+                        st.info("Brak partii czarnymi w wybranym filtrze.")
 
             with t5:
                 def get_s(c):

@@ -302,6 +302,7 @@ st.markdown(f"""
     [data-testid="stMetricLabel"] {{ font-size: 0.8rem !important; text-transform: uppercase; }}
     .stMetric {{ padding: 12px; }}
     .block-container {{ padding: 1rem; top: 1rem; }}
+    div[data-testid="stExpander"] details {{ padding-bottom: 0 !important; margin-bottom: 0 !important; }}
     
     [data-testid="stPopover"] > button {{
         background-color: transparent !important;
@@ -535,8 +536,6 @@ else:
             if st.button(t("btn_change"), type="primary", use_container_width=True):
                 for k in ['data','data2','url','user','user2','plat2']: st.session_state[k] = None if k in ['data','data2','url'] else ""
                 st.session_state.platforms = []; st.rerun()
-    
-    st.divider()
 
     if app_m == "👤 Moja Analiza":
         m1, m2, m3 = st.columns(3)
@@ -597,11 +596,17 @@ else:
                 )
                 st.markdown(info_html, unsafe_allow_html=True)
                 
-                for m in ["Rapid", "Blitz", "Bullet"]:
+                # Sortujemy tryby ELO na podstawie najczęściej granych partii
+                mode_counts = df_f["Tryb"].value_counts()
+                modes_to_plot = [m for m in ["Rapid", "Blitz", "Bullet"] if m in mode_counts.index]
+                modes_sorted = sorted(modes_to_plot, key=lambda x: mode_counts[x], reverse=True)
+                
+                for m in modes_sorted:
                     mdf = df_f[df_f["Tryb"] == m].sort_values("Timestamp")
                     if not mdf.empty:
                         st.markdown(f"### Ranking {m}")
                         fig_elo = px.line(mdf, x="Timestamp", y="ELO", color="Konto", color_discrete_sequence=[cw])
+                        fig_elo.update_layout(xaxis_title=None)
                         fig_elo = style_chart(fig_elo)
                         st.plotly_chart(fig_elo, use_container_width=True)
 
@@ -629,7 +634,7 @@ else:
                 act_df = df_f.groupby(["Data", "Wynik"]).size().reset_index(name="Partie")
                 fig_act = px.bar(act_df, x="Data", y="Partie", color="Wynik", 
                                  color_discrete_map={"Wygrane": cw, "Remisy": cd, "Przegrane": cl},
-                                 category_orders={"Wynik": ["Wygrane", "Remisy", "Przegrane"]})
+                                 category_orders={"Wynik": ["Przegrane", "Remisy", "Wygrane"]})
                 fig_act.update_layout(barmode='stack')
                 fig_act = style_chart(fig_act)
                 st.plotly_chart(fig_act, use_container_width=True)
@@ -649,8 +654,6 @@ else:
                 fig_h = style_chart(fig_h)
                 st.plotly_chart(fig_h, use_container_width=True)
                 
-                st.write("") 
-                
                 d_st = df_f.groupby(["Dzień", "Dzień_Nr"]).agg(G=('Wynik', 'count'), W=('Wynik', lambda x: (x == 'Wygrane').sum())).reset_index().sort_values("Dzień_Nr")
                 d_st["Win%"] = (d_st["W"] / d_st["G"] * 100).round(0).astype(int)
                 
@@ -660,8 +663,6 @@ else:
                 fig_d.update_yaxes(range=[0, 100])
                 fig_d = style_chart(fig_d)
                 st.plotly_chart(fig_d, use_container_width=True)
-                
-                st.write("")
                 
                 df_f["Bin"] = df_f["Ruchy"].apply(get_duration_bin)
                 dst = df_f.groupby("Bin").agg(G=('Wynik', 'count'), W=('Wynik', lambda x: (x == 'Wygrane').sum())).reset_index()
@@ -674,8 +675,6 @@ else:
                 fig_dur.update_yaxes(range=[0, 100])
                 fig_dur = style_chart(fig_dur)
                 st.plotly_chart(fig_dur, use_container_width=True)
-                
-                st.write("")
                 
                 st.subheader("Wpływ serii na wyniki", help=t("streak_desc"))
                 df_t = df_f.sort_values('Timestamp').copy()
@@ -713,7 +712,14 @@ else:
                     st.markdown(f"<h5 style='text-align: center; color: {font_color};'>⚪ {t('color_white')}</h5>", unsafe_allow_html=True)
                     if not df_w.empty:
                         op_g_w = df_w.groupby("Debiut_Grupa").agg(Gry=('Wynik', 'count'), WinRate=('Wynik', lambda x: int(round((x == 'Wygrane').sum()/len(x)*100,0)))).reset_index()
-                        st.dataframe(op_g_w.sort_values("Gry", ascending=False).head(15), use_container_width=True, hide_index=True)
+                        st.dataframe(
+                            op_g_w.sort_values("Gry", ascending=False).head(15), 
+                            use_container_width=True, hide_index=True,
+                            column_config={
+                                "Gry": st.column_config.ProgressColumn("Gry", format="%d", min_value=0, max_value=int(op_g_w["Gry"].max())),
+                                "WinRate": st.column_config.NumberColumn("WinRate (%)", format="%d%%")
+                            }
+                        )
                         with st.expander(f"Szczegółowe Warianty - ⚪ {t('color_white')}"):
                             op_w = df_w.groupby("Debiut").agg(Gry=('Wynik', 'count'), WinRate=('Wynik', lambda x: int(round((x == 'Wygrane').sum()/len(x)*100,0)))).reset_index()
                             st.dataframe(op_w.sort_values("Gry", ascending=False).head(20), use_container_width=True, hide_index=True)
@@ -723,7 +729,14 @@ else:
                     st.markdown(f"<h5 style='text-align: center; color: {font_color};'>⚫ {t('color_black')}</h5>", unsafe_allow_html=True)
                     if not df_b.empty:
                         op_g_b = df_b.groupby("Debiut_Grupa").agg(Gry=('Wynik', 'count'), WinRate=('Wynik', lambda x: int(round((x == 'Wygrane').sum()/len(x)*100,0)))).reset_index()
-                        st.dataframe(op_g_b.sort_values("Gry", ascending=False).head(15), use_container_width=True, hide_index=True)
+                        st.dataframe(
+                            op_g_b.sort_values("Gry", ascending=False).head(15), 
+                            use_container_width=True, hide_index=True,
+                            column_config={
+                                "Gry": st.column_config.ProgressColumn("Gry", format="%d", min_value=0, max_value=int(op_g_b["Gry"].max())),
+                                "WinRate": st.column_config.NumberColumn("WinRate (%)", format="%d%%")
+                            }
+                        )
                         with st.expander(f"Szczegółowe Warianty - ⚫ {t('color_black')}"):
                             op_b = df_b.groupby("Debiut").agg(Gry=('Wynik', 'count'), WinRate=('Wynik', lambda x: int(round((x == 'Wygrane').sum()/len(x)*100,0)))).reset_index()
                             st.dataframe(op_b.sort_values("Gry", ascending=False).head(20), use_container_width=True, hide_index=True)
@@ -854,17 +867,23 @@ else:
                 if not df_r_comb.empty:
                     df_win = df_r_comb[df_r_comb["Wynik"] == "Wygrane"].groupby(["Powod_T", "Gracz"]).size().reset_index(name="Ilość")
                     if not df_win.empty:
+                        df_win['Razem'] = df_win.groupby('Gracz')['Ilość'].transform('sum')
+                        df_win['Tekst'] = df_win['Ilość'].astype(str) + " (" + (df_win['Ilość']/df_win['Razem']*100).round(1).astype(str) + "%)"
                         with c_r1:
                             st.markdown("### Jak wygrywają?")
-                            fig_r_w = px.bar(df_win, x="Powod_T", y="Ilość", color="Gracz", barmode="group", color_discrete_sequence=[cp1, cp2])
+                            fig_r_w = px.bar(df_win, x="Powod_T", y="Ilość", color="Gracz", barmode="group", color_discrete_sequence=[cp1, cp2], text="Tekst")
+                            fig_r_w.update_traces(textposition='outside')
                             fig_r_w = style_chart(fig_r_w)
                             st.plotly_chart(fig_r_w, use_container_width=True)
 
                     df_loss = df_r_comb[df_r_comb["Wynik"] == "Przegrane"].groupby(["Powod_T", "Gracz"]).size().reset_index(name="Ilość")
                     if not df_loss.empty:
+                        df_loss['Razem'] = df_loss.groupby('Gracz')['Ilość'].transform('sum')
+                        df_loss['Tekst'] = df_loss['Ilość'].astype(str) + " (" + (df_loss['Ilość']/df_loss['Razem']*100).round(1).astype(str) + "%)"
                         with c_r2:
                             st.markdown("### Jak przegrywają?")
-                            fig_r_l = px.bar(df_loss, x="Powod_T", y="Ilość", color="Gracz", barmode="group", color_discrete_sequence=[cp1, cp2])
+                            fig_r_l = px.bar(df_loss, x="Powod_T", y="Ilość", color="Gracz", barmode="group", color_discrete_sequence=[cp1, cp2], text="Tekst")
+                            fig_r_l.update_traces(textposition='outside')
                             fig_r_l = style_chart(fig_r_l)
                             st.plotly_chart(fig_r_l, use_container_width=True)
 
@@ -888,11 +907,17 @@ else:
                     df2_elo["Gracz"] = u2
                     df_elo_comb = pd.concat([df1_elo, df2_elo]).sort_values("Timestamp")
                     
-                    for m in ["Rapid", "Blitz", "Bullet"]:
+                    # Sortowanie wg najczęściej granych partii w Comparison Mode
+                    mode_counts_c = df_elo_comb["Tryb"].value_counts()
+                    modes_to_plot_c = [m for m in ["Rapid", "Blitz", "Bullet"] if m in mode_counts_c.index]
+                    modes_sorted_c = sorted(modes_to_plot_c, key=lambda x: mode_counts_c[x], reverse=True)
+                    
+                    for m in modes_sorted_c:
                         mdf = df_elo_comb[df_elo_comb["Tryb"] == m]
                         if not mdf.empty:
                             st.markdown(f"### Ranking {m}")
                             fig_elo_c = px.line(mdf, x="Timestamp", y="ELO", color="Gracz", color_discrete_sequence=[cp1, cp2])
+                            fig_elo_c.update_layout(xaxis_title=None)
                             fig_elo_c = style_chart(fig_elo_c)
                             st.plotly_chart(fig_elo_c, use_container_width=True)
 
@@ -965,7 +990,13 @@ else:
                     m[f"Partie [{u1}]"] = m[f"Partie [{u1}]"].astype(int)
                     m[f"Partie [{u2}]"] = m[f"Partie [{u2}]"].astype(int)
                     m["Razem"] = m[f"Partie [{u1}]"] + m[f"Partie [{u2}]"]
-                    return m.sort_values("Razem", ascending=False).drop(columns=["Razem"]).reset_index(drop=True)
+                    m = m.sort_values("Razem", ascending=False).reset_index(drop=True)
+                    
+                    tot1, tot2 = len(df1_sub), len(df2_sub)
+                    m[f"Partie [{u1}]"] = m[f"Partie [{u1}]"].apply(lambda x: f"{x} ({round(x/tot1*100,1)}%)" if tot1>0 else "0 (0.0%)")
+                    m[f"Partie [{u2}]"] = m[f"Partie [{u2}]"].apply(lambda x: f"{x} ({round(x/tot2*100,1)}%)" if tot2>0 else "0 (0.0%)")
+                    
+                    return m.drop(columns=["Razem"])
 
                 c_w_op, c_b_op = st.columns(2)
                 with c_w_op:
@@ -986,14 +1017,15 @@ else:
                         h2_html = (
                             f"<div style='background-color: {chart_bg}; padding: 20px; border-radius: 8px; margin-bottom: 30px; {border_css}'>"
                             f"<div style='display: flex; justify-content: space-between; align-items: center; width: 100%; max-width: 600px; margin: 0 auto;'>"
-                            f"<div style='text-align: right; width: 33%;'>"
+                            f"<div style='text-align: center; width: 33%;'>"
                             f"<div style='color: {cp1}; font-size: 1.1rem; margin-bottom: 5px; font-weight: bold; overflow: hidden; text-overflow: ellipsis;'>{u1}</div>"
                             f"<div style='color: {cp1}; font-size: 2.2rem; font-weight: bold; line-height: 1;'>{h2_w}</div>"
                             f"</div>"
                             f"<div style='text-align: center; width: 33%; border-left: 1px solid {grid_color}; border-right: 1px solid {grid_color}; padding: 0 10px;'>"
-                            f"<div style='color: {font_color}; font-size: 1.5rem; font-weight: bold; margin-bottom: 8px;'>REMISY<br> {h2_d}</div>"
+                            f"<div style='color: {font_color}; font-size: 1.1rem; font-weight: bold; margin-bottom: 5px;'>REMISY</div>"
+                            f"<div style='color: {font_color}; font-size: 2.2rem; font-weight: bold; line-height: 1;'>{h2_d}</div>"
                             f"</div>"
-                            f"<div style='text-align: left; width: 33%;'>"
+                            f"<div style='text-align: center; width: 33%;'>"
                             f"<div style='color: {cp2}; font-size: 1.1rem; margin-bottom: 5px; font-weight: bold; overflow: hidden; text-overflow: ellipsis;'>{u2}</div>"
                             f"<div style='color: {cp2}; font-size: 2.2rem; font-weight: bold; line-height: 1;'>{h2_l}</div>"
                             f"</div>"
@@ -1007,7 +1039,8 @@ else:
                         
                         st.markdown("### Wyścig zwycięstw")
                         fig_h2h = px.line(h2.melt(id_vars=["Partia_Nr"], value_vars=["Ty", u2]), 
-                                          x="Partia_Nr", y="value", color="variable", color_discrete_sequence=[cp1, cp2])
+                                          x="Partia_Nr", y="value", color="variable", color_discrete_sequence=[cp1, cp2],
+                                          labels={"value": "Suma Zwycięstw", "Partia_Nr": "Nr Partii", "variable": "Gracz"})
                         fig_h2h = style_chart(fig_h2h)
                         st.plotly_chart(fig_h2h, use_container_width=True)
                         

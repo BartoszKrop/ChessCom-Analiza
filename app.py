@@ -596,7 +596,6 @@ else:
                 )
                 st.markdown(info_html, unsafe_allow_html=True)
                 
-                # Sortujemy tryby ELO na podstawie najczęściej granych partii
                 mode_counts = df_f["Tryb"].value_counts()
                 modes_to_plot = [m for m in ["Rapid", "Blitz", "Bullet"] if m in mode_counts.index]
                 modes_sorted = sorted(modes_to_plot, key=lambda x: mode_counts[x], reverse=True)
@@ -711,35 +710,61 @@ else:
                 with c_w1:
                     st.markdown(f"<h5 style='text-align: center; color: {font_color};'>⚪ {t('color_white')}</h5>", unsafe_allow_html=True)
                     if not df_w.empty:
+                        tot_w = len(df_w)
                         op_g_w = df_w.groupby("Debiut_Grupa").agg(Gry=('Wynik', 'count'), WinRate=('Wynik', lambda x: int(round((x == 'Wygrane').sum()/len(x)*100,0)))).reset_index()
+                        op_g_w["% Całości"] = (op_g_w["Gry"] / tot_w * 100).round(1)
+                        
                         st.dataframe(
                             op_g_w.sort_values("Gry", ascending=False).head(15), 
                             use_container_width=True, hide_index=True,
                             column_config={
-                                "Gry": st.column_config.ProgressColumn("Gry", format="%d", min_value=0, max_value=int(op_g_w["Gry"].max())),
+                                "Gry": st.column_config.NumberColumn("Gry"),
+                                "% Całości": st.column_config.NumberColumn("% Całości", format="%.1f%%"),
                                 "WinRate": st.column_config.NumberColumn("WinRate (%)", format="%d%%")
                             }
                         )
                         with st.expander(f"Szczegółowe Warianty - ⚪ {t('color_white')}"):
                             op_w = df_w.groupby("Debiut").agg(Gry=('Wynik', 'count'), WinRate=('Wynik', lambda x: int(round((x == 'Wygrane').sum()/len(x)*100,0)))).reset_index()
-                            st.dataframe(op_w.sort_values("Gry", ascending=False).head(20), use_container_width=True, hide_index=True)
+                            op_w["% Całości"] = (op_w["Gry"] / tot_w * 100).round(1)
+                            st.dataframe(
+                                op_w.sort_values("Gry", ascending=False).head(20), 
+                                use_container_width=True, hide_index=True,
+                                column_config={
+                                    "Gry": st.column_config.NumberColumn("Gry"),
+                                    "% Całości": st.column_config.NumberColumn("% Całości", format="%.1f%%"),
+                                    "WinRate": st.column_config.NumberColumn("WinRate (%)", format="%d%%")
+                                }
+                            )
                     else: st.info("Brak partii")
                         
                 with c_b1:
                     st.markdown(f"<h5 style='text-align: center; color: {font_color};'>⚫ {t('color_black')}</h5>", unsafe_allow_html=True)
                     if not df_b.empty:
+                        tot_b = len(df_b)
                         op_g_b = df_b.groupby("Debiut_Grupa").agg(Gry=('Wynik', 'count'), WinRate=('Wynik', lambda x: int(round((x == 'Wygrane').sum()/len(x)*100,0)))).reset_index()
+                        op_g_b["% Całości"] = (op_g_b["Gry"] / tot_b * 100).round(1)
+                        
                         st.dataframe(
                             op_g_b.sort_values("Gry", ascending=False).head(15), 
                             use_container_width=True, hide_index=True,
                             column_config={
-                                "Gry": st.column_config.ProgressColumn("Gry", format="%d", min_value=0, max_value=int(op_g_b["Gry"].max())),
+                                "Gry": st.column_config.NumberColumn("Gry"),
+                                "% Całości": st.column_config.NumberColumn("% Całości", format="%.1f%%"),
                                 "WinRate": st.column_config.NumberColumn("WinRate (%)", format="%d%%")
                             }
                         )
                         with st.expander(f"Szczegółowe Warianty - ⚫ {t('color_black')}"):
                             op_b = df_b.groupby("Debiut").agg(Gry=('Wynik', 'count'), WinRate=('Wynik', lambda x: int(round((x == 'Wygrane').sum()/len(x)*100,0)))).reset_index()
-                            st.dataframe(op_b.sort_values("Gry", ascending=False).head(20), use_container_width=True, hide_index=True)
+                            op_b["% Całości"] = (op_b["Gry"] / tot_b * 100).round(1)
+                            st.dataframe(
+                                op_b.sort_values("Gry", ascending=False).head(20), 
+                                use_container_width=True, hide_index=True,
+                                column_config={
+                                    "Gry": st.column_config.NumberColumn("Gry"),
+                                    "% Całości": st.column_config.NumberColumn("% Całości", format="%.1f%%"),
+                                    "WinRate": st.column_config.NumberColumn("WinRate (%)", format="%d%%")
+                                }
+                            )
                     else: st.info("Brak partii")
 
             with t_ana:
@@ -856,6 +881,8 @@ else:
 
                 st.divider()
                 st.markdown("<h4 style='color: #ffffff;'>Sposób zakończenia partii</h4>", unsafe_allow_html=True)
+                st.divider()
+                
                 df1_r = df1_c.copy()
                 df2_r = df2_c.copy()
                 df1_r["Gracz"] = u1
@@ -901,13 +928,14 @@ else:
                     st.plotly_chart(fig_act_c, use_container_width=True)
                     
                     st.markdown("<h4 style='color: #ffffff; margin-top:20px;'>Zmiana ELO w czasie</h4>", unsafe_allow_html=True)
+                    st.divider()
+                    
                     df1_elo = df1_c.copy()
                     df2_elo = df2_c.copy()
                     df1_elo["Gracz"] = u1
                     df2_elo["Gracz"] = u2
                     df_elo_comb = pd.concat([df1_elo, df2_elo]).sort_values("Timestamp")
                     
-                    # Sortowanie wg najczęściej granych partii w Comparison Mode
                     mode_counts_c = df_elo_comb["Tryb"].value_counts()
                     modes_to_plot_c = [m for m in ["Rapid", "Blitz", "Bullet"] if m in mode_counts_c.index]
                     modes_sorted_c = sorted(modes_to_plot_c, key=lambda x: mode_counts_c[x], reverse=True)
@@ -989,12 +1017,17 @@ else:
                     m = pd.merge(g1_op, g2_op, on="Debiut_Grupa", how="outer").fillna(0)
                     m[f"Partie [{u1}]"] = m[f"Partie [{u1}]"].astype(int)
                     m[f"Partie [{u2}]"] = m[f"Partie [{u2}]"].astype(int)
+                    
                     m["Razem"] = m[f"Partie [{u1}]"] + m[f"Partie [{u2}]"]
                     m = m.sort_values("Razem", ascending=False).reset_index(drop=True)
                     
                     tot1, tot2 = len(df1_sub), len(df2_sub)
-                    m[f"Partie [{u1}]"] = m[f"Partie [{u1}]"].apply(lambda x: f"{x} ({round(x/tot1*100,1)}%)" if tot1>0 else "0 (0.0%)")
-                    m[f"Partie [{u2}]"] = m[f"Partie [{u2}]"].apply(lambda x: f"{x} ({round(x/tot2*100,1)}%)" if tot2>0 else "0 (0.0%)")
+                    
+                    # Dodanie dedykowanej kolumny dla przejrzystości, bez uderzania w wartości bazowe
+                    m[f"% Całości ({u1} vs {u2})"] = m.apply(
+                        lambda r: f"{round(r[f'Partie [{u1}]']/tot1*100, 1) if tot1 else 0}% vs {round(r[f'Partie [{u2}]']/tot2*100, 1) if tot2 else 0}%", 
+                        axis=1
+                    )
                     
                     return m.drop(columns=["Razem"])
 

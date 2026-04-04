@@ -27,13 +27,35 @@ bg_dict = {
 }
 bg_color = bg_dict.get(st.session_state.theme, "#312e2b")
 
+# --- WYMUSZENIE KOLORÓW PASKÓW MOBILNYCH (THEME-COLOR) ---
 components.html(
     f"""
     <script>
-        const meta = window.parent.document.createElement('meta');
-        meta.name = "theme-color";
-        meta.content = "{bg_color}";
-        window.parent.document.head.appendChild(meta);
+        const head = window.parent.document.getElementsByTagName('head')[0];
+        
+        let metaTheme = window.parent.document.querySelector('meta[name="theme-color"]');
+        if (!metaTheme) {{
+            metaTheme = window.parent.document.createElement('meta');
+            metaTheme.name = "theme-color";
+            head.appendChild(metaTheme);
+        }}
+        metaTheme.content = "{bg_color}";
+        
+        let metaApple = window.parent.document.querySelector('meta[name="apple-mobile-web-app-status-bar-style"]');
+        if (!metaApple) {{
+            metaApple = window.parent.document.createElement('meta');
+            metaApple.name = "apple-mobile-web-app-status-bar-style";
+            head.appendChild(metaApple);
+        }}
+        metaApple.content = "black-translucent";
+        
+        let metaWebApp = window.parent.document.querySelector('meta[name="apple-mobile-web-app-capable"]');
+        if (!metaWebApp) {{
+            metaWebApp = window.parent.document.createElement('meta');
+            metaWebApp.name = "apple-mobile-web-app-capable";
+            metaWebApp.content = "yes";
+            head.appendChild(metaWebApp);
+        }}
     </script>
     """, height=0, width=0
 )
@@ -73,13 +95,12 @@ def style_chart(fig):
         paper_bgcolor=chart_bg,
         plot_bgcolor="rgba(0,0,0,0)",
         font=dict(color=font_color),
-        margin=dict(l=10, r=10, t=20, b=10), # Zmniejszony górny margines, bo usunęliśmy tytuły
+        margin=dict(l=10, r=10, t=20, b=10), 
         legend=dict(orientation="h", yanchor="top", y=-0.15, xanchor="center", x=0.5, title=None)
     )
     fig.update_xaxes(showgrid=False, gridcolor=grid_color, zerolinecolor=grid_color)
     fig.update_yaxes(showgrid=True, gridcolor=grid_color, zerolinecolor=grid_color)
     
-    # Zapobieganie zlewaniu się słupków w ciemny kolor
     for trace in fig.data:
         if trace.type == 'bar':
             trace.marker.line.width = 0
@@ -188,8 +209,6 @@ css_dark = """
     [data-testid="stHeader"] { background-color: rgba(14, 17, 23, 0); }
     .stMetric, div.row-widget.stRadio > div { background-color: #161b22; border: 1px solid #30363d; border-radius: 8px;}
     [data-testid="stMetricValue"] { color: #ffffff !important; }
-    .custom-info-box { background-color: rgba(30, 136, 229, 0.1); border-left: 4px solid #1e88e5; color: #e6edf3; }
-    .custom-info-title { color: #1e88e5; }
     .stButton>button[kind="primary"] { background-color: #1e88e5; color: white; border: none; }
 """
 css_light = """
@@ -198,8 +217,6 @@ css_light = """
     .stMetric, div.row-widget.stRadio > div { background-color: #ffffff; border: 1px solid #d1d5db; border-radius: 8px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); }
     [data-testid="stMetricValue"], [data-testid="stMarkdownContainer"] p, h1, h2, h3, h4, h5 { color: #000000 !important; }
     [data-testid="stMetricLabel"] { color: #4b5563 !important; }
-    .custom-info-box { background-color: #eff6ff; border-left: 4px solid #1d4ed8; color: #1f2937; }
-    .custom-info-title { color: #1d4ed8; }
     .stTabs [data-baseweb="tab-list"] button { color: #4b5563; }
     .stTabs [data-baseweb="tab-list"] button[aria-selected="true"] { color: #000000; }
 """
@@ -217,8 +234,6 @@ css_chesscom = """
     }
     [data-testid="stMetricValue"], [data-testid="stMarkdownContainer"] p, h1, h2, h3, h4, h5 { color: #ffffff !important; }
     [data-testid="stMetricLabel"] { color: #c3c3c0 !important; }
-    .custom-info-box { background-color: #262421; border-left: 4px solid #81b64c; color: #c3c3c0; border-radius: 5px; }
-    .custom-info-title { color: #ffffff; }
     .stTabs [data-baseweb="tab-list"] { background-color: transparent; }
     .stTabs [data-baseweb="tab-list"] button { color: #8b8987; font-weight: 600; padding-bottom: 10px; }
     .stTabs [data-baseweb="tab-list"] button[aria-selected="true"] { color: #ffffff; border-bottom: 3px solid #81b64c; }
@@ -259,8 +274,6 @@ css_neon = """
         text-shadow: 0 0 4px rgba(0, 255, 255, 0.4); 
     }
     [data-testid="stMetricLabel"] { color: #ff007c !important; }
-    .custom-info-box { background-color: rgba(0, 255, 255, 0.08); border-left: 4px solid #00ffff; color: #e0e0ff; }
-    .custom-info-title { color: #ff007c; text-shadow: 0 0 5px rgba(255,0,124,0.4); }
     .stTabs [data-baseweb="tab-list"] button { color: #6a6a8c; text-transform: uppercase; letter-spacing: 1px;}
     .stTabs [data-baseweb="tab-list"] button[aria-selected="true"] { color: #00ffff; border-bottom-color: #00ffff; text-shadow: 0 0 8px rgba(0,255,255,0.6); }
     .stButton>button[kind="primary"] { 
@@ -297,28 +310,7 @@ st.markdown(f"""
         padding: 0 !important;
         color: inherit !important;
     }}
-    .custom-info-box {{ padding: 16px; border-radius: 8px; margin-bottom: 16px; }}
-    .custom-info-title {{ font-weight: bold; margin-bottom: 8px; font-size: 1.1rem; }}
     
-    .asym-header {{
-        display: flex;
-        flex-direction: row;
-        flex-wrap: wrap;
-        justify-content: space-around;
-        align-items: center;
-        background-color: {chart_bg};
-        padding: 15px;
-        border-radius: 5px;
-        margin-bottom: 15px;
-        gap: 10px;
-        border: {"none" if st.session_state.theme == "Chess.com" else "1px solid " + grid_color};
-    }}
-    .asym-header > div {{
-        flex: 1 1 auto;
-        min-width: 100px;
-        text-align: center;
-        font-weight: bold;
-    }}
     {active_css}
     </style>
     """, unsafe_allow_html=True)
@@ -517,12 +509,13 @@ else:
     
     if profile.get("avatar"):
         border_color = cw if st.session_state.theme == "Neon Retro" else "transparent"
-        st.markdown(f"""
-            <div style="display: flex; align-items: center; gap: 15px; margin-bottom: 15px;">
-                <img src="{profile.get("avatar")}" width="60" style="border-radius: 5px; border: 2px solid {border_color}; box-shadow: 0 2px 4px rgba(0,0,0,0.5);">
-                <h2 style="margin: 0; padding: 0;">{username}</h2>
-            </div>
-        """, unsafe_allow_html=True)
+        html_str = (
+            f"<div style='display: flex; align-items: center; gap: 15px; margin-bottom: 15px;'>"
+            f"<img src='{profile.get('avatar')}' width='60' style='border-radius: 5px; border: 2px solid {border_color}; box-shadow: 0 2px 4px rgba(0,0,0,0.5);'>"
+            f"<h2 style='margin: 0; padding: 0;'>{username}</h2>"
+            f"</div>"
+        )
+        st.markdown(html_str, unsafe_allow_html=True)
     else:
         st.markdown(f"<h2 style='margin-bottom: 15px;'>{username}</h2>", unsafe_allow_html=True)
     
@@ -596,18 +589,19 @@ else:
                 mod_b = df_f[df_f["Kolor"] == "Czarne"]["Debiut_Grupa"].mode()
                 fav_b = mod_b[0] if not mod_b.empty else "Brak"
                 
-                st.markdown(f"""
-                <div class="custom-info-box">
-                    <div class="custom-info-title">Ulubione debiuty:</div>
-                    <div style="font-size: 0.9rem;">⚪ <b>{fav_w}</b> &emsp;|&emsp; ⚫ <b>{fav_b}</b></div>
-                </div>
-                """, unsafe_allow_html=True)
+                info_html = (
+                    f"<div style='background-color: {chart_bg}; padding: 15px; border-radius: 5px; margin-bottom: 20px; border-left: 4px solid {cw}; box-shadow: 0 4px 6px rgba(0,0,0,0.3);'>"
+                    f"<div style='font-weight: bold; color: {font_color}; margin-bottom: 5px;'>Ulubione debiuty:</div>"
+                    f"<div style='font-size: 0.9rem; color: {font_color};'>⚪ <b>{fav_w}</b> &emsp;|&emsp; ⚫ <b>{fav_b}</b></div>"
+                    f"</div>"
+                )
+                st.markdown(info_html, unsafe_allow_html=True)
                 
                 for m in ["Rapid", "Blitz", "Bullet"]:
                     mdf = df_f[df_f["Tryb"] == m].sort_values("Timestamp")
                     if not mdf.empty:
                         st.markdown(f"### Ranking {m}")
-                        fig_elo = px.line(mdf, x="Timestamp", y="ELO", color_discrete_sequence=[cw])
+                        fig_elo = px.line(mdf, x="Timestamp", y="ELO", color="Konto", color_discrete_sequence=[cw])
                         fig_elo = style_chart(fig_elo)
                         st.plotly_chart(fig_elo, use_container_width=True)
 
@@ -760,7 +754,13 @@ else:
                     if st.button("Przygotuj analizę (Lichess Engine)", type="primary", use_container_width=True):
                         with st.spinner("Przesyłanie PGN do analizy..."):
                             st.session_state.url = g_sel["Link"] if g_sel["Platforma"]=="Lichess" else import_to_lichess(g_sel["PGN_Raw"]); st.rerun()
-                    if st.session_state.url: st.markdown(f'<a href="{st.session_state.url}" target="_blank" style="display:block; width:100%; text-align:center; background-color:{cw}; color:white; padding:12px; border-radius:5px; text-decoration:none; font-weight:bold; margin-top:10px;">OTWÓRZ ANALIZĘ ➡️</a>', unsafe_allow_html=True)
+                    if st.session_state.url:
+                        btn_html = (
+                            f"<a href='{st.session_state.url}' target='_blank' style='display:block; width:100%; text-align:center; background-color:{cw}; color:white; padding:12px; border-radius:5px; text-decoration:none; font-weight:bold; margin-top:10px;'>"
+                            f"OTWÓRZ ANALIZĘ ➡️"
+                            f"</a>"
+                        )
+                        st.markdown(btn_html, unsafe_allow_html=True)
                 else:
                     st.info("Brak partii do analizy dla podanych kryteriów.")
 
@@ -825,7 +825,9 @@ else:
                 df1_c = df1_c[df1_c["Tryb"] == sm_c]
                 df2_c = df2_c[df2_c["Tryb"] == sm_c]
 
-            tabs = st.tabs(["📊 Ogólne Statystyki", "📅 Historia", "⏳ Czas", "🥊 H2H"])
+            tabs_names = ["📊 Ogólne Statystyki", "📅 Historia", "⏳ Czas", "🔬 Debiuty"]
+            if p2_p in user_plats: tabs_names.append("🥊 H2H")
+            tabs = st.tabs(tabs_names)
 
             with tabs[0]:
                 g1, g2 = len(df1_c), len(df2_c)
@@ -949,35 +951,56 @@ else:
                     fig_b_c = style_chart(fig_b_c)
                     st.plotly_chart(fig_b_c, use_container_width=True)
 
-            if len(tabs) > 3:
-                with tabs[3]:
+            with tabs[3]:
+                st.write("### 🛡️ Najpopularniejsze Debiuty (Wspólne)")
+                
+                def merge_openings(color_name):
+                    df1_sub = df1_c[df1_c["Kolor"] == color_name]
+                    df2_sub = df2_c[df2_c["Kolor"] == color_name]
+                    
+                    g1_op = df1_sub.groupby("Debiut_Grupa").size().reset_index(name=f"Partie [{u1}]")
+                    g2_op = df2_sub.groupby("Debiut_Grupa").size().reset_index(name=f"Partie [{u2}]")
+                    
+                    m = pd.merge(g1_op, g2_op, on="Debiut_Grupa", how="outer").fillna(0)
+                    m[f"Partie [{u1}]"] = m[f"Partie [{u1}]"].astype(int)
+                    m[f"Partie [{u2}]"] = m[f"Partie [{u2}]"].astype(int)
+                    m["Razem"] = m[f"Partie [{u1}]"] + m[f"Partie [{u2}]"]
+                    return m.sort_values("Razem", ascending=False).drop(columns=["Razem"]).reset_index(drop=True)
+
+                c_w_op, c_b_op = st.columns(2)
+                with c_w_op:
+                    st.markdown(f"<h5 style='text-align: center; color: {font_color};'>⚪ {t('color_white')}</h5>", unsafe_allow_html=True)
+                    st.dataframe(merge_openings("Białe").head(20), use_container_width=True, hide_index=True)
+                    
+                with c_b_op:
+                    st.markdown(f"<h5 style='text-align: center; color: {font_color};'>⚫ {t('color_black')}</h5>", unsafe_allow_html=True)
+                    st.dataframe(merge_openings("Czarne").head(20), use_container_width=True, hide_index=True)
+
+            if len(tabs) > 4:
+                with tabs[4]:
                     h2 = df1_c[(df1_c['Przeciwnik'].str.lower() == u2.lower()) & (df1_c['Platforma'] == p2_p)].copy().sort_values("Timestamp").reset_index(drop=True)
                     if not h2.empty:
                         h2_w, h2_d, h2_l = (h2["Wynik"] == "Wygrane").sum(), (h2["Wynik"] == "Remisy").sum(), (h2["Wynik"] == "Przegrane").sum()
                         
                         border_css = f"border: 1px solid {grid_color};" if st.session_state.theme != "Chess.com" else "box-shadow: 0 4px 6px rgba(0,0,0,0.3);"
-                        h2_html = f"""
-                        <div style="background-color: {chart_bg}; padding: 20px; border-radius: 8px; margin-bottom: 30px; {border_css}">
-                            <div style="display: flex; justify-content: space-between; align-items: center; width: 100%; max-width: 600px; margin: 0 auto;">
-                                
-                                <div style="text-align: right; width: 33%;">
-                                    <div style="color: {cp1}; font-size: 1.1rem; margin-bottom: 5px; font-weight: bold; overflow: hidden; text-overflow: ellipsis;">{u1}</div>
-                                    <div style="color: {cp1}; font-size: 2.2rem; font-weight: bold; line-height: 1;">{h2_w}</div>
-                                </div>
-                                
-                                <div style="text-align: center; width: 33%; border-left: 1px solid {grid_color}; border-right: 1px solid {grid_color}; padding: 0 10px;">
-                                    <div style="color: {font_color}; font-size: 0.8rem; font-weight: bold; margin-bottom: 8px;">REMISY: {h2_d}</div>
-                                    <div style="color: {font_color}; font-size: 0.8rem; font-weight: bold;">RAZEM:<br><span style="font-size: 1.1rem; color: {font_color}; display: inline-block; margin-top: 4px;">{len(h2)}</span></div>
-                                </div>
-                                
-                                <div style="text-align: left; width: 33%;">
-                                    <div style="color: {cp2}; font-size: 1.1rem; margin-bottom: 5px; font-weight: bold; overflow: hidden; text-overflow: ellipsis;">{u2}</div>
-                                    <div style="color: {cp2}; font-size: 2.2rem; font-weight: bold; line-height: 1;">{h2_l}</div>
-                                </div>
-                                
-                            </div>
-                        </div>
-                        """
+                        h2_html = (
+                            f"<div style='background-color: {chart_bg}; padding: 20px; border-radius: 8px; margin-bottom: 30px; {border_css}'>"
+                            f"<div style='display: flex; justify-content: space-between; align-items: center; width: 100%; max-width: 600px; margin: 0 auto;'>"
+                            f"<div style='text-align: right; width: 33%;'>"
+                            f"<div style='color: {cp1}; font-size: 1.1rem; margin-bottom: 5px; font-weight: bold; overflow: hidden; text-overflow: ellipsis;'>{u1}</div>"
+                            f"<div style='color: {cp1}; font-size: 2.2rem; font-weight: bold; line-height: 1;'>{h2_w}</div>"
+                            f"</div>"
+                            f"<div style='text-align: center; width: 33%; border-left: 1px solid {grid_color}; border-right: 1px solid {grid_color}; padding: 0 10px;'>"
+                            f"<div style='color: {font_color}; font-size: 0.8rem; font-weight: bold; margin-bottom: 8px;'>REMISY: {h2_d}</div>"
+                            f"<div style='color: {font_color}; font-size: 0.8rem; font-weight: bold;'>RAZEM:<br><span style='font-size: 1.1rem; color: {font_color}; display: inline-block; margin-top: 4px;'>{len(h2)}</span></div>"
+                            f"</div>"
+                            f"<div style='text-align: left; width: 33%;'>"
+                            f"<div style='color: {cp2}; font-size: 1.1rem; margin-bottom: 5px; font-weight: bold; overflow: hidden; text-overflow: ellipsis;'>{u2}</div>"
+                            f"<div style='color: {cp2}; font-size: 2.2rem; font-weight: bold; line-height: 1;'>{h2_l}</div>"
+                            f"</div>"
+                            f"</div>"
+                            f"</div>"
+                        )
                         st.markdown(h2_html, unsafe_allow_html=True)
                         
                         h2["Partia_Nr"] = h2.index + 1

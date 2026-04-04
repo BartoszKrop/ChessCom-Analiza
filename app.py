@@ -379,11 +379,16 @@ else:
     df_loc = df.copy()
     df_loc["Debiut_Grupa"] = df_loc["Debiut_Grupa"].apply(t_op)
     
-    # EKRAN GŁÓWNY APLIKACJI
-    c_logo, c_nick = st.columns([1, 8])
-    if profile.get("avatar"): 
-        c_logo.image(profile.get("avatar"), width=70)
-    c_nick.markdown(f"<h2 style='margin-top: 10px;'>{username}</h2>", unsafe_allow_html=True)
+    # EKRAN GŁÓWNY APLIKACJI - Zmiana na flexbox dla avatara i nicku
+    if profile.get("avatar"):
+        st.markdown(f"""
+            <div style="display: flex; align-items: center; gap: 15px; margin-bottom: 15px;">
+                <img src="{profile.get("avatar")}" width="60" style="border-radius: 10px; border: 1px solid #58a6ff;">
+                <h2 style="margin: 0; padding: 0;">{username}</h2>
+            </div>
+        """, unsafe_allow_html=True)
+    else:
+        st.markdown(f"<h2 style='margin-bottom: 15px;'>{username}</h2>", unsafe_allow_html=True)
     
     with st.expander("⚙️ Ustawienia"):
         app_m = st.radio("Widok:", ["👤 Moja Analiza", "⚔️ Porównanie Graczy"], label_visibility="collapsed", horizontal=True)
@@ -623,7 +628,7 @@ else:
             
             u1, u2, p2_p = username, st.session_state.user2, st.session_state.plat2
             
-            with st.expander(t("filters"), expanded=True):
+            with st.expander(t("filters"), expanded=False):
                 fx1, fx2 = st.columns(2)
                 min_date = min(df_loc["Data"].min(), df2["Data"].min())
                 max_date = max(df_loc["Data"].max(), df2["Data"].max())
@@ -664,43 +669,6 @@ else:
             tabs = st.tabs(tabs_names)
 
             with tabs[0]:
-                
-                # --- SYMULATOR 30 DNI (Ignoruje filtry dat) ---
-                max_dt_sym = max(df_loc["Timestamp"].max(), df2["Timestamp"].max())
-                min_dt_sym = max_dt_sym - pd.Timedelta(days=30)
-                
-                df1_30 = df_loc[df_loc["Timestamp"] >= min_dt_sym]
-                df2_30 = df2[df2["Timestamp"] >= min_dt_sym]
-                
-                g1_30 = len(df1_30)
-                g2_30 = len(df2_30)
-                
-                elo1_30 = int(df1_30["ELO"].mean()) if g1_30 > 0 else 0
-                elo2_30 = int(df2_30["ELO"].mean()) if g2_30 > 0 else 0
-                
-                wr1_30 = int(round((df1_30["Wynik"]=="Wygrane").sum()/g1_30*100,0)) if g1_30 > 0 else 0
-                wr2_30 = int(round((df2_30["Wynik"]=="Wygrane").sum()/g2_30*100,0)) if g2_30 > 0 else 0
-                
-                if elo1_30 > 0 and elo2_30 > 0:
-                    prob1 = 1 / (1 + 10 ** ((elo2_30 - elo1_30) / 400))
-                    prob1_pct = int(round(prob1 * 100, 0))
-                    prob2_pct = 100 - prob1_pct
-                    fav = u1 if prob1_pct >= 50 else u2
-                    szansa = prob1_pct if prob1_pct >= 50 else prob2_pct
-                    
-                    st.markdown(f"""
-                    <div style="background: linear-gradient(135deg, rgba(30,136,229,0.1) 0%, rgba(239,85,59,0.1) 100%); border-radius: 8px; padding: 15px; margin-bottom: 20px; text-align: center; border: 1px solid #58a6ff;">
-                        <h4 style="margin: 0 0 10px 0;">⚔️ Symulator Pojedynku (Forma: Ostatnie 30 Dni)</h4>
-                        <div style="display: flex; justify-content: space-around; font-size: 0.9rem;">
-                            <div><b>{u1}</b><br>Śr. ELO: {elo1_30}<br>Win Rate: {wr1_30}%</div>
-                            <div style="font-size: 1.2rem; font-weight: bold; align-self: center;">
-                                Faworyt: {fav} ({szansa}%)
-                            </div>
-                            <div><b>{u2}</b><br>Śr. ELO: {elo2_30}<br>Win Rate: {wr2_30}%</div>
-                        </div>
-                    </div>
-                    """, unsafe_allow_html=True)
-                
                 st.markdown(f"### 🏆 Podsumowanie: {u1} vs {u2}")
                 
                 g1, g2 = len(df1_c), len(df2_c)
@@ -799,10 +767,13 @@ else:
                     df_elo_comb = pd.concat([df1_elo, df2_elo]).sort_values("Timestamp")
                     
                     if not df_elo_comb.empty:
-                        fig_elo_c = px.line(df_elo_comb, x="Timestamp", y="ELO", color="Gracz", hover_data=["Tryb"],
-                                            color_discrete_sequence=["#1e88e5", "#ef553b"])
-                        fig_elo_c.update_layout(xaxis_title="", yaxis_title="ELO", legend=dict(orientation="h", yanchor="top", y=-0.2, xanchor="center", x=0.5, title=None))
-                        st.plotly_chart(fig_elo_c, use_container_width=True)
+                        for m in ["Rapid", "Blitz", "Bullet"]:
+                            mdf = df_elo_comb[df_elo_comb["Tryb"] == m]
+                            if not mdf.empty:
+                                fig_elo_c = px.line(mdf, x="Timestamp", y="ELO", color="Gracz", title=f"Ranking {m}",
+                                                    color_discrete_sequence=["#1e88e5", "#ef553b"])
+                                fig_elo_c.update_layout(xaxis_title="", yaxis_title="ELO", height=300, margin=dict(l=0, r=0, t=30, b=0), legend=dict(orientation="h", yanchor="top", y=-0.25, xanchor="center", x=0.5, title=None))
+                                st.plotly_chart(fig_elo_c, use_container_width=True)
                 else:
                     st.info("Brak wystarczających danych do wygenerowania wykresów dla podanego filtru.")
 

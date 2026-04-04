@@ -1,4 +1,4 @@
-Import streamlit as st 
+import streamlit as st 
 import requests
 import pandas as pd
 import plotly.express as px
@@ -934,7 +934,7 @@ else:
                     df2_c["Bin"] = df2_c["Ruchy"].apply(get_duration_bin)
                     
                     b_df1 = df1_c.groupby("Bin").agg(G=('Wynik', 'count'), W=('Wynik', lambda x: (x == 'Wygrane').sum())).reset_index()
-                    b_df1["Win%"] = (b_df1["W"] / b_. ["G"] * 100).round(0).astype(int)
+                    b_df1["Win%"] = (b_df1["W"] / b_df1["G"] * 100).round(0).astype(int)
                     b_df1["Gracz"] = u1
                     
                     b_df2 = df2_c.groupby("Bin").agg(G=('Wynik', 'count'), W=('Wynik', lambda x: (x == 'Wygrane').sum())).reset_index()
@@ -1016,4 +1016,3 @@ else:
                         st.dataframe(h2[["Data", "Tryb", "Kolor", "Wynik", "Ruchy", "Debiut"]].sort_values("Data", ascending=False), use_container_width=True, hide_index=True)
                     else: 
                         st.info(f"Brak zarejestrowanych bezpośrednich partii pomiędzy **{u1}** a **{u2}** (przy obecnych filtrach).")
-

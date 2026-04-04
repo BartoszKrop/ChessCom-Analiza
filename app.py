@@ -991,7 +991,7 @@ else:
                             f"<div style='color: {cp1}; font-size: 2.2rem; font-weight: bold; line-height: 1;'>{h2_w}</div>"
                             f"</div>"
                             f"<div style='text-align: center; width: 33%; border-left: 1px solid {grid_color}; border-right: 1px solid {grid_color}; padding: 0 10px;'>"
-                            f"<div style='color: {font_color}; font-size: 0.8rem; font-weight: bold; margin-bottom: 8px;'>REMISY: {h2_d}</div>"
+                            f"<div style='color: {font_color}; font-size: 1.5 rem; font-weight: bold; margin-bottom: 8px;'>REMISY: <br> {h2_d}</div>"
                             f"</div>"
                             f"<div style='text-align: left; width: 33%;'>"
                             f"<div style='color: {cp2}; font-size: 1.1rem; margin-bottom: 5px; font-weight: bold; overflow: hidden; text-overflow: ellipsis;'>{u2}</div>"

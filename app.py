@@ -18,6 +18,7 @@ if 'cw_solo' not in st.session_state: st.session_state.cw_solo = True
 if 'cb_solo' not in st.session_state: st.session_state.cb_solo = True
 if 'cw_por' not in st.session_state: st.session_state.cw_por = True
 if 'cb_por' not in st.session_state: st.session_state.cb_por = True
+if 'fetch_args' not in st.session_state: st.session_state.fetch_args = []
 
 bg_dict = {
     "Jasny": "#f3f4f6", 
@@ -483,6 +484,7 @@ if st.session_state.data is None:
                     f = fetch_data(nick, plat)
                     if f[0] is not None and not f[1].empty: 
                         st.session_state.data, st.session_state.user, st.session_state.platforms = f, nick, [plat]
+                        st.session_state.fetch_args = [(nick, plat)]
                         st.rerun()
                     else: st.error("Nie znaleziono partii dla tego gracza.")
     else:
@@ -496,6 +498,7 @@ if st.session_state.data is None:
                     if f1[0] is not None and not f1[1].empty and f2[0] is not None and not f2[1].empty:
                         st.session_state.data = (f1[0], pd.concat([f1[1], f2[1]], ignore_index=True))
                         st.session_state.user, st.session_state.platforms = f"{n1}+{n2}", list(set([p1, p2]))
+                        st.session_state.fetch_args = [(n1, p1), (n2, p2)]
                         st.rerun()
                     else: st.error("Błąd pobierania danych. Upewnij się, że oba konta posiadają historię gier.")
 else:
@@ -530,12 +533,31 @@ else:
         c_btn1, c_btn2 = st.columns(2)
         with c_btn1:
             if st.button(t("btn_refresh"), use_container_width=True):
-                fetch_data.clear() 
-                st.session_state.data = None; st.rerun()
+                with st.spinner("Pobieranie najnowszych partii w tle..."):
+                    fetch_data.clear() # czyści cache dla API
+                    args = st.session_state.get('fetch_args', [])
+                    if len(args) == 1:
+                        f = fetch_data(args[0][0], args[0][1])
+                        if f[0] is not None and not f[1].empty:
+                            st.session_state.data = f
+                    elif len(args) == 2:
+                        f1 = fetch_data(args[0][0], args[0][1])
+                        f2 = fetch_data(args[1][0], args[1][1])
+                        if f1[0] is not None and not f1[1].empty and f2[0] is not None and not f2[1].empty:
+                            st.session_state.data = (f1[0], pd.concat([f1[1], f2[1]], ignore_index=True))
+                    
+                    if st.session_state.data2 is not None and st.session_state.user2 and st.session_state.plat2:
+                        f2_rival = fetch_data(st.session_state.user2, st.session_state.plat2)
+                        if f2_rival[0] is not None and not f2_rival[1].empty:
+                            st.session_state.data2 = f2_rival[1]
+                st.rerun()
+                
         with c_btn2:
             if st.button(t("btn_change"), type="primary", use_container_width=True):
                 for k in ['data','data2','url','user','user2','plat2']: st.session_state[k] = None if k in ['data','data2','url'] else ""
-                st.session_state.platforms = []; st.rerun()
+                st.session_state.platforms = []
+                st.session_state.fetch_args = []
+                st.rerun()
 
     if app_m == "👤 Moja Analiza":
         m1, m2, m3 = st.columns(3)
@@ -1023,7 +1045,6 @@ else:
                     
                     tot1, tot2 = len(df1_sub), len(df2_sub)
                     
-                    # Dodanie dedykowanej kolumny dla przejrzystości, bez uderzania w wartości bazowe
                     m[f"% Całości ({u1} vs {u2})"] = m.apply(
                         lambda r: f"{round(r[f'Partie [{u1}]']/tot1*100, 1) if tot1 else 0}% vs {round(r[f'Partie [{u2}]']/tot2*100, 1) if tot2 else 0}%", 
                         axis=1

@@ -49,7 +49,7 @@ ui_dict = {
     "win_by_day": {"pl": "Skuteczność wg dni", "en": "Win Rate by day", "de": "Erfolgsquote nach Tagen"},
     "win_reason": {"pl": "Sposób wygranej", "en": "Win reason", "de": "Gewinngrund"},
     "loss_reason": {"pl": "Sposób porażki", "en": "Loss reason", "de": "Verlustgrund"},
-    "chart_desc": {"pl": "Wysokość słupka to Win Rate (%), a kolor oznacza ilość rozegranych partii.", "en": "Bar height is Win Rate (%), and color indicates the number of games played.", "de": "Die Balkenhöhe ist die Erfolgsquote (%) und die Farbe gibt die Anzahl der gespielten Partien an."},
+    "chart_desc": {"pl": "Wysokość słupka to Win Rate (%), a kolor oznacza ilość rozegranych partii. Najedź na słupek, aby zobaczyć szczegóły.", "en": "Bar height is Win Rate (%), and color indicates the number of games played. Hover over a bar for details.", "de": "Die Balkenhöhe ist die Erfolgsquote (%) und die Farbe gibt die Anzahl der gespielten Partien an. Fahren Sie über einen Balken für Details."},
     "chart_desc_comp": {"pl": "Wysokość słupka to Win Rate (%), a kolory oznaczają graczy.", "en": "Bar height is Win Rate (%), and colors represent players.", "de": "Die Balkenhöhe ist die Erfolgsquote (%) und die Farben stehen für die Spieler."},
     "games_count": {"pl": "Ilość partii", "en": "Games count", "de": "Anzahl Partien"},
     "win_rate": {"pl": "Skuteczność (%)", "en": "Win Rate (%)", "de": "Erfolgsquote (%)"},
@@ -102,16 +102,24 @@ st.markdown(f"""
     .custom-info-box {{ padding: 12px; border-radius: 8px; margin-bottom: 16px; }}
     .custom-info-title {{ font-weight: bold; margin-bottom: 6px; }}
     
-    /* Ukrywanie obramowania i tła zębatki ustawień */
+    /* Wymuszamy brak zawijania (flex-wrap: nowrap) dla nagłówka na mobilkach */
+    div[data-testid="stHorizontalBlock"]:has(> div > div > div > div > div[data-testid="stPopover"]) {{
+        flex-wrap: nowrap !important;
+        align-items: center !important;
+    }}
+    
+    /* Zębatka idealnie wtapiająca się w tło, bez krawędzi i tła */
     [data-testid="stPopover"] > button {{
         background-color: transparent !important;
         border: none !important;
         box-shadow: none !important;
         padding: 0 !important;
         color: inherit !important;
+        font-size: 1.5rem !important; 
     }}
     [data-testid="stPopover"] > button:hover {{
         color: #58a6ff !important;
+        background-color: transparent !important;
     }}
     
     {css_light if st.session_state.theme == "Jasny" else css_dark}
@@ -321,10 +329,10 @@ for k in ['user','user2','plat2']:
 if 'platforms' not in st.session_state: st.session_state.platforms = []
 
 if st.session_state.data is None:
-    # EKRAN LOGOWANIA (TYLKO TUTAJ JEST TYTUŁ APLIKACJI)
-    col_l1, col_l2 = st.columns([10, 1])
-    col_l1.title(f"♟️ {t('title')}")
-    with col_l2.popover("⚙️"):
+    # EKRAN LOGOWANIA
+    c_l1, c_l2, _ = st.columns([6, 1, 4])
+    c_l1.markdown(f"<h2>♟️ {t('title')}</h2>", unsafe_allow_html=True)
+    with c_l2.popover("⚙️"):
         st.selectbox("🌍 Język UI", ["Polski", "English", "Deutsch"], key="ui_lang")
         st.selectbox("♟️ Język Debiutów", ["Polski", "English", "Deutsch"], key="op_lang")
         st.radio("🎨 Motyw", ["Ciemny", "Jasny"], key="theme")
@@ -358,12 +366,13 @@ else:
     df_loc = df.copy()
     df_loc["Debiut_Grupa"] = df_loc["Debiut_Grupa"].apply(t_op)
     
-    # EKRAN GŁÓWNY APLIKACJI - AWATAR I NICK ZAMIAST TYTUŁU
-    c_head, c_gear = st.columns([10, 1])
+    # EKRAN GŁÓWNY APLIKACJI - AWATAR, NICK I ZĘBATKA W JEDNEJ LINII
+    c_logo, c_nick, c_gear, c_empty = st.columns([1, 6, 1, 2])
     
     avatar_url = profile.get("avatar", "")
-    img_html = f"<img src='{avatar_url}' width='50' style='border-radius:50%; margin-right:15px;'>" if avatar_url else ""
-    c_head.markdown(f"<div style='display:flex; align-items:center;'>{img_html}<h1 style='margin:0; padding:0;'>{username}</h1></div>", unsafe_allow_html=True)
+    if avatar_url:
+        c_logo.image(avatar_url, use_container_width=True)
+    c_nick.markdown(f"<h3 style='margin:0; padding:0; padding-top:10px;'>{username}</h3>", unsafe_allow_html=True)
     
     with c_gear.popover("⚙️"):
         st.selectbox("🌍 Język UI", ["Polski", "English", "Deutsch"], key="ui_lang")
@@ -478,6 +487,8 @@ else:
                 fig_h.update_layout(coloraxis_showscale=False, title="", xaxis=dict(tickmode='linear', tick0=0, dtick=1, tickangle=0))
                 st.plotly_chart(fig_h, use_container_width=True)
                 
+                st.write("") # Odstęp
+                
                 d_st = df_f.groupby(["Dzień", "Dzień_Nr"]).agg(G=('Wynik', 'count'), W=('Wynik', lambda x: (x == 'Wygrane').sum())).reset_index().sort_values("Dzień_Nr")
                 d_st["Win%"] = (d_st["W"] / d_st["G"] * 100).round(0).astype(int)
                 
@@ -545,7 +556,7 @@ else:
                 
                 st.subheader(t("win_by_length"), help=t("chart_desc"))
                 fig_dur = px.bar(dst.sort_values("Bin", key=lambda x: [order.index(i) for i in x]), x="Bin", y="Win%", color="G", color_continuous_scale='Blues', labels={"Bin": t("length"), "Win%": t("win_rate"), "G": t("games_count")})
-                fig_dur.update_layout(coloraxis_showscale=False, xaxis_title="", title="")
+                fig_dur.update_layout(coloraxis_showscale=False, showlegend=False, xaxis_title="", title="")
                 st.plotly_chart(fig_dur, use_container_width=True)
                 
                 st.write("### Wpływ serii (Sesja 2h)")
@@ -742,13 +753,15 @@ else:
                     
                     h_comb = pd.concat([h_df1, h_df2])
                     
-                    st.subheader("O jakich porach najczęściej gracie?")
+                    st.subheader("O jakich porach najczęściej gracie?", help=t("chart_desc_comp"))
                     fig_h = px.bar(h_comb, x="Godzina", y="Win%", color="Gracz", barmode="group", 
                                    labels={"Godzina": t("hour"), "Win%": t("win_rate"), "G": t("games_count"), "Gracz": t("player")},
                                    hover_data={"G": True},
                                    color_discrete_sequence=["#1e88e5", "#ef553b"])
                     fig_h.update_layout(title="", xaxis=dict(tickmode='linear', tick0=0, dtick=1, tickangle=0), legend=dict(orientation="h", yanchor="top", y=-0.2, xanchor="center", x=0.5, title=None))
                     st.plotly_chart(fig_h, use_container_width=True)
+                
+                st.write("") # Odstęp
                 
                 if not df1_c.empty and not df2_c.empty:
                     df1_c["Bin"] = df1_c["Ruchy"].apply(get_duration_bin)
@@ -766,7 +779,7 @@ else:
                     
                     order = ["0-20", "21-30", "31-40", "41-50", "51-60", "61-70", "71+"]
                     
-                    st.subheader("Jak długie partie rozgrywacie?")
+                    st.subheader(t("win_by_length"), help=t("chart_desc_comp"))
                     fig_b = px.bar(b_comb.sort_values("Bin", key=lambda x: [order.index(i) for i in x]), 
                                    x="Bin", y="Win%", color="Gracz", barmode="group", 
                                    labels={"Bin": t("length"), "Win%": t("win_rate"), "G": t("games_count"), "Gracz": t("player")},

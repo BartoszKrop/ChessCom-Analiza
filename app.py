@@ -122,6 +122,19 @@ st.markdown(f"""
     .asym-header {{ display: flex; justify-content: space-between; padding: 8px; border-radius: 8px; font-weight: bold; margin-bottom: 5px; font-size: 0.8rem;}}
     .custom-info-box {{ padding: 12px; border-radius: 8px; margin-bottom: 16px; }}
     .custom-info-title {{ font-weight: bold; margin-bottom: 6px; }}
+    
+    /* Ukrywanie obramowania i tła zębatki ustawień */
+    [data-testid="stPopover"] > button {{
+        background-color: transparent !important;
+        border: none !important;
+        box-shadow: none !important;
+        padding: 0 !important;
+        color: inherit !important;
+    }}
+    [data-testid="stPopover"] > button:hover {{
+        color: #58a6ff !important;
+    }}
+    
     {css_light if st.session_state.theme == "Jasny" else css_dark}
     </style>
     """, unsafe_allow_html=True)
@@ -233,6 +246,13 @@ def get_duration_bin(moves):
     elif moves <= 60: return bins[4]
     elif moves <= 70: return bins[5]
     else: return bins[6]
+
+def get_elo_bin(diff):
+    if diff >= 50: return "1. Silny Faworyt (+50)"
+    elif diff >= 15: return "2. Faworyt (+15 do +50)"
+    elif diff >= -15: return "3. Równy Mecz (+/- 15)"
+    elif diff >= -50: return "4. Underdog (-15 do -50)"
+    else: return "5. Głęboki Underdog (-50)"
 
 def import_to_lichess(pgn_text):
     try:
@@ -359,43 +379,42 @@ else:
     df_loc = df.copy()
     df_loc["Debiut_Grupa"] = df_loc["Debiut_Grupa"].apply(t_op)
     
-    # EKRAN GŁÓWNY APLIKACJI - AWATAR, NICK I USTAWIENIA W JEDNEJ LINII
-    c_logo, c_nick, c_gear = st.columns([1, 4, 3])
+    # EKRAN GŁÓWNY APLIKACJI
+    c_logo, c_nick = st.columns([1, 8])
     if profile.get("avatar"): 
         c_logo.image(profile.get("avatar"), width=70)
     c_nick.markdown(f"<h2 style='margin-top: 10px;'>{username}</h2>", unsafe_allow_html=True)
     
-    with c_gear.expander("⚙️ Ustawienia"):
-        app_m = st.radio("Widok:", ["👤 Moja Analiza", "⚔️ Porównanie Graczy"], label_visibility="collapsed")
-        st.selectbox("🌍 Język UI", ["Polski", "English", "Deutsch"], key="ui_lang")
-        st.selectbox("♟️ Język Debiutów", ["Polski", "English", "Deutsch"], key="op_lang")
+    with st.expander("⚙️ Ustawienia"):
+        app_m = st.radio("Widok:", ["👤 Moja Analiza", "⚔️ Porównanie Graczy"], label_visibility="collapsed", horizontal=True)
+        c_l_ui, c_l_op = st.columns(2)
+        c_l_ui.selectbox("🌍 Język UI", ["Polski", "English", "Deutsch"], key="ui_lang")
+        c_l_op.selectbox("♟️ Język Debiutów", ["Polski", "English", "Deutsch"], key="op_lang")
         st.radio("🎨 Motyw", ["Ciemny", "Jasny"], key="theme", horizontal=True)
+        
+        c_btn1, c_btn2 = st.columns(2)
+        with c_btn1:
+            if st.button(t("btn_refresh"), use_container_width=True):
+                fetch_data.clear() 
+                with st.spinner("Odświeżanie danych..."):
+                    nowe_dane = []
+                    nowy_profil = profile
+                    for konto in df["Konto"].unique():
+                        u_nick = konto[:-4]
+                        u_plat = "Chess.com" if konto[-2] == 'C' else "Lichess"
+                        f_res = fetch_data(u_nick, u_plat)
+                        if f_res[1] is not None:
+                            nowe_dane.append(f_res[1])
+                            nowy_profil = f_res[0]
+                    if nowe_dane:
+                        st.session_state.data = (nowy_profil, pd.concat(nowe_dane, ignore_index=True))
+                st.rerun()
+                
+        with c_btn2:
+            if st.button(t("btn_change"), use_container_width=True):
+                for k in ['data','data2','url','user','user2','plat2']: st.session_state[k] = None if k in ['data','data2','url'] else ""
+                st.session_state.platforms = []; st.rerun()
     
-    st.write("") # Odstęp
-    
-    c_n1, c_n2 = st.columns(2)
-    with c_n1: 
-        if st.button(t("btn_refresh"), use_container_width=True):
-            fetch_data.clear() 
-            with st.spinner("Odświeżanie danych..."):
-                nowe_dane = []
-                nowy_profil = profile
-                for konto in df["Konto"].unique():
-                    u_nick = konto[:-4]
-                    u_plat = "Chess.com" if konto[-2] == 'C' else "Lichess"
-                    f_res = fetch_data(u_nick, u_plat)
-                    if f_res[1] is not None:
-                        nowe_dane.append(f_res[1])
-                        nowy_profil = f_res[0]
-                if nowe_dane:
-                    st.session_state.data = (nowy_profil, pd.concat(nowe_dane, ignore_index=True))
-            st.rerun()
-            
-    with c_n2:
-        if st.button(t("btn_change"), use_container_width=True):
-            for k in ['data','data2','url','user','user2','plat2']: st.session_state[k] = None if k in ['data','data2','url'] else ""
-            st.session_state.platforms = []; st.rerun()
-
     st.divider()
 
     if app_m == "👤 Moja Analiza":
@@ -453,7 +472,6 @@ else:
                         st.plotly_chart(px.line(mdf, x="Timestamp", y="ELO", color="Konto", title=f"Ranking {m}", markers=True).update_layout(xaxis_title="", yaxis_title="ELO", height=300, margin=dict(l=0, r=0, t=20, b=0), legend=dict(orientation="h", yanchor="top", y=-0.25, xanchor="center", x=0.5, title=None)), use_container_width=True)
 
                 st.divider()
-                st.write("### " + t("win_reason"))
                 c1, c2 = st.columns(2)
                 df_f_pie = df_f.copy()
                 df_f_pie["Powod_T"] = df_f_pie["Powod"].apply(t_reason)
@@ -502,6 +520,8 @@ else:
                 fig_dur.update_layout(coloraxis_showscale=False, showlegend=False, xaxis_title="", title="")
                 st.plotly_chart(fig_dur, use_container_width=True)
                 
+                st.write("") # Odstęp
+                
                 st.subheader("Wpływ serii", help=t("streak_desc"))
                 df_t = df_f.sort_values('Timestamp').copy()
                 st_l, sc_l, l_ts, ct, cc = [], [], None, None, 0
@@ -527,7 +547,6 @@ else:
                 if t_res: st.plotly_chart(px.bar(pd.DataFrame(t_res), x="Seria", y="Win%", color="Typ", barmode='group', text="Win%", hover_data=["Partie"], color_discrete_map={"Po serii Wygranych":"#1e88e5", "Po serii Porażek":"#ef553b"}).update_layout(legend=dict(orientation="h", yanchor="top", y=-0.2, xanchor="center", x=0.5, title=None)), use_container_width=True)
 
             with t_deb:
-                st.write("### 🛡️ Główne Grupy Debiutów")
                 c_w1, c_b1 = st.columns(2)
                 df_w = df_f[df_f["Kolor"] == "Białe"]
                 df_b = df_f[df_f["Kolor"] == "Czarne"]
@@ -537,22 +556,20 @@ else:
                     if not df_w.empty:
                         op_g_w = df_w.groupby("Debiut_Grupa").agg(Gry=('Wynik', 'count'), WinRate=('Wynik', lambda x: int(round((x == 'Wygrane').sum()/len(x)*100,0)))).reset_index()
                         st.dataframe(op_g_w.sort_values("Gry", ascending=False).head(15), use_container_width=True, hide_index=True)
-                    else: st.info("Brak partii")
-                    with st.expander(f"Szczegółowe Warianty - ⚪ {t('color_white')}"):
-                        if not df_w.empty:
+                        with st.expander(f"Szczegółowe Warianty - ⚪ {t('color_white')}"):
                             op_w = df_w.groupby("Debiut").agg(Gry=('Wynik', 'count'), WinRate=('Wynik', lambda x: int(round((x == 'Wygrane').sum()/len(x)*100,0)))).reset_index()
                             st.dataframe(op_w.sort_values("Gry", ascending=False).head(20), use_container_width=True, hide_index=True)
+                    else: st.info("Brak partii")
                         
                 with c_b1:
                     st.markdown(f"<h5 style='text-align: center;'>⚫ {t('color_black')}</h5>", unsafe_allow_html=True)
                     if not df_b.empty:
                         op_g_b = df_b.groupby("Debiut_Grupa").agg(Gry=('Wynik', 'count'), WinRate=('Wynik', lambda x: int(round((x == 'Wygrane').sum()/len(x)*100,0)))).reset_index()
                         st.dataframe(op_g_b.sort_values("Gry", ascending=False).head(15), use_container_width=True, hide_index=True)
-                    else: st.info("Brak partii")
-                    with st.expander(f"Szczegółowe Warianty - ⚫ {t('color_black')}"):
-                        if not df_b.empty:
+                        with st.expander(f"Szczegółowe Warianty - ⚫ {t('color_black')}"):
                             op_b = df_b.groupby("Debiut").agg(Gry=('Wynik', 'count'), WinRate=('Wynik', lambda x: int(round((x == 'Wygrane').sum()/len(x)*100,0)))).reset_index()
                             st.dataframe(op_b.sort_values("Gry", ascending=False).head(20), use_container_width=True, hide_index=True)
+                    else: st.info("Brak partii")
 
             with t_ana:
                 fa1, fa2, fa3 = st.columns([1,1,1])
@@ -763,19 +780,56 @@ else:
             with tabs[3]:
                 c_o1, c_o2 = st.columns(2)
                 with c_o1:
-                    st.write(f"### 🛡️ Grupy Debiutów: {u1}")
+                    st.write(f"### 🛡️ Debiuty: {u1}")
+                    df1_w = df1_c[df1_c["Kolor"] == "Białe"]
+                    df1_b = df1_c[df1_c["Kolor"] == "Czarne"]
+                    
                     if not df1_c.empty:
-                        unique_groups_1 = df1_c["Debiut_Grupa"].nunique()
-                        st.info(f"**Rozegrane unikalne grupy:** {unique_groups_1}")
-                        op_g1 = df1_c.groupby("Debiut_Grupa").agg(Gry=('Wynik', 'count'), WinRate=('Wynik', lambda x: int(round((x == 'Wygrane').sum()/len(x)*100,0)))).reset_index()
-                        st.dataframe(op_g1.sort_values("Gry", ascending=False).head(15), use_container_width=True, hide_index=True)
+                        st.info(f"**Rozegrane unikalne grupy:** {df1_c['Debiut_Grupa'].nunique()}")
+                    
+                    st.markdown(f"<h5 style='text-align: center;'>⚪ {t('color_white')}</h5>", unsafe_allow_html=True)
+                    if not df1_w.empty:
+                        op_g1_w = df1_w.groupby("Debiut_Grupa").agg(Gry=('Wynik', 'count'), WinRate=('Wynik', lambda x: int(round((x == 'Wygrane').sum()/len(x)*100,0)))).reset_index()
+                        st.dataframe(op_g1_w.sort_values("Gry", ascending=False).head(15), use_container_width=True, hide_index=True)
+                        with st.expander(f"Szczegółowe Warianty - ⚪ {t('color_white')}"):
+                            op1_w = df1_w.groupby("Debiut").agg(Gry=('Wynik', 'count'), WinRate=('Wynik', lambda x: int(round((x == 'Wygrane').sum()/len(x)*100,0)))).reset_index()
+                            st.dataframe(op1_w.sort_values("Gry", ascending=False).head(20), use_container_width=True, hide_index=True)
+                    else: st.info("Brak partii")
+                        
+                    st.markdown(f"<h5 style='text-align: center;'>⚫ {t('color_black')}</h5>", unsafe_allow_html=True)
+                    if not df1_b.empty:
+                        op_g1_b = df1_b.groupby("Debiut_Grupa").agg(Gry=('Wynik', 'count'), WinRate=('Wynik', lambda x: int(round((x == 'Wygrane').sum()/len(x)*100,0)))).reset_index()
+                        st.dataframe(op_g1_b.sort_values("Gry", ascending=False).head(15), use_container_width=True, hide_index=True)
+                        with st.expander(f"Szczegółowe Warianty - ⚫ {t('color_black')}"):
+                            op1_b = df1_b.groupby("Debiut").agg(Gry=('Wynik', 'count'), WinRate=('Wynik', lambda x: int(round((x == 'Wygrane').sum()/len(x)*100,0)))).reset_index()
+                            st.dataframe(op1_b.sort_values("Gry", ascending=False).head(20), use_container_width=True, hide_index=True)
+                    else: st.info("Brak partii")
+
                 with c_o2:
-                    st.write(f"### 🛡️ Grupy Debiutów: {u2}")
+                    st.write(f"### 🛡️ Debiuty: {u2}")
+                    df2_w = df2_c[df2_c["Kolor"] == "Białe"]
+                    df2_b = df2_c[df2_c["Kolor"] == "Czarne"]
+                    
                     if not df2_c.empty:
-                        unique_groups_2 = df2_c["Debiut_Grupa"].nunique()
-                        st.info(f"**Rozegrane unikalne grupy:** {unique_groups_2}")
-                        op_g2 = df2_c.groupby("Debiut_Grupa").agg(Gry=('Wynik', 'count'), WinRate=('Wynik', lambda x: int(round((x == 'Wygrane').sum()/len(x)*100,0)))).reset_index()
-                        st.dataframe(op_g2.sort_values("Gry", ascending=False).head(15), use_container_width=True, hide_index=True)
+                        st.info(f"**Rozegrane unikalne grupy:** {df2_c['Debiut_Grupa'].nunique()}")
+                    
+                    st.markdown(f"<h5 style='text-align: center;'>⚪ {t('color_white')}</h5>", unsafe_allow_html=True)
+                    if not df2_w.empty:
+                        op_g2_w = df2_w.groupby("Debiut_Grupa").agg(Gry=('Wynik', 'count'), WinRate=('Wynik', lambda x: int(round((x == 'Wygrane').sum()/len(x)*100,0)))).reset_index()
+                        st.dataframe(op_g2_w.sort_values("Gry", ascending=False).head(15), use_container_width=True, hide_index=True)
+                        with st.expander(f"Szczegółowe Warianty - ⚪ {t('color_white')}"):
+                            op2_w = df2_w.groupby("Debiut").agg(Gry=('Wynik', 'count'), WinRate=('Wynik', lambda x: int(round((x == 'Wygrane').sum()/len(x)*100,0)))).reset_index()
+                            st.dataframe(op2_w.sort_values("Gry", ascending=False).head(20), use_container_width=True, hide_index=True)
+                    else: st.info("Brak partii")
+                        
+                    st.markdown(f"<h5 style='text-align: center;'>⚫ {t('color_black')}</h5>", unsafe_allow_html=True)
+                    if not df2_b.empty:
+                        op_g2_b = df2_b.groupby("Debiut_Grupa").agg(Gry=('Wynik', 'count'), WinRate=('Wynik', lambda x: int(round((x == 'Wygrane').sum()/len(x)*100,0)))).reset_index()
+                        st.dataframe(op_g2_b.sort_values("Gry", ascending=False).head(15), use_container_width=True, hide_index=True)
+                        with st.expander(f"Szczegółowe Warianty - ⚫ {t('color_black')}"):
+                            op2_b = df2_b.groupby("Debiut").agg(Gry=('Wynik', 'count'), WinRate=('Wynik', lambda x: int(round((x == 'Wygrane').sum()/len(x)*100,0)))).reset_index()
+                            st.dataframe(op2_b.sort_values("Gry", ascending=False).head(20), use_container_width=True, hide_index=True)
+                    else: st.info("Brak partii")
 
             if len(tabs) > 4:
                 with tabs[4]:

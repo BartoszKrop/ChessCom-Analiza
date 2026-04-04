@@ -10,7 +10,7 @@ import streamlit.components.v1 as components
 # --- INICJALIZACJA STANU SESJI (USTAWIENIA) ---
 if 'ui_lang' not in st.session_state: st.session_state.ui_lang = "Polski"
 if 'op_lang' not in st.session_state: st.session_state.op_lang = "English"
-if 'theme' not in st.session_state: st.session_state.theme = "Ciemny"
+if 'theme' not in st.session_state: st.session_state.theme = "Chess.com" # Domyślnie na nowy!
 if 'cw_solo' not in st.session_state: st.session_state.cw_solo = True
 if 'cb_solo' not in st.session_state: st.session_state.cb_solo = True
 if 'cw_por' not in st.session_state: st.session_state.cw_por = True
@@ -20,10 +20,10 @@ if 'cb_por' not in st.session_state: st.session_state.cb_por = True
 st.set_page_config(page_title="ChessStats", page_icon="♟️", layout="wide")
 
 bg_dict = {
-    "Jasny": "#ffffff", 
+    "Jasny": "#f3f4f6", 
     "Ciemny": "#0e1117", 
-    "Chess.com": "#312e2b", 
-    "Neon Retro": "#090914"
+    "Chess.com": "#2c2724", 
+    "Neon Retro": "#0a0a14"
 }
 bg_color = bg_dict.get(st.session_state.theme, "#0e1117")
 
@@ -38,23 +38,52 @@ components.html(
     """, height=0, width=0
 )
 
-# --- KOLORYSTYKA WYKRESÓW DLA MOTYWÓW ---
+# --- KOLORYSTYKA I STYLE WYKRESÓW (PLOTLY ENGINE) ---
 if st.session_state.theme == "Chess.com":
-    cw, cd, cl = "#81b64c", "#a7a6a2", "#fa412d"  # Green, Grey, Red
-    cp1, cp2 = "#81b64c", "#fa412d"               # Player 1, Player 2
+    cw, cd, cl = "#7fa650", "#8b8987", "#fa412d"  # Zgaszony zielony, Szary, Czerwony
+    cp1, cp2 = "#7fa650", "#fa412d"
     c_scale = "Greens"
+    chart_bg = "rgba(38, 36, 33, 0.9)" # Tło karty wykresu
+    grid_color = "#3d3b38"
+    font_color = "#c3c3c0"
 elif st.session_state.theme == "Neon Retro":
-    cw, cd, cl = "#00ffff", "#b829ea", "#ff007f"  # Cyan, Purple, Pink
-    cp1, cp2 = "#00ffff", "#ff007f"               # Player 1, Player 2
+    cw, cd, cl = "#00ffff", "#8c43ff", "#ff007c"  # Cyjan, Fiolet, Różowy
+    cp1, cp2 = "#00ffff", "#ff007c"
     c_scale = "Purples"
+    chart_bg = "rgba(18, 18, 38, 0.85)"
+    grid_color = "rgba(140, 67, 255, 0.2)"
+    font_color = "#e0e0ff"
 elif st.session_state.theme == "Jasny":
-    cw, cd, cl = "#1d4ed8", "#6b7280", "#dc2626"  # Blue, Grey, Red
-    cp1, cp2 = "#1d4ed8", "#dc2626"               # Player 1, Player 2
+    cw, cd, cl = "#1d4ed8", "#6b7280", "#dc2626"
+    cp1, cp2 = "#1d4ed8", "#dc2626"
     c_scale = "Blues"
+    chart_bg = "#ffffff"
+    grid_color = "#e5e7eb"
+    font_color = "#1f2937"
 else: # Ciemny
-    cw, cd, cl = "#1e88e5", "#8b949e", "#ef553b"  # Blue, Grey, Orange-Red
-    cp1, cp2 = "#1e88e5", "#ef553b"               # Player 1, Player 2
+    cw, cd, cl = "#1e88e5", "#8b949e", "#ef553b"
+    cp1, cp2 = "#1e88e5", "#ef553b"
     c_scale = "Blues"
+    chart_bg = "#161b22"
+    grid_color = "#30363d"
+    font_color = "#c9d1d9"
+
+# Funkcja ubierająca KAŻDY wykres w motyw
+def style_chart(fig):
+    fig.update_layout(
+        paper_bgcolor=chart_bg,
+        plot_bgcolor="rgba(0,0,0,0)", # Przezroczyste wnętrze
+        font=dict(color=font_color),
+        margin=dict(l=20, r=20, t=50, b=20),
+        title_font=dict(size=16, color=font_color),
+        legend=dict(orientation="h", yanchor="top", y=-0.2, xanchor="center", x=0.5, title=None)
+    )
+    fig.update_xaxes(showgrid=False, gridcolor=grid_color, zerolinecolor=grid_color)
+    fig.update_yaxes(showgrid=True, gridcolor=grid_color, zerolinecolor=grid_color)
+    
+    # Dodajemy delikatne zaokrąglenia i marginesy dla samego kontenera Plotly (w locie)
+    fig.update_layout(template="plotly_dark" if st.session_state.theme != "Jasny" else "plotly_white")
+    return fig
 
 # --- TŁUMACZENIA UI ---
 lang_map = {"Polski": "pl", "English": "en", "Deutsch": "de"}
@@ -74,9 +103,9 @@ ui_dict = {
     "win_by_day": {"pl": "Skuteczność wg dni", "en": "Win Rate by day", "de": "Erfolgsquote nach Tagen"},
     "win_reason": {"pl": "Sposób wygranej", "en": "Win reason", "de": "Gewinngrund"},
     "loss_reason": {"pl": "Sposób porażki", "en": "Loss reason", "de": "Verlustgrund"},
-    "chart_desc": {"pl": "Wysokość słupka to Win Rate (%), a kolor oznacza ilość rozegranych partii. Najedź na słupek, aby zobaczyć szczegóły.", "en": "Bar height is Win Rate (%), and color indicates the number of games played. Hover over a bar for details.", "de": "Die Balkenhöhe ist die Erfolgsquote (%) und die Farbe gibt die Anzahl der gespielten Partien an. Fahren Sie über einen Balken für Details."},
+    "chart_desc": {"pl": "Wysokość słupka to Win Rate (%). Najedź na słupek, aby zobaczyć szczegóły.", "en": "Bar height is Win Rate (%). Hover over a bar for details.", "de": "Die Balkenhöhe ist die Erfolgsquote (%). Fahren Sie über einen Balken für Details."},
     "chart_desc_comp": {"pl": "Wysokość słupka to Win Rate (%), a kolory oznaczają graczy.", "en": "Bar height is Win Rate (%), and colors represent players.", "de": "Die Balkenhöhe ist die Erfolgsquote (%) und die Farben stehen für die Spieler."},
-    "streak_desc": {"pl": "Analizuje wyniki partii w zależności od passy w ramach jednej ciągłej sesji (przerwa między partiami < 2h).", "en": "Analyzes game results based on streaks within a single session (break < 2h).", "de": "Analysiert Partien basierend auf Serien innerhalb einer Sitzung (Pause < 2h)."},
+    "streak_desc": {"pl": "Analizuje wyniki partii w zależności od passy w ramach ciągłej sesji (przerwa < 2h).", "en": "Analyzes game results based on streaks within a single session (break < 2h).", "de": "Analysiert Partien basierend auf Serien innerhalb einer Sitzung (Pause < 2h)."},
     "games_count": {"pl": "Ilość partii", "en": "Games count", "de": "Anzahl Partien"},
     "win_rate": {"pl": "Skuteczność (%)", "en": "Win Rate (%)", "de": "Erfolgsquote (%)"},
     "hour": {"pl": "Godzina", "en": "Hour", "de": "Stunde"},
@@ -87,17 +116,17 @@ ui_dict = {
 
 reason_dict = {
     "resigned": {"pl": "Rezygnacja", "en": "Resignation", "de": "Aufgabe"},
-    "timeout": {"pl": "Przekroczenie czasu", "en": "Timeout", "de": "Zeitüberschreitung"},
-    "outoftime": {"pl": "Przekroczenie czasu", "en": "Timeout", "de": "Zeitüberschreitung"},
+    "timeout": {"pl": "Czas", "en": "Timeout", "de": "Zeit"},
+    "outoftime": {"pl": "Czas", "en": "Timeout", "de": "Zeit"},
     "checkmated": {"pl": "Mat", "en": "Checkmate", "de": "Schachmatt"},
     "mate": {"pl": "Mat", "en": "Checkmate", "de": "Schachmatt"},
     "abandoned": {"pl": "Opuszczenie", "en": "Abandoned", "de": "Verlassen"},
-    "agreed": {"pl": "Remis (zgoda)", "en": "Draw (Agreed)", "de": "Remis (Vereinbarung)"},
+    "agreed": {"pl": "Remis", "en": "Draw", "de": "Remis"},
     "repetition": {"pl": "Powtórzenie", "en": "Repetition", "de": "Wiederholung"},
     "stalemate": {"pl": "Pat", "en": "Stalemate", "de": "Patt"},
     "insufficient": {"pl": "Niewyst. mat.", "en": "Insufficient", "de": "Ungenügend"},
-    "50move": {"pl": "Zasada 50 r.", "en": "50-move rule", "de": "50-Züge"},
-    "timevsinsufficient": {"pl": "Czas vs Niewyst.", "en": "Timeout vs Insuf.", "de": "Zeit vs Ungen."},
+    "50move": {"pl": "50 ruchów", "en": "50-move", "de": "50-Züge"},
+    "timevsinsufficient": {"pl": "Czas vs Niewyst.", "en": "Time vs Ins.", "de": "Zeit vs Ungen."},
     "win": {"pl": "Wygrana", "en": "Win", "de": "Sieg"}
 }
 
@@ -112,48 +141,93 @@ def t_reason(reason):
 # --- CSS (DYNAMICZNY MOTYW) ---
 css_dark = """
     .stApp { background-color: #0e1117; color: #ffffff; }
-    [data-testid="stHeader"] { background-color: #0e1117; }
-    .stMetric, div.row-widget.stRadio > div, .asym-header { background-color: #161b22; border: 1px solid #30363d; }
+    [data-testid="stHeader"] { background-color: rgba(14, 17, 23, 0); }
+    .stMetric, div.row-widget.stRadio > div, .asym-header { background-color: #161b22; border: 1px solid #30363d; border-radius: 8px;}
     [data-testid="stMetricValue"], .asym-val-w { color: #ffffff !important; }
-    .asym-label { color: #8b949e; } .asym-val-b { color: #58a6ff; }
-    .custom-info-box { background-color: rgba(88, 166, 255, 0.1); border-left: 4px solid #58a6ff; color: #e6edf3; }
-    .custom-info-title { color: #58a6ff; }
+    .custom-info-box { background-color: rgba(30, 136, 229, 0.1); border-left: 4px solid #1e88e5; color: #e6edf3; }
+    .custom-info-title { color: #1e88e5; }
+    .stButton>button[kind="primary"] { background-color: #1e88e5; color: white; border: none; }
 """
 css_light = """
-    .stApp { background-color: #ffffff; color: #000000; }
-    [data-testid="stHeader"] { background-color: #ffffff; }
-    .stMetric, div.row-widget.stRadio > div, .asym-header { background-color: #f3f4f6; border: 1px solid #d1d5db; }
+    .stApp { background-color: #f3f4f6; color: #000000; }
+    [data-testid="stHeader"] { background-color: rgba(255, 255, 255, 0); }
+    .stMetric, div.row-widget.stRadio > div, .asym-header { background-color: #ffffff; border: 1px solid #d1d5db; border-radius: 8px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); }
     [data-testid="stMetricValue"], .asym-val-w, [data-testid="stMarkdownContainer"] p, h1, h2, h3, h4, h5 { color: #000000 !important; }
     [data-testid="stMetricLabel"] { color: #4b5563 !important; }
-    .asym-label { color: #4b5563; } .asym-val-b { color: #1d4ed8; }
-    .custom-info-box { background-color: #eff6ff; border-left: 4px solid #3b82f6; color: #1f2937; }
+    .custom-info-box { background-color: #eff6ff; border-left: 4px solid #1d4ed8; color: #1f2937; }
     .custom-info-title { color: #1d4ed8; }
     .stTabs [data-baseweb="tab-list"] button { color: #4b5563; }
     .stTabs [data-baseweb="tab-list"] button[aria-selected="true"] { color: #000000; }
 """
 css_chesscom = """
-    .stApp { background-color: #312e2b; color: #ffffff; }
-    [data-testid="stHeader"] { background-color: #312e2b; }
-    .stMetric, div.row-widget.stRadio > div, .asym-header { background-color: #262421; border: 1px solid #403d39; }
+    .stApp { 
+        background-color: #2c2724;
+        background-image: linear-gradient(180deg, #3c342d 0%, #26211d 100%);
+        background-attachment: fixed;
+        color: #ffffff; 
+    }
+    [data-testid="stHeader"] { background-color: rgba(0, 0, 0, 0); }
+    .stMetric, div.row-widget.stRadio > div, .asym-header { 
+        background-color: rgba(38, 36, 33, 0.9); 
+        border: 1px solid #45413c; 
+        border-radius: 8px; 
+        box-shadow: 0 4px 6px rgba(0,0,0,0.3);
+    }
     [data-testid="stMetricValue"], .asym-val-w, [data-testid="stMarkdownContainer"] p, h1, h2, h3, h4, h5 { color: #ffffff !important; }
     [data-testid="stMetricLabel"] { color: #c3c3c0 !important; }
-    .asym-label { color: #c3c3c0; } .asym-val-b { color: #81b64c; }
-    .custom-info-box { background-color: rgba(129, 182, 76, 0.15); border-left: 4px solid #81b64c; color: #e6edf3; }
-    .custom-info-title { color: #81b64c; }
-    .stTabs [data-baseweb="tab-list"] button { color: #c3c3c0; }
-    .stTabs [data-baseweb="tab-list"] button[aria-selected="true"] { color: #ffffff; border-bottom-color: #81b64c; }
+    .custom-info-box { background-color: rgba(127, 166, 80, 0.15); border-left: 4px solid #7fa650; color: #e6edf3; }
+    .custom-info-title { color: #7fa650; }
+    .stTabs [data-baseweb="tab-list"] button { color: #8b8987; font-weight: bold; }
+    .stTabs [data-baseweb="tab-list"] button[aria-selected="true"] { color: #ffffff; border-bottom-color: #7fa650; }
+    /* Stylizacja primary button (jak przycisk Graj) */
+    .stButton>button[kind="primary"] { 
+        background-color: #7fa650; 
+        color: white; 
+        border: none; 
+        border-bottom: 4px solid #5f7d3c;
+        border-radius: 8px;
+        font-weight: bold;
+        font-size: 1.1rem;
+        transition: all 0.1s;
+    }
+    .stButton>button[kind="primary"]:active { border-bottom: 0px; transform: translateY(4px); }
+    /* Wypełnienie tła wykresów jako kart */
+    .js-plotly-plot { border-radius: 8px; overflow: hidden; box-shadow: 0 4px 6px rgba(0,0,0,0.2); border: 1px solid #45413c; }
 """
 css_neon = """
-    .stApp { background-color: #090914; color: #e0e0ff; }
-    [data-testid="stHeader"] { background-color: #090914; }
-    .stMetric, div.row-widget.stRadio > div, .asym-header { background-color: #13132b; border: 1px solid #b829ea; box-shadow: 0 0 5px rgba(184, 41, 234, 0.2); }
-    [data-testid="stMetricValue"], .asym-val-w, [data-testid="stMarkdownContainer"] p, h1, h2, h3, h4, h5 { color: #00ffff !important; text-shadow: 0 0 2px rgba(0, 255, 255, 0.3); }
-    [data-testid="stMetricLabel"] { color: #ff007f !important; }
-    .asym-label { color: #e0e0ff; } .asym-val-b { color: #00ffff; }
+    .stApp { 
+        background-color: #0a0a14; 
+        background-image: radial-gradient(circle at top right, #1a0b2e, #0a0a14);
+        background-attachment: fixed;
+        color: #e0e0ff; 
+    }
+    [data-testid="stHeader"] { background-color: rgba(0, 0, 0, 0); }
+    .stMetric, div.row-widget.stRadio > div, .asym-header { 
+        background-color: rgba(18, 18, 38, 0.85); 
+        border: 1px solid #8c43ff; 
+        border-radius: 12px;
+        box-shadow: 0 0 10px rgba(140, 67, 255, 0.2); 
+    }
+    [data-testid="stMetricValue"], .asym-val-w, [data-testid="stMarkdownContainer"] p, h1, h2, h3, h4, h5 { 
+        color: #00ffff !important; 
+        text-shadow: 0 0 4px rgba(0, 255, 255, 0.4); 
+    }
+    [data-testid="stMetricLabel"] { color: #ff007c !important; }
     .custom-info-box { background-color: rgba(0, 255, 255, 0.08); border-left: 4px solid #00ffff; color: #e0e0ff; }
-    .custom-info-title { color: #ff007f; }
-    .stTabs [data-baseweb="tab-list"] button { color: #a0a0c0; }
-    .stTabs [data-baseweb="tab-list"] button[aria-selected="true"] { color: #00ffff; border-bottom-color: #00ffff; text-shadow: 0 0 5px rgba(0,255,255,0.4); }
+    .custom-info-title { color: #ff007c; text-shadow: 0 0 5px rgba(255,0,124,0.4); }
+    .stTabs [data-baseweb="tab-list"] button { color: #6a6a8c; text-transform: uppercase; letter-spacing: 1px;}
+    .stTabs [data-baseweb="tab-list"] button[aria-selected="true"] { color: #00ffff; border-bottom-color: #00ffff; text-shadow: 0 0 8px rgba(0,255,255,0.6); }
+    .stButton>button[kind="primary"] { 
+        background-color: rgba(0, 255, 255, 0.1); 
+        color: #00ffff; 
+        border: 1px solid #00ffff; 
+        border-radius: 4px;
+        box-shadow: 0 0 10px rgba(0, 255, 255, 0.3);
+        text-transform: uppercase;
+        letter-spacing: 1px;
+    }
+    .stButton>button[kind="primary"]:hover { background-color: rgba(0, 255, 255, 0.3); box-shadow: 0 0 20px rgba(0, 255, 255, 0.6); }
+    .js-plotly-plot { border-radius: 12px; overflow: hidden; border: 1px solid #8c43ff; box-shadow: 0 0 15px rgba(140, 67, 255, 0.15); }
 """
 
 active_css = css_dark
@@ -166,18 +240,13 @@ st.markdown(f"""
     #MainMenu {{visibility: hidden;}}
     footer {{visibility: hidden;}}
     header {{visibility: hidden;}}
-    [data-testid="stMetricValue"] {{ font-size: 0.9rem !important; }}
-    [data-testid="stMetricLabel"] {{ font-size: 0.75rem !important; }}
-    .stMetric {{ padding: 8px; border-radius: 10px; }}
+    [data-testid="stMetricValue"] {{ font-size: 1.1rem !important; }}
+    [data-testid="stMetricLabel"] {{ font-size: 0.8rem !important; text-transform: uppercase; }}
+    .stMetric {{ padding: 12px; }}
     .block-container {{ padding: 1rem; top: 1rem; }}
-    div.row-widget.stRadio > div {{ flex-direction: row; justify-content: center; padding: 10px; border-radius: 10px; }}
-    .asym-row {{ display: flex; justify-content: space-between; align-items: center; padding: 12px; border-bottom: 1px solid #30363d; text-align: center; }}
-    .asym-val-w {{ width: 35%; font-size: 1.2rem; font-weight: bold; }}
-    .asym-label {{ width: 30%; font-size: 0.75rem; text-transform: uppercase; letter-spacing: 1px; }}
-    .asym-val-b {{ width: 35%; font-size: 1.2rem; font-weight: bold; }}
-    .asym-header {{ display: flex; justify-content: space-between; padding: 8px; border-radius: 8px; font-weight: bold; margin-bottom: 5px; font-size: 0.8rem;}}
-    .custom-info-box {{ padding: 12px; border-radius: 8px; margin-bottom: 16px; }}
-    .custom-info-title {{ font-weight: bold; margin-bottom: 6px; }}
+    div.row-widget.stRadio > div {{ flex-direction: row; justify-content: center; padding: 10px; }}
+    .custom-info-box {{ padding: 16px; border-radius: 8px; margin-bottom: 16px; }}
+    .custom-info-title {{ font-weight: bold; margin-bottom: 8px; font-size: 1.1rem; }}
     
     /* Ukrywanie obramowania i tła zębatki ustawień */
     [data-testid="stPopover"] > button {{
@@ -186,9 +255,6 @@ st.markdown(f"""
         box-shadow: none !important;
         padding: 0 !important;
         color: inherit !important;
-    }}
-    [data-testid="stPopover"] > button:hover {{
-        color: #58a6ff !important;
     }}
     
     {active_css}
@@ -397,14 +463,14 @@ if st.session_state.data is None:
     with c_l2.expander("⚙️ Ustawienia"):
         st.selectbox("🌍 Język UI", ["Polski", "English", "Deutsch"], key="ui_lang")
         st.selectbox("♟️ Język Debiutów", ["Polski", "English", "Deutsch"], key="op_lang")
-        st.radio("🎨 Motyw", ["Ciemny", "Jasny", "Chess.com", "Neon Retro"], key="theme", horizontal=True)
+        st.radio("🎨 Motyw", ["Chess.com", "Neon Retro", "Ciemny", "Jasny"], key="theme", horizontal=True)
 
     log_m = st.radio("Zasięg:", ["Jeden profil", "Połącz profile (C+L)"], horizontal=True)
     if log_m == "Jeden profil":
         c1, c2 = st.columns([1, 4])
         plat = c1.selectbox("Plat:", ["Chess.com", "Lichess"])
         nick = c2.text_input("Nick:")
-        if st.button(t("btn_analize"), use_container_width=True):
+        if st.button(t("btn_analize"), type="primary", use_container_width=True):
             if nick:
                 with st.spinner("Pobieranie..."):
                     f = fetch_data(nick, plat)
@@ -413,7 +479,7 @@ if st.session_state.data is None:
         c1, c2 = st.columns(2)
         p1, n1 = c1.selectbox("P1:", ["Chess.com", "Lichess"]), c1.text_input("Nick 1:")
         p2, n2 = c2.selectbox("P2:", ["Lichess", "Chess.com"]), c2.text_input("Nick 2:")
-        if st.button(t("btn_connect"), use_container_width=True):
+        if st.button(t("btn_connect"), type="primary", use_container_width=True):
             if n1 and n2:
                 with st.spinner("Łączenie..."):
                     f1, f2 = fetch_data(n1, p1), fetch_data(n2, p2)
@@ -430,9 +496,10 @@ else:
     
     # EKRAN GŁÓWNY APLIKACJI - Flexbox dla avatara i nicku
     if profile.get("avatar"):
+        border_color = cw if st.session_state.theme == "Neon Retro" else "#45413c"
         st.markdown(f"""
             <div style="display: flex; align-items: center; gap: 15px; margin-bottom: 15px;">
-                <img src="{profile.get("avatar")}" width="60" style="border-radius: 10px; border: 1px solid {cw};">
+                <img src="{profile.get("avatar")}" width="60" style="border-radius: 10px; border: 2px solid {border_color}; box-shadow: 0 4px 6px rgba(0,0,0,0.3);">
                 <h2 style="margin: 0; padding: 0;">{username}</h2>
             </div>
         """, unsafe_allow_html=True)
@@ -444,7 +511,7 @@ else:
         c_l_ui, c_l_op = st.columns(2)
         c_l_ui.selectbox("🌍 Język UI", ["Polski", "English", "Deutsch"], key="ui_lang")
         c_l_op.selectbox("♟️ Język Debiutów", ["Polski", "English", "Deutsch"], key="op_lang")
-        st.radio("🎨 Motyw", ["Ciemny", "Jasny", "Chess.com", "Neon Retro"], key="theme", horizontal=True)
+        st.radio("🎨 Motyw", ["Chess.com", "Neon Retro", "Ciemny", "Jasny"], key="theme", horizontal=True)
         
         c_btn1, c_btn2 = st.columns(2)
         with c_btn1:
@@ -465,7 +532,7 @@ else:
                 st.rerun()
                 
         with c_btn2:
-            if st.button(t("btn_change"), use_container_width=True):
+            if st.button(t("btn_change"), type="primary", use_container_width=True):
                 for k in ['data','data2','url','user','user2','plat2']: st.session_state[k] = None if k in ['data','data2','url'] else ""
                 st.session_state.platforms = []; st.rerun()
     
@@ -523,20 +590,29 @@ else:
                 for m in ["Rapid", "Blitz", "Bullet"]:
                     mdf = df_f[df_f["Tryb"] == m].sort_values("Timestamp")
                     if not mdf.empty:
-                        st.plotly_chart(px.line(mdf, x="Timestamp", y="ELO", color="Konto", title=f"Ranking {m}", markers=True).update_layout(xaxis_title="", yaxis_title="ELO", height=300, margin=dict(l=0, r=0, t=20, b=0), legend=dict(orientation="h", yanchor="top", y=-0.25, xanchor="center", x=0.5, title=None)), use_container_width=True)
+                        fig_elo = px.line(mdf, x="Timestamp", y="ELO", color="Konto", title=f"Ranking {m}", markers=True)
+                        fig_elo = style_chart(fig_elo)
+                        st.plotly_chart(fig_elo, use_container_width=True)
 
                 st.divider()
                 c1, c2 = st.columns(2)
                 df_f_pie = df_f.copy()
                 df_f_pie["Powod_T"] = df_f_pie["Powod"].apply(t_reason)
-                c1.plotly_chart(px.pie(df_f_pie[df_f_pie["Wynik"]=="Wygrane"], names="Powod_T", hole=0.4, title=t("win_reason"), color_discrete_sequence=[cw, "#5ab4ac", "#d8b365", "#01665e"]), use_container_width=True)
-                c2.plotly_chart(px.pie(df_f_pie[df_f_pie["Wynik"]=="Przegrane"], names="Powod_T", hole=0.4, title=t("loss_reason"), color_discrete_sequence=[cl, "#c51b7d", "#e9a3c9", "#4d9221"]), use_container_width=True)
+                
+                fig_pie_w = px.pie(df_f_pie[df_f_pie["Wynik"]=="Wygrane"], names="Powod_T", hole=0.4, title=t("win_reason"), color_discrete_sequence=[cw, "#5ab4ac", "#d8b365", "#01665e"])
+                fig_pie_w = style_chart(fig_pie_w)
+                c1.plotly_chart(fig_pie_w, use_container_width=True)
+                
+                fig_pie_l = px.pie(df_f_pie[df_f_pie["Wynik"]=="Przegrane"], names="Powod_T", hole=0.4, title=t("loss_reason"), color_discrete_sequence=[cl, "#c51b7d", "#e9a3c9", "#4d9221"])
+                fig_pie_l = style_chart(fig_pie_l)
+                c2.plotly_chart(fig_pie_l, use_container_width=True)
 
             with t_hist:
                 st.write("### Aktywność i wyniki dzienne")
                 act_df = df_f.groupby(["Data", "Wynik"]).size().reset_index(name="Partie")
                 fig_act = px.bar(act_df, x="Data", y="Partie", color="Wynik", title="Ilość gier w czasie", color_discrete_map={"Wygrane":cw, "Remisy":cd, "Przegrane":cl})
-                fig_act.update_layout(legend=dict(orientation="h", yanchor="top", y=-0.2, xanchor="center", x=0.5, title=None), barmode='stack')
+                fig_act.update_layout(barmode='stack')
+                fig_act = style_chart(fig_act)
                 st.plotly_chart(fig_act, use_container_width=True)
                 
                 mon = df_f.groupby("Miesiąc").agg(G=('Wynik','count'), W=('Wynik',lambda x:(x=='Wygrane').sum()), R=('Wynik',lambda x:(x=='Remisy').sum()), L=('Wynik',lambda x:(x=='Przegrane').sum())).reset_index().sort_values("Miesiąc", ascending=False)
@@ -547,10 +623,10 @@ else:
                 h_st = df_f.groupby("Godzina").agg(G=('Wynik', 'count'), W=('Wynik', lambda x: (x == 'Wygrane').sum())).reset_index()
                 h_st["Win%"] = (h_st["W"] / h_st["G"] * 100).round(0).astype(int)
                 
-                st.subheader(t("win_by_hour"), help=t("chart_desc"))
-                fig_h = px.bar(h_st, x="Godzina", y="Win%", color="G", color_continuous_scale=c_scale, labels={"Godzina": t("hour"), "Win%": t("win_rate"), "G": t("games_count")})
-                fig_h.update_layout(coloraxis_showscale=False, title="", xaxis=dict(tickmode='linear', tick0=0, dtick=1, tickangle=0))
+                fig_h = px.bar(h_st, x="Godzina", y="Win%", color="G", color_continuous_scale=c_scale, labels={"Godzina": t("hour"), "Win%": t("win_rate"), "G": t("games_count")}, title=t("win_by_hour"))
+                fig_h.update_layout(coloraxis_showscale=False)
                 fig_h.update_yaxes(range=[0, 100])
+                fig_h = style_chart(fig_h)
                 st.plotly_chart(fig_h, use_container_width=True)
                 
                 st.write("") 
@@ -558,10 +634,10 @@ else:
                 d_st = df_f.groupby(["Dzień", "Dzień_Nr"]).agg(G=('Wynik', 'count'), W=('Wynik', lambda x: (x == 'Wygrane').sum())).reset_index().sort_values("Dzień_Nr")
                 d_st["Win%"] = (d_st["W"] / d_st["G"] * 100).round(0).astype(int)
                 
-                st.subheader(t("win_by_day"), help=t("chart_desc"))
-                fig_d = px.bar(d_st, x="Dzień", y="Win%", color="G", color_continuous_scale=c_scale, labels={"Dzień": t("day"), "Win%": t("win_rate"), "G": t("games_count")})
-                fig_d.update_layout(coloraxis_showscale=False, title="", xaxis=dict(tickangle=0))
+                fig_d = px.bar(d_st, x="Dzień", y="Win%", color="G", color_continuous_scale=c_scale, labels={"Dzień": t("day"), "Win%": t("win_rate"), "G": t("games_count")}, title=t("win_by_day"))
+                fig_d.update_layout(coloraxis_showscale=False)
                 fig_d.update_yaxes(range=[0, 100])
+                fig_d = style_chart(fig_d)
                 st.plotly_chart(fig_d, use_container_width=True)
                 
                 st.write("")
@@ -571,10 +647,10 @@ else:
                 dst["Win%"] = (dst["W"] / dst["G"] * 100).round(0).astype(int)
                 order = ["0-20", "21-30", "31-40", "41-50", "51-60", "61-70", "71+"]
                 
-                st.subheader(t("win_by_length"), help=t("chart_desc"))
-                fig_dur = px.bar(dst.sort_values("Bin", key=lambda x: [order.index(i) for i in x]), x="Bin", y="Win%", color="G", color_continuous_scale=c_scale, labels={"Bin": t("length"), "Win%": t("win_rate"), "G": t("games_count")})
-                fig_dur.update_layout(coloraxis_showscale=False, showlegend=False, xaxis_title="", title="")
+                fig_dur = px.bar(dst.sort_values("Bin", key=lambda x: [order.index(i) for i in x]), x="Bin", y="Win%", color="G", color_continuous_scale=c_scale, labels={"Bin": t("length"), "Win%": t("win_rate"), "G": t("games_count")}, title=t("win_by_length"))
+                fig_dur.update_layout(coloraxis_showscale=False)
                 fig_dur.update_yaxes(range=[0, 100])
+                fig_dur = style_chart(fig_dur)
                 st.plotly_chart(fig_dur, use_container_width=True)
                 
                 st.write("")
@@ -601,7 +677,10 @@ else:
                         if not sub.empty: t_res.append({"Typ": n, "Seria": f"{c} z rzędu", "Win%": int(round((sub['Wynik']=='Wygrane').sum()/len(sub)*100,0)), "Partie": len(sub)})
                     sub5 = df_t[(df_t['ST'] == s) & (df_t['SC'] >= 5)] 
                     if not sub5.empty: t_res.append({"Typ": n, "Seria": "5+ z rzędu", "Win%": int(round((sub5['Wynik']=='Wygrane').sum()/len(sub5)*100,0)), "Partie": len(sub5)})
-                if t_res: st.plotly_chart(px.bar(pd.DataFrame(t_res), x="Seria", y="Win%", color="Typ", barmode='group', text="Win%", hover_data=["Partie"], color_discrete_map={"Po serii Wygranych":cw, "Po serii Porażek":cl}).update_layout(legend=dict(orientation="h", yanchor="top", y=-0.2, xanchor="center", x=0.5, title=None)), use_container_width=True)
+                if t_res: 
+                    fig_str = px.bar(pd.DataFrame(t_res), x="Seria", y="Win%", color="Typ", barmode='group', text="Win%", hover_data=["Partie"], color_discrete_map={"Po serii Wygranych":cw, "Po serii Porażek":cl}, title="Skuteczność po seriach")
+                    fig_str = style_chart(fig_str)
+                    st.plotly_chart(fig_str, use_container_width=True)
 
             with t_deb:
                 c_w1, c_b1 = st.columns(2)
@@ -650,7 +729,7 @@ else:
                     ana["label"] = ana.apply(lambda x: f"{x['Data']} {x['Timestamp'].strftime('%H:%M')} | {x['Tryb']} vs {x['Przeciwnik']} ({'C' if x['Platforma'] == 'Chess.com' else 'L'}) ({get_res(x['Wynik'])})", axis=1)
                     sel = st.selectbox("Mecz:", ana.sort_values("Timestamp", ascending=False)["label"])
                     g_sel = ana[ana["label"] == sel].iloc[0]
-                    if st.button("Przygotuj analizę", use_container_width=True):
+                    if st.button("Przygotuj analizę", type="primary", use_container_width=True):
                         st.session_state.url = g_sel["Link"] if g_sel["Platforma"]=="Lichess" else import_to_lichess(g_sel["PGN_Raw"]); st.rerun()
                     if st.session_state.url: st.markdown(f'<a href="{st.session_state.url}" target="_blank" style="display:block; width:100%; text-align:center; background-color:{cw}; color:white; padding:12px; border-radius:8px; text-decoration:none; font-weight:bold; margin-top:10px;">ANALIZA ➡️</a>', unsafe_allow_html=True)
                 else:
@@ -661,7 +740,7 @@ else:
         p2 = c2.selectbox("Platforma rywala:", ["Chess.com", "Lichess"])
         n2 = c2.text_input("Nick rywala:")
         
-        if st.button(t("btn_rival"), use_container_width=True):
+        if st.button(t("btn_rival"), type="primary", use_container_width=True):
             if n2:
                 with st.spinner(f"Pobieranie danych dla {n2}..."):
                     f2 = fetch_data(n2, p2)
@@ -784,18 +863,17 @@ else:
                     df_win = df_r_comb[df_r_comb["Wynik"] == "Wygrane"].groupby(["Powod_T", "Gracz"]).size().reset_index(name="Ilość")
                     if not df_win.empty:
                         fig_r_w = px.bar(df_win, x="Powod_T", y="Ilość", color="Gracz", barmode="group", title="Sposób wygranej", color_discrete_sequence=[cp1, cp2])
-                        fig_r_w.update_layout(legend=dict(orientation="h", yanchor="top", y=-0.2, xanchor="center", x=0.5, title=None))
+                        fig_r_w = style_chart(fig_r_w)
                         c_r1.plotly_chart(fig_r_w, use_container_width=True)
 
                     df_loss = df_r_comb[df_r_comb["Wynik"] == "Przegrane"].groupby(["Powod_T", "Gracz"]).size().reset_index(name="Ilość")
                     if not df_loss.empty:
                         fig_r_l = px.bar(df_loss, x="Powod_T", y="Ilość", color="Gracz", barmode="group", title="Sposób porażki", color_discrete_sequence=[cp1, cp2])
-                        fig_r_l.update_layout(legend=dict(orientation="h", yanchor="top", y=-0.2, xanchor="center", x=0.5, title=None))
+                        fig_r_l = style_chart(fig_r_l)
                         c_r2.plotly_chart(fig_r_l, use_container_width=True)
 
             with tabs[1]:
                 if not df1_c.empty and not df2_c.empty:
-                    st.write("### Porównanie aktywności dziennej")
                     act_df1 = df1_c.groupby("Data").size().reset_index(name="Partie")
                     act_df1["Gracz"] = u1
                     act_df2 = df2_c.groupby("Data").size().reset_index(name="Partie")
@@ -803,9 +881,9 @@ else:
                     act_comb = pd.concat([act_df1, act_df2])
                     
                     fig_act_c = px.bar(act_comb, x="Data", y="Partie", color="Gracz", barmode="group", 
-                                   title="Ilość gier w czasie",
+                                   title="Aktywność dzienna",
                                    color_discrete_sequence=[cp1, cp2])
-                    fig_act_c.update_layout(legend=dict(orientation="h", yanchor="top", y=-0.2, xanchor="center", x=0.5, title=None))
+                    fig_act_c = style_chart(fig_act_c)
                     st.plotly_chart(fig_act_c, use_container_width=True)
                     
                     st.write("### Zmiana ELO w czasie")
@@ -821,7 +899,7 @@ else:
                             if not mdf.empty:
                                 fig_elo_c = px.line(mdf, x="Timestamp", y="ELO", color="Gracz", title=f"Ranking {m}",
                                                     color_discrete_sequence=[cp1, cp2])
-                                fig_elo_c.update_layout(xaxis_title="", yaxis_title="ELO", height=300, margin=dict(l=0, r=0, t=30, b=0), legend=dict(orientation="h", yanchor="top", y=-0.25, xanchor="center", x=0.5, title=None))
+                                fig_elo_c = style_chart(fig_elo_c)
                                 st.plotly_chart(fig_elo_c, use_container_width=True)
                 else:
                     st.info("Brak wystarczających danych do wygenerowania wykresów dla podanego filtru.")
@@ -838,14 +916,13 @@ else:
                     
                     h_comb = pd.concat([h_df1, h_df2])
                     
-                    st.subheader(t("win_by_hour"), help=t("chart_desc_comp"))
-                    fig_h = px.bar(h_comb, x="Godzina", y="Win%", color="Gracz", barmode="group", 
+                    fig_h_c = px.bar(h_comb, x="Godzina", y="Win%", color="Gracz", barmode="group", 
                                    labels={"Godzina": t("hour"), "Win%": t("win_rate"), "G": t("games_count"), "Gracz": t("player")},
                                    hover_data={"G": True},
-                                   color_discrete_sequence=[cp1, cp2])
-                    fig_h.update_layout(title="", xaxis=dict(tickmode='linear', tick0=0, dtick=1, tickangle=0), legend=dict(orientation="h", yanchor="top", y=-0.2, xanchor="center", x=0.5, title=None))
-                    fig_h.update_yaxes(range=[0, 100])
-                    st.plotly_chart(fig_h, use_container_width=True)
+                                   color_discrete_sequence=[cp1, cp2], title=t("win_by_hour"))
+                    fig_h_c.update_yaxes(range=[0, 100])
+                    fig_h_c = style_chart(fig_h_c)
+                    st.plotly_chart(fig_h_c, use_container_width=True)
                 
                 st.write("") 
                 
@@ -860,13 +937,12 @@ else:
                     
                     d_comb = pd.concat([d_df1, d_df2]).sort_values("Dzień_Nr")
                     
-                    st.subheader(t("win_by_day"), help=t("chart_desc_comp"))
                     fig_d_c = px.bar(d_comb, x="Dzień", y="Win%", color="Gracz", barmode="group", 
                                      labels={"Dzień": t("day"), "Win%": t("win_rate"), "Gracz": t("player")},
                                      hover_data={"G": True},
-                                     color_discrete_sequence=[cp1, cp2])
-                    fig_d_c.update_layout(title="", xaxis_title="", legend=dict(orientation="h", yanchor="top", y=-0.2, xanchor="center", x=0.5, title=None))
+                                     color_discrete_sequence=[cp1, cp2], title=t("win_by_day"))
                     fig_d_c.update_yaxes(range=[0, 100])
+                    fig_d_c = style_chart(fig_d_c)
                     st.plotly_chart(fig_d_c, use_container_width=True)
                 
                 st.write("") 
@@ -884,18 +960,16 @@ else:
                     b_df2["Gracz"] = u2
                     
                     b_comb = pd.concat([b_df1, b_df2])
-                    
                     order = ["0-20", "21-30", "31-40", "41-50", "51-60", "61-70", "71+"]
                     
-                    st.subheader(t("win_by_length"), help=t("chart_desc_comp"))
-                    fig_b = px.bar(b_comb.sort_values("Bin", key=lambda x: [order.index(i) for i in x]), 
+                    fig_b_c = px.bar(b_comb.sort_values("Bin", key=lambda x: [order.index(i) for i in x]), 
                                    x="Bin", y="Win%", color="Gracz", barmode="group", 
                                    labels={"Bin": t("length"), "Win%": t("win_rate"), "G": t("games_count"), "Gracz": t("player")},
                                    hover_data={"G": True},
-                                   color_discrete_sequence=[cp1, cp2])
-                    fig_b.update_layout(title="", xaxis_title="", legend=dict(orientation="h", yanchor="top", y=-0.2, xanchor="center", x=0.5, title=None))
-                    fig_b.update_yaxes(range=[0, 100])
-                    st.plotly_chart(fig_b, use_container_width=True)
+                                   color_discrete_sequence=[cp1, cp2], title=t("win_by_length"))
+                    fig_b_c.update_yaxes(range=[0, 100])
+                    fig_b_c = style_chart(fig_b_c)
+                    st.plotly_chart(fig_b_c, use_container_width=True)
 
             with tabs[3]:
                 st.write("### 🛡️ Najpopularniejsze Debiuty")
@@ -945,8 +1019,7 @@ else:
                                           x="Partia_Nr", y="value", color="variable", 
                                           title="Wyścig zwycięstw H2H",
                                           color_discrete_sequence=[cp1, cp2])
-                        fig_h2h.update_layout(xaxis_title="Numer partii", yaxis_title="Suma wygranych", 
-                                              legend=dict(orientation="h", yanchor="top", y=-0.25, xanchor="center", x=0.5, title=None))
+                        fig_h2h = style_chart(fig_h2h)
                         st.plotly_chart(fig_h2h, use_container_width=True)
                         
                         st.write("**Historia spotkań:**")

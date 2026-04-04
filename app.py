@@ -1,4 +1,4 @@
-import streamlit as st 
+Import streamlit as st 
 import requests
 import pandas as pd
 import plotly.express as px
@@ -934,7 +934,7 @@ else:
                     df2_c["Bin"] = df2_c["Ruchy"].apply(get_duration_bin)
                     
                     b_df1 = df1_c.groupby("Bin").agg(G=('Wynik', 'count'), W=('Wynik', lambda x: (x == 'Wygrane').sum())).reset_index()
-                    b_df1["Win%"] = (b_df1["W"] / b_df1["G"] * 100).round(0).astype(int)
+                    b_df1["Win%"] = (b_df1["W"] / b_. ["G"] * 100).round(0).astype(int)
                     b_df1["Gracz"] = u1
                     
                     b_df2 = df2_c.groupby("Bin").agg(G=('Wynik', 'count'), W=('Wynik', lambda x: (x == 'Wygrane').sum())).reset_index()
@@ -982,37 +982,27 @@ else:
                     if not h2.empty:
                         h2_w, h2_d, h2_l = (h2["Wynik"] == "Wygrane").sum(), (h2["Wynik"] == "Remisy").sum(), (h2["Wynik"] == "Przegrane").sum()
                         
-                        # --- MODYFIKACJA NA WZÓR ZDJĘCIA ---
-                        h2_html = f"""
-                        <div style="
-                            background-color: {chart_bg}; 
-                            padding: 30px; 
-                            border-radius: 12px; 
-                            margin: 20px 0; 
-                            border: 1px solid {grid_color};
-                            box-shadow: 0 10px 30px rgba(0,0,0,0.3);
-                        ">
-                            <div style="display: flex; justify-content: space-between; align-items: center; max-width: 850px; margin: 0 auto;">
-                                <div style="text-align: right; flex: 1;">
-                                    <div style="color: {cp1}; font-size: 1.5rem; font-weight: bold; margin-bottom: 5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">{u1}</div>
-                                    <div style="color: {cp1}; font-size: 5.5rem; font-weight: 800; line-height: 1;">{h2_w}</div>
-                                </div>
-
-                                <div style="text-align: center; padding: 0 35px; border-left: 2px solid {grid_color}; border-right: 2px solid {grid_color}; margin: 0 25px;">
-                                    <div style="color: {font_color}; font-size: 0.85rem; font-weight: bold; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 15px; opacity: 0.7;">REMISY: {h2_d}</div>
-                                    <div style="color: {font_color}; font-size: 0.85rem; font-weight: bold; text-transform: uppercase; letter-spacing: 1px; opacity: 0.7;">RAZEM:<br><span style="font-size: 1.6rem; color: {font_color}; display: inline-block; margin-top: 5px;">{len(h2)}</span></div>
-                                </div>
-
-                                <div style="text-align: left; flex: 1;">
-                                    <div style="color: {cp2}; font-size: 1.5rem; font-weight: bold; margin-bottom: 5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">{u2}</div>
-                                    <div style="color: {cp2}; font-size: 5.5rem; font-weight: 800; line-height: 1;">{h2_l}</div>
-                                </div>
-                            </div>
-                        </div>
-                        """
+                        border_css = f"border: 1px solid {grid_color};" if st.session_state.theme != "Chess.com" else "box-shadow: 0 4px 6px rgba(0,0,0,0.3);"
+                        h2_html = (
+                            f"<div style='background-color: {chart_bg}; padding: 20px; border-radius: 8px; margin-bottom: 30px; {border_css}'>"
+                            f"<div style='display: flex; justify-content: space-between; align-items: center; width: 100%; max-width: 600px; margin: 0 auto;'>"
+                            f"<div style='text-align: right; width: 33%;'>"
+                            f"<div style='color: {cp1}; font-size: 1.1rem; margin-bottom: 5px; font-weight: bold; overflow: hidden; text-overflow: ellipsis;'>{u1}</div>"
+                            f"<div style='color: {cp1}; font-size: 2.2rem; font-weight: bold; line-height: 1;'>{h2_w}</div>"
+                            f"</div>"
+                            f"<div style='text-align: center; width: 33%; border-left: 1px solid {grid_color}; border-right: 1px solid {grid_color}; padding: 0 10px;'>"
+                            f"<div style='color: {font_color}; font-size: 0.8rem; font-weight: bold; margin-bottom: 8px;'>REMISY: {h2_d}</div>"
+                            f"<div style='color: {font_color}; font-size: 0.8rem; font-weight: bold;'>RAZEM:<br><span style='font-size: 1.1rem; color: {font_color}; display: inline-block; margin-top: 4px;'>{len(h2)}</span></div>"
+                            f"</div>"
+                            f"<div style='text-align: left; width: 33%;'>"
+                            f"<div style='color: {cp2}; font-size: 1.1rem; margin-bottom: 5px; font-weight: bold; overflow: hidden; text-overflow: ellipsis;'>{u2}</div>"
+                            f"<div style='color: {cp2}; font-size: 2.2rem; font-weight: bold; line-height: 1;'>{h2_l}</div>"
+                            f"</div>"
+                            f"</div>"
+                            f"</div>"
+                        )
                         st.markdown(h2_html, unsafe_allow_html=True)
                         
-                        # --- DODATKOWE INFORMACJE PONIŻEJ ---
                         h2["Partia_Nr"] = h2.index + 1
                         h2["Ty"], h2[u2] = (h2["Wynik"]=="Wygrane").cumsum(), (h2["Wynik"]=="Przegrane").cumsum()
                         
@@ -1026,3 +1016,4 @@ else:
                         st.dataframe(h2[["Data", "Tryb", "Kolor", "Wynik", "Ruchy", "Debiut"]].sort_values("Data", ascending=False), use_container_width=True, hide_index=True)
                     else: 
                         st.info(f"Brak zarejestrowanych bezpośrednich partii pomiędzy **{u1}** a **{u2}** (przy obecnych filtrach).")
+

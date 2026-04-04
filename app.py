@@ -2,10 +2,13 @@ import streamlit as st
 import requests
 import pandas as pd
 import plotly.express as px
-from datetime import datetime
+from datetime import datetime, date
 import re
 import json
 import streamlit.components.v1 as components
+
+# --- KONFIGURACJA STRONY (MUSI BYĆ PIERWSZA) ---
+st.set_page_config(page_title="ChessStats", page_icon="♟️", layout="wide")
 
 # --- INICJALIZACJA STANU SESJI (USTAWIENIA) ---
 if 'ui_lang' not in st.session_state: st.session_state.ui_lang = "Polski"
@@ -15,9 +18,6 @@ if 'cw_solo' not in st.session_state: st.session_state.cw_solo = True
 if 'cb_solo' not in st.session_state: st.session_state.cb_solo = True
 if 'cw_por' not in st.session_state: st.session_state.cw_por = True
 if 'cb_por' not in st.session_state: st.session_state.cb_por = True
-
-# --- KONFIGURACJA STRONY ---
-st.set_page_config(page_title="ChessStats", page_icon="♟️", layout="wide")
 
 bg_dict = {
     "Jasny": "#f3f4f6", 
@@ -570,11 +570,11 @@ else:
                 df_f = df_f[(df_f["Data"] >= d_r[0]) & (df_f["Data"] <= d_r[1])]
             elif len(d_r) == 1:
                 df_f = df_f[df_f["Data"] == d_r[0]]
-        elif isinstance(d_r, datetime.date):
+        elif isinstance(d_r, date):
             df_f = df_f[df_f["Data"] == d_r]
             
-        df_f = df_f[df_f["Kolor"].isin(s_c) & (df_f["Godzina"] >= s_h[0]) & (df_f["Godzina"] <= s_h[1])]
-        if s_m != "Wszystkie": df_f = df_f[df_f["Tryb"] == s_m]
+        df_f = df_f[df_f["Kolor"].isin(s_c) & (df_f["Godzina"] >= s_h[0]) & (df_f["Godzina"] <= s_h[1])].copy()
+        if s_m != "Wszystkie": df_f = df_f[df_f["Tryb"] == s_m].copy()
 
         if not df_f.empty:
             t_stat, t_hist, t_czas, t_deb, t_ana = st.tabs(["📊 Statystyki", "📅 Historia", "⏳ Czas", "🔬 Debiuty", "🧠 Analiza"])
@@ -585,9 +585,9 @@ else:
                 k1.metric("Partie", len(df_f)); k2.metric("W/R/P", f"{w}/{d}/{l}"); k3.metric("Win%", f"{int(round(w/len(df_f)*100,0))}%")
                 
                 mod_w = df_f[df_f["Kolor"] == "Białe"]["Debiut_Grupa"].mode()
-                fav_w = mod_w[0] if not mod_w.empty else "Brak"
+                fav_w = mod_w.iloc[0] if not mod_w.empty else "Brak"
                 mod_b = df_f[df_f["Kolor"] == "Czarne"]["Debiut_Grupa"].mode()
-                fav_b = mod_b[0] if not mod_b.empty else "Brak"
+                fav_b = mod_b.iloc[0] if not mod_b.empty else "Brak"
                 
                 info_html = (
                     f"<div style='background-color: {chart_bg}; padding: 15px; border-radius: 5px; margin-bottom: 20px; border-left: 4px solid {cw}; box-shadow: 0 4px 6px rgba(0,0,0,0.3);'>"
@@ -818,12 +818,12 @@ else:
                     df1_c = df1_c[df1_c["Data"] == dr_c[0]]
                     df2_c = df2_c[df2_c["Data"] == dr_c[0]]
                 
-            df1_c = df1_c[df1_c["Kolor"].isin(sc_c) & (df1_c["Godzina"] >= sh_c[0]) & (df1_c["Godzina"] <= sh_c[1])]
-            df2_c = df2_c[df2_c["Kolor"].isin(sc_c) & (df2_c["Godzina"] >= sh_c[0]) & (df2_c["Godzina"] <= sh_c[1])]
+            df1_c = df1_c[df1_c["Kolor"].isin(sc_c) & (df1_c["Godzina"] >= sh_c[0]) & (df1_c["Godzina"] <= sh_c[1])].copy()
+            df2_c = df2_c[df2_c["Kolor"].isin(sc_c) & (df2_c["Godzina"] >= sh_c[0]) & (df2_c["Godzina"] <= sh_c[1])].copy()
             
             if sm_c != "Wszystkie":
-                df1_c = df1_c[df1_c["Tryb"] == sm_c]
-                df2_c = df2_c[df2_c["Tryb"] == sm_c]
+                df1_c = df1_c[df1_c["Tryb"] == sm_c].copy()
+                df2_c = df2_c[df2_c["Tryb"] == sm_c].copy()
 
             tabs_names = ["📊 Ogólne Statystyki", "📅 Historia", "⏳ Czas", "🔬 Debiuty"]
             if p2_p in user_plats: tabs_names.append("🥊 H2H")

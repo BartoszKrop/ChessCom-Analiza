@@ -5,151 +5,43 @@ import plotly.express as px
 from datetime import datetime
 import re
 import json
-import streamlit.components.v1 as components
-
-# --- INICJALIZACJA STANU SESJI (USTAWIENIA) ---
-if 'ui_lang' not in st.session_state: st.session_state.ui_lang = "Polski"
-if 'op_lang' not in st.session_state: st.session_state.op_lang = "Polski"
-if 'theme' not in st.session_state: st.session_state.theme = "Ciemny"
-if 'cw_solo' not in st.session_state: st.session_state.cw_solo = True
-if 'cb_solo' not in st.session_state: st.session_state.cb_solo = True
-if 'cw_por' not in st.session_state: st.session_state.cw_por = True
-if 'cb_por' not in st.session_state: st.session_state.cb_por = True
 
 # --- KONFIGURACJA STRONY ---
-st.set_page_config(page_title="Analizy Szachowe", page_icon="♟️", layout="wide")
+st.set_page_config(page_title="ChessStats", page_icon="♟️", layout="wide")
 
-bg_color = "#ffffff" if st.session_state.theme == "Jasny" else "#0e1117"
-components.html(
-    f"""
-    <script>
-        const meta = window.parent.document.createElement('meta');
-        meta.name = "theme-color";
-        meta.content = "{bg_color}";
-        window.parent.document.head.appendChild(meta);
-    </script>
-    """, height=0, width=0
-)
-
-# --- TŁUMACZENIA UI ---
-lang_map = {"Polski": "pl", "English": "en", "Deutsch": "de"}
-ui_dict = {
-    "title": {"pl": "Analizy Szachowe", "en": "Chess Analytics", "de": "Schachanalysen"},
-    "btn_analize": {"pl": "Analizuj", "en": "Analyze", "de": "Analysieren"},
-    "btn_connect": {"pl": "Połącz i Analizuj", "en": "Merge & Analyze", "de": "Zusammenführen & Analysieren"},
-    "btn_refresh": {"pl": "Odśwież", "en": "Refresh", "de": "Aktualisieren"},
-    "btn_change": {"pl": "Zmień gracza", "en": "Change player", "de": "Spieler wechseln"},
-    "btn_rival": {"pl": "Pobierz dane rywala", "en": "Fetch rival data", "de": "Gegnerdaten abrufen"},
-    "filters": {"pl": "🔍 Filtry", "en": "🔍 Filters", "de": "🔍 Filter"},
-    "color_white": {"pl": "Białe", "en": "White", "de": "Weiß"},
-    "color_black": {"pl": "Czarne", "en": "Black", "de": "Schwarz"},
-    "fav_op": {"pl": "Ulubione debiuty", "en": "Favorite Openings", "de": "Lieblingseröffnungen"},
-    "win_by_hour": {"pl": "Skuteczność wg godzin", "en": "Win Rate by hour", "de": "Erfolgsquote nach Stunden"},
-    "win_by_length": {"pl": "Skuteczność wg długości partii", "en": "Win Rate by game length", "de": "Erfolgsquote nach Partielänge"},
-    "win_by_day": {"pl": "Skuteczność wg dni", "en": "Win Rate by day", "de": "Erfolgsquote nach Tagen"},
-    "chart_desc": {"pl": "💡 Wysokość słupka to Win Rate (%), a kolor oznacza ilość rozegranych partii. Najedź na słupek, aby zobaczyć szczegóły.", "en": "💡 Bar height is Win Rate (%), and color indicates the number of games played. Hover over a bar for details.", "de": "💡 Die Balkenhöhe ist die Erfolgsquote (%) und die Farbe gibt die Anzahl der gespielten Partien an. Fahren Sie über einen Balken für Details."},
-    "chart_desc_comp": {"pl": "💡 Wysokość słupka to Win Rate (%), a kolory oznaczają graczy. Najedź na słupek, aby zobaczyć ilość partii.", "en": "💡 Bar height is Win Rate (%), and colors represent players. Hover over a bar to see game counts.", "de": "💡 Die Balkenhöhe ist die Erfolgsquote (%) und die Farben stehen für die Spieler. Fahren Sie über einen Balken für Details."},
-    "games_count": {"pl": "Ilość partii", "en": "Games count", "de": "Anzahl Partien"},
-    "win_rate": {"pl": "Skuteczność (%)", "en": "Win Rate (%)", "de": "Erfolgsquote (%)"},
-    "hour": {"pl": "Godzina", "en": "Hour", "de": "Stunde"},
-    "length": {"pl": "Długość (ruchy)", "en": "Length (moves)", "de": "Länge (Züge)"},
-    "day": {"pl": "Dzień", "en": "Day", "de": "Tag"},
-    "player": {"pl": "Gracz", "en": "Player", "de": "Spieler"}
-}
-
-def t(key, default=""):
-    l = lang_map.get(st.session_state.ui_lang, "pl")
-    return ui_dict.get(key, {}).get(l, default if default else key)
-
-# --- CSS (DYNAMICZNY MOTYW) ---
-css_dark = """
-    .stMetric, div.row-widget.stRadio > div, .asym-header { background-color: #161b22; border: 1px solid #30363d; }
-    [data-testid="stMetricValue"], .asym-val-w { color: #ffffff !important; }
-    .asym-label { color: #8b949e; } .asym-val-b { color: #58a6ff; }
-    .custom-info-box { background-color: rgba(88, 166, 255, 0.1); border-left: 4px solid #58a6ff; color: #e6edf3; }
-    .custom-info-title { color: #58a6ff; }
-"""
-css_light = """
-    .stApp { background-color: #ffffff; color: #000000; }
-    [data-testid="stHeader"] { background-color: #ffffff; }
-    .stMetric, div.row-widget.stRadio > div, .asym-header { background-color: #f3f4f6; border: 1px solid #d1d5db; }
-    [data-testid="stMetricValue"], .asym-val-w, [data-testid="stMarkdownContainer"] p, h1, h2, h3, h4, h5 { color: #000000 !important; }
-    [data-testid="stMetricLabel"] { color: #4b5563 !important; }
-    .asym-label { color: #4b5563; } .asym-val-b { color: #1d4ed8; }
-    .custom-info-box { background-color: #eff6ff; border-left: 4px solid #3b82f6; color: #1f2937; }
-    .custom-info-title { color: #1d4ed8; }
-    .stTabs [data-baseweb="tab-list"] button { color: #4b5563; }
-    .stTabs [data-baseweb="tab-list"] button[aria-selected="true"] { color: #000000; }
-"""
-
-st.markdown(f"""
+st.markdown("""
     <style>
-    #MainMenu {{visibility: hidden;}}
-    footer {{visibility: hidden;}}
-    header {{visibility: hidden;}}
-    [data-testid="stMetricValue"] {{ font-size: 0.9rem !important; }}
-    [data-testid="stMetricLabel"] {{ font-size: 0.75rem !important; }}
-    .stMetric {{ padding: 8px; border-radius: 10px; }}
-    .block-container {{ padding: 1rem; top: 1rem; }}
-    div.row-widget.stRadio > div {{ flex-direction: row; justify-content: center; padding: 10px; border-radius: 10px; }}
-    .asym-row {{ display: flex; justify-content: space-between; align-items: center; padding: 12px; border-bottom: 1px solid #30363d; text-align: center; }}
-    .asym-val-w {{ width: 35%; font-size: 1.2rem; font-weight: bold; }}
-    .asym-label {{ width: 30%; font-size: 0.75rem; text-transform: uppercase; letter-spacing: 1px; }}
-    .asym-val-b {{ width: 35%; font-size: 1.2rem; font-weight: bold; }}
-    .asym-header {{ display: flex; justify-content: space-between; padding: 8px; border-radius: 8px; font-weight: bold; margin-bottom: 5px; font-size: 0.8rem;}}
-    .custom-info-box {{ padding: 12px; border-radius: 8px; margin-bottom: 16px; }}
-    .custom-info-title {{ font-weight: bold; margin-bottom: 6px; }}
-    {css_light if st.session_state.theme == "Jasny" else css_dark}
+    #MainMenu {visibility: hidden;}
+    footer {visibility: hidden;}
+    header {visibility: hidden;}
+    
+    /* Mała czcionka metryk dla agregacji */
+    [data-testid="stMetricValue"] { font-size: 0.9rem !important; color: #ffffff; }
+    [data-testid="stMetricLabel"] { font-size: 0.75rem !important; }
+    
+    .stMetric { background-color: #161b22; padding: 8px; border-radius: 10px; border: 1px solid #30363d; }
+    .block-container { padding: 1rem; }
+    
+    /* Tagi w Lichess/Chess.com selection */
+    span[data-baseweb="tag"] {
+        background-color: rgba(88, 166, 255, 0.15) !important;
+        color: #58a6ff !important;
+        border: 1px solid rgba(88, 166, 255, 0.3) !important;
+        border-radius: 12px !important;
+    }
+    
+    .asym-row { display: flex; justify-content: space-between; align-items: center; padding: 12px; border-bottom: 1px solid #30363d; text-align: center; }
+    .asym-val-w { width: 35%; font-size: 1.2rem; font-weight: bold; color: #ffffff; }
+    .asym-label { width: 30%; font-size: 0.75rem; color: #8b949e; text-transform: uppercase; letter-spacing: 1px; }
+    .asym-val-b { width: 35%; font-size: 1.2rem; font-weight: bold; color: #58a6ff; }
+    .asym-header { display: flex; justify-content: space-between; padding: 8px; background-color: #161b22; border-radius: 8px; font-weight: bold; margin-bottom: 5px; font-size: 0.8rem;}
     </style>
     """, unsafe_allow_html=True)
 
-# --- FUNKCJE POMOCNICZE (DEBIUTY) ---
-op_translations = {
-    "Sicilian Defense": {"pl": "Obrona Sycylijska", "de": "Sizilianische Verteidigung"},
-    "French Defense": {"pl": "Obrona Francuska", "de": "Französische Verteidigung"},
-    "Caro-Kann Defense": {"pl": "Obrona Caro-Kann", "de": "Caro-Kann-Verteidigung"},
-    "Ruy Lopez": {"pl": "Partia Hiszpańska", "de": "Spanische Partie"},
-    "Italian Game": {"pl": "Partia Włoska", "de": "Italienische Partie"},
-    "Scotch Game": {"pl": "Partia Szkocka", "de": "Schottische Partie"},
-    "Vienna Game": {"pl": "Partia Wiedeńska", "de": "Wiener Partie"},
-    "Four Knights Game": {"pl": "Partia 4 Skoczków", "de": "Vierspringerspiel"},
-    "Two Knights Defense": {"pl": "Obrona 2 Skoczków", "de": "Zweispringerspiel"},
-    "Petrov's Defense": {"pl": "Obrona Petrowa", "de": "Russische Partie"},
-    "Philidor Defense": {"pl": "Obrona Philidora", "de": "Philidor-Verteidigung"},
-    "Bishop's Opening": {"pl": "Otwarcie Gońca", "de": "Läuferspiel"},
-    "Scandinavian Defense": {"pl": "Obrona Skandynawska", "de": "Skandinavische Vert."},
-    "Alekhine's Defense": {"pl": "Obrona Alechina", "de": "Aljechin-Verteidigung"},
-    "Pirc Defense": {"pl": "Obrona Pirca", "de": "Pirc-Ufimzew-Vert."},
-    "Modern Defense": {"pl": "Obrona Nowoczesna", "de": "Moderne Verteidigung"},
-    "Queen's Gambit": {"pl": "Gambit Hetmański", "de": "Damengambit"},
-    "King's Gambit": {"pl": "Gambit Królewski", "de": "Königsgambit"},
-    "King's Indian Defense": {"pl": "Obrona K-I", "de": "Königsindisch"},
-    "Queen's Indian Defense": {"pl": "Obrona H-I", "de": "Damenindisch"},
-    "Nimzo-Indian Defense": {"pl": "Obrona Nimzowitscha", "de": "Nimzo-Indisch"},
-    "Bogo-Indian Defense": {"pl": "Obrona Bogo-I", "de": "Bogo-Indisch"},
-    "Grünfeld Defense": {"pl": "Obrona Grünfelda", "de": "Grünfeld-Indisch"},
-    "Slav Defense": {"pl": "Obrona Słowiańska", "de": "Slawische Verteidigung"},
-    "Catalan Opening": {"pl": "Otwarcie Katalońskie", "de": "Katalanische Eröffnung"},
-    "London System": {"pl": "System Londyński", "de": "Londoner System"},
-    "Trompowsky Attack": {"pl": "Atak Trompowskiego", "de": "Trompowsky-Eröffnung"},
-    "Benoni Defense": {"pl": "Obrona Benoni", "de": "Benoni-Verteidigung"},
-    "Benko Gambit": {"pl": "Gambit Wołżański", "de": "Wolga-Gambit"},
-    "Dutch Defense": {"pl": "Obrona Holenderska", "de": "Holländische Vert."},
-    "English Opening": {"pl": "Partia Angielska", "de": "Englische Eröffnung"},
-    "Réti Opening": {"pl": "Otwarcie Rétiego", "de": "Réti-Eröffnung"},
-    "Bird's Opening": {"pl": "Otwarcie Birda", "de": "Bird-Eröffnung"},
-    "King's Pawn Opening": {"pl": "Pion Królewski", "de": "Königsbauernspiel"},
-    "Queen's Pawn Opening": {"pl": "Pion Hetmański", "de": "Damenbauernspiel"},
-}
-
-def t_op(eng_name):
-    if eng_name == "Brak" or not eng_name: return "Brak"
-    l = lang_map.get(st.session_state.op_lang, "pl")
-    if l == "en": return eng_name
-    return op_translations.get(eng_name, {}).get(l, eng_name)
-
+# --- FUNKCJE POMOCNICZE ---
 def get_opening_group(opening_name):
     name = opening_name.lower()
+    
     if "sicilian" in name: return "Sicilian Defense"
     if "french" in name: return "French Defense"
     if "caro-kann" in name or "caro kann" in name: return "Caro-Kann Defense"
@@ -166,6 +58,7 @@ def get_opening_group(opening_name):
     if "alekhine" in name: return "Alekhine's Defense"
     if "pirc" in name: return "Pirc Defense"
     if "modern defense" in name: return "Modern Defense" 
+    
     if "queens gambit" in name or "queen's gambit" in name: return "Queen's Gambit"
     if "kings gambit" in name or "king's gambit" in name: return "King's Gambit"
     if "kings indian" in name or "king's indian" in name: return "King's Indian Defense"
@@ -183,12 +76,17 @@ def get_opening_group(opening_name):
     if "english" in name: return "English Opening"
     if "reti" in name or "réti" in name: return "Réti Opening"
     if "bird" in name: return "Bird's Opening"
+    
     if "king's pawn" in name or "kings pawn" in name: return "King's Pawn Opening"
     if "queen's pawn" in name or "queens pawn" in name: return "Queen's Pawn Opening"
+    
     fallback = opening_name.split(':')[0].strip()
+    
     for keyword in [" Defense", " Opening", " Game", " Gambit", " System", " Attack"]:
         idx = fallback.lower().find(keyword.lower())
-        if idx != -1: return fallback[:idx + len(keyword)].title()
+        if idx != -1:
+            return fallback[:idx + len(keyword)].title()
+            
     return fallback.title()
 
 def extract_opening(pgn):
@@ -291,28 +189,22 @@ def fetch_data(user, platform="Chess.com"):
             return {"avatar": p_res.json().get("profile", {}).get("avatar", "")}, pd.DataFrame(all_games)
     except: return None, None
 
-# --- SESSION & START ---
+# --- SESSION ---
 for k in ['data','data2','url']: 
     if k not in st.session_state: st.session_state[k] = None
 for k in ['user','user2','plat2']: 
     if k not in st.session_state: st.session_state[k] = ""
 if 'platforms' not in st.session_state: st.session_state.platforms = []
 
+# --- LOGIN ---
 if st.session_state.data is None:
-    # Ekran Logowania - Tu widać napis
-    col_l1, col_l2 = st.columns([8, 1])
-    col_l1.title(f"♟️ {t('title')}")
-    with col_l2.popover("⚙️"):
-        st.selectbox("🌍 Język UI", ["Polski", "English", "Deutsch"], key="ui_lang")
-        st.selectbox("♟️ Język Debiutów", ["Polski", "English", "Deutsch"], key="op_lang")
-        st.radio("🎨 Motyw", ["Ciemny", "Jasny"], key="theme")
-
+    st.title("♟️ ChessStats")
     log_m = st.radio("Zasięg:", ["Jeden profil", "Połącz profile (C+L)"], horizontal=True)
     if log_m == "Jeden profil":
         c1, c2 = st.columns([1, 4])
         plat = c1.selectbox("Plat:", ["Chess.com", "Lichess"])
         nick = c2.text_input("Nick:")
-        if st.button(t("btn_analize"), use_container_width=True):
+        if st.button("Analizuj", use_container_width=True):
             if nick:
                 with st.spinner("Pobieranie..."):
                     f = fetch_data(nick, plat)
@@ -321,7 +213,7 @@ if st.session_state.data is None:
         c1, c2 = st.columns(2)
         p1, n1 = c1.selectbox("P1:", ["Chess.com", "Lichess"]), c1.text_input("Nick 1:")
         p2, n2 = c2.selectbox("P2:", ["Lichess", "Chess.com"]), c2.text_input("Nick 2:")
-        if st.button(t("btn_connect"), use_container_width=True):
+        if st.button("Połącz i Analizuj", use_container_width=True):
             if n1 and n2:
                 with st.spinner("Łączenie..."):
                     f1, f2 = fetch_data(n1, p1), fetch_data(n2, p2)
@@ -333,80 +225,75 @@ else:
     profile, df = st.session_state.data
     username, user_plats = st.session_state.user, st.session_state.platforms
     
-    df_loc = df.copy()
-    df_loc["Debiut_Grupa"] = df_loc["Debiut_Grupa"].apply(t_op)
-    
-    # Header w analizie - Duży avatar, nick i koło zębate. Brak tytułu aplikacji.
-    c_logo, c_nick, c_gear, c_empty = st.columns([1, 5, 1, 4])
-    if profile.get("avatar"): c_logo.image(profile.get("avatar"), width=80)
-    c_nick.markdown(f"<h1 style='margin-top: -15px;'>{username}</h1>", unsafe_allow_html=True)
-    with c_gear.popover("⚙️"):
-        st.selectbox("🌍 Język UI", ["Polski", "English", "Deutsch"], key="ui_lang")
-        st.selectbox("♟️ Język Debiutów", ["Polski", "English", "Deutsch"], key="op_lang")
-        st.radio("🎨 Motyw", ["Ciemny", "Jasny"], key="theme")
-    
-    c_n1, c_n2, c_n3 = st.columns([2, 1, 1])
-    with c_n1: app_m = st.radio("M:", ["👤 Moja Analiza", "⚔️ Porównanie Graczy"], horizontal=True, label_visibility="collapsed")
-    with c_n2: 
-        if st.button(t("btn_refresh"), use_container_width=True):
-            fetch_data.clear() 
-            with st.spinner("Odświeżanie danych..."):
-                nowe_dane = []
-                nowy_profil = profile
-                for konto in df["Konto"].unique():
-                    u_nick = konto[:-4]
-                    u_plat = "Chess.com" if konto[-2] == 'C' else "Lichess"
-                    f_res = fetch_data(u_nick, u_plat)
-                    if f_res[1] is not None:
-                        nowe_dane.append(f_res[1])
-                        nowy_profil = f_res[0]
-                if nowe_dane:
-                    st.session_state.data = (nowy_profil, pd.concat(nowe_dane, ignore_index=True))
-            st.rerun()
+    # --- HEADER ---
+    ch1, ch2, ch3, _ = st.columns([0.8, 4, 1, 3])
+    with ch1:
+        if profile.get("avatar"): 
+            st.markdown(f'<img src="{profile.get("avatar")}" style="border-radius: 8px; width: 45px; margin-top: 5px;">', unsafe_allow_html=True)
+    with ch2:
+        st.markdown(f"<h3 style='margin-top: 5px; margin-bottom: 0px;'>{username}</h3>", unsafe_allow_html=True)
+    with ch3:
+        st.markdown("<div style='margin-top: 10px;'>", unsafe_allow_html=True)
+        with st.popover("⚙️"):
+            app_m = st.radio("Widok:", ["👤 Moja Analiza", "⚔️ Porównanie Graczy"], label_visibility="collapsed")
             
-    with c_n3:
-        if st.button(t("btn_change"), use_container_width=True):
-            for k in ['data','data2','url','user','user2','plat2']: st.session_state[k] = None if k in ['data','data2','url'] else ""
-            st.session_state.platforms = []; st.rerun()
+            if st.button("🔄 Odśwież dane", use_container_width=True):
+                fetch_data.clear() 
+                with st.spinner("Pobieranie..."):
+                    nowe_dane, nowy_profil = [], profile
+                    for konto in df["Konto"].unique():
+                        u_nick, u_plat = konto[:-4], "Chess.com" if konto[-2] == 'C' else "Lichess"
+                        f_res = fetch_data(u_nick, u_plat)
+                        if f_res[1] is not None:
+                            nowe_dane.append(f_res[1]); nowy_profil = f_res[0]
+                    if nowe_dane: st.session_state.data = (nowy_profil, pd.concat(nowe_dane, ignore_index=True))
+                st.rerun()
+                
+            if st.button("🚪 Zmień gracza", use_container_width=True):
+                for k in ['data','data2','url','user','user2','plat2']: st.session_state[k] = None if k in ['data','data2','url'] else ""
+                st.session_state.platforms = []; st.rerun()
+                
+            st.divider()
+            
+            d_r = st.date_input("Zakres dat:", value=(df["Data"].min(), df["Data"].max()))
+            s_m = st.selectbox("Tryb gry:", ["Wszystkie"] + sorted(df["Tryb"].unique().tolist()))
+            
+            st.write("Kolor:")
+            col_w, col_b = st.columns(2)
+            w_on = col_w.checkbox("⚪ Białe", value=True)
+            b_on = col_b.checkbox("⚫ Czarne", value=True)
+            s_c = []
+            if w_on: s_c.append("Białe")
+            if b_on: s_c.append("Czarne")
+            
+            s_h = st.slider("Godziny:", 0, 23, (0, 23))
+            
+            s_a = df["Konto"].unique().tolist()
+            if len(s_a) > 1:
+                s_a = st.multiselect("Konto:", s_a, default=s_a)
+        st.markdown("</div>", unsafe_allow_html=True)
 
     st.divider()
 
+    # --- APLIKACJA FILTRÓW (Globalnie dla df1) ---
+    df_f = df.copy()
+    if isinstance(d_r, (list, tuple)) and len(d_r) == 2:
+        df_f = df_f[(df_f["Data"] >= d_r[0]) & (df_f["Data"] <= d_r[1])]
+    df_f = df_f[df_f["Kolor"].isin(s_c) & (df_f["Godzina"] >= s_h[0]) & (df_f["Godzina"] <= s_h[1]) & df_f["Konto"].isin(s_a)]
+    if s_m != "Wszystkie": df_f = df_f[df_f["Tryb"] == s_m]
+
     if app_m == "👤 Moja Analiza":
-        m1, m2, m3 = st.columns(3)
-        p_r, c_r, _ = calc_elo(df_loc, "Rapid"); p_b, c_b, _ = calc_elo(df_loc, "Blitz"); p_bl, c_bl, _ = calc_elo(df_loc, "Bullet")
-        m1.metric("Rapid (Peak / Teraz)", f"{p_r} / {c_r}")
-        m2.metric("Blitz (Peak / Teraz)", f"{p_b} / {c_b}")
-        m3.metric("Bullet (Peak / Teraz)", f"{p_bl} / {c_bl}")
-
-        with st.expander(t("filters")):
-            f1, f2, f3 = st.columns(3)
-            d_r = f1.date_input("Zakres:", value=(df_loc["Data"].min(), df_loc["Data"].max()))
-            s_m = f2.selectbox("Tryb:", ["Wszystkie"] + sorted(df_loc["Tryb"].unique().tolist()))
-            s_a = f3.multiselect("Konto:", df_loc["Konto"].unique().tolist(), default=df_loc["Konto"].unique().tolist())
-            
-            st.write(f"<span style='font-size:0.9rem; font-weight:bold;'>Kolor</span>", unsafe_allow_html=True)
-            c_w, c_b, _ = st.columns([1, 1, 4])
-            if c_w.button("⚪ " + t("color_white"), type="primary" if st.session_state.cw_solo else "secondary", use_container_width=True, key="sw_solo"):
-                st.session_state.cw_solo = not st.session_state.cw_solo; st.rerun()
-            if c_b.button("⚫ " + t("color_black"), type="primary" if st.session_state.cb_solo else "secondary", use_container_width=True, key="sb_solo"):
-                st.session_state.cb_solo = not st.session_state.cb_solo; st.rerun()
-            
-            s_c = []
-            if st.session_state.cw_solo: s_c.append("Białe")
-            if st.session_state.cb_solo: s_c.append("Czarne")
-            
-            s_h = st.slider("Godziny:", 0, 23, (0, 23))
-
-        df_f = df_loc.copy()
-        if isinstance(d_r, (list, tuple)) and len(d_r) == 2:
-            df_f = df_f[(df_f["Data"] >= d_r[0]) & (df_f["Data"] <= d_r[1])]
-        df_f = df_f[df_f["Kolor"].isin(s_c) & (df_f["Godzina"] >= s_h[0]) & (df_f["Godzina"] <= s_h[1]) & df_f["Konto"].isin(s_a)]
-        if s_m != "Wszystkie": df_f = df_f[df_f["Tryb"] == s_m]
-
         if not df_f.empty:
-            t1, t_h, t2, t3, t4, t5, t6, t7 = st.tabs(["📊 Stat", "📅 Hist", "🏁 Tech", "⏳ Czas", "🔬 Debiut", "⚖️ B&W", "🧩 Styl", "🧠 Analiza"])
+            t1, t_h, t_c, t_d, t_a = st.tabs(["📊 Stat", "📅 Hist", "⏳ Czas", "🔬 Debiut", "🧠 Analiza"])
             
             with t1:
+                m1, m2, m3 = st.columns(3)
+                p_r, c_r, _ = calc_elo(df_f, "Rapid"); p_b, c_b, _ = calc_elo(df_f, "Blitz"); p_bl, c_bl, _ = calc_elo(df_f, "Bullet")
+                m1.metric("Rapid (Peak / Teraz)", f"{p_r} / {c_r}")
+                m2.metric("Blitz (Peak / Teraz)", f"{p_b} / {c_b}")
+                m3.metric("Bullet (Peak / Teraz)", f"{p_bl} / {c_bl}")
+                
+                st.write("")
                 w, d, l = (df_f["Wynik"]=="Wygrane").sum(), (df_f["Wynik"]=="Remisy").sum(), (df_f["Wynik"]=="Przegrane").sum()
                 k1, k2, k3 = st.columns(3)
                 k1.metric("Partie", len(df_f)); k2.metric("W/R/P", f"{w}/{d}/{l}"); k3.metric("Win%", f"{int(round(w/len(df_f)*100,0))}%")
@@ -415,21 +302,28 @@ else:
                 fav_b = df_f[df_f["Kolor"] == "Czarne"]["Debiut_Grupa"].mode()[0] if not df_f[df_f["Kolor"] == "Czarne"].empty else "Brak"
                 
                 st.markdown(f"""
-                <div class="custom-info-box">
-                    <div class="custom-info-title">{t('fav_op')}:</div>
-                    <div style="font-size: 0.85rem;">⚪ <b>{fav_w}</b> &emsp;|&emsp; ⚫ <b>{fav_b}</b></div>
+                <div style="padding: 12px; border-radius: 8px; background-color: rgba(88, 166, 255, 0.1); border-left: 4px solid #58a6ff; margin-bottom: 16px;">
+                    <div style="font-size: 0.95rem; color: #e6edf3;">⚪ <b>{fav_w}</b> &emsp;|&emsp; ⚫ <b>{fav_b}</b></div>
                 </div>
                 """, unsafe_allow_html=True)
                 
                 for m in ["Rapid", "Blitz", "Bullet"]:
                     mdf = df_f[df_f["Tryb"] == m].sort_values("Timestamp")
                     if not mdf.empty:
-                        st.plotly_chart(px.line(mdf, x="Timestamp", y="ELO", color="Konto", title=f"Ranking {m}", markers=True).update_layout(xaxis_title="", yaxis_title="ELO", height=300, margin=dict(l=0, r=0, t=20, b=0), legend=dict(orientation="h", yanchor="top", y=-0.25, xanchor="center", x=0.5, title=None)), use_container_width=True)
+                        fig = px.line(mdf, x="Timestamp", y="ELO", color="Konto", title=f"Ranking {m}", markers=True)
+                        fig.update_traces(marker=dict(size=4, line=dict(width=0))) # Tyci kropki
+                        fig.update_layout(xaxis_title="", yaxis_title="ELO", height=300, margin=dict(l=0, r=0, t=20, b=0), legend=dict(orientation="h", yanchor="top", y=-0.25, xanchor="center", x=0.5, title=None))
+                        st.plotly_chart(fig, use_container_width=True)
+                
+                st.write("---")
+                c_p1, c_p2 = st.columns(2)
+                c_p1.plotly_chart(px.pie(df_f[df_f["Wynik"]=="Wygrane"], names="Powod", hole=0.4, title="Wygrane (Jak?)", color_discrete_sequence=px.colors.sequential.Teal), use_container_width=True)
+                c_p2.plotly_chart(px.pie(df_f[df_f["Wynik"]=="Przegrane"], names="Powod", hole=0.4, title="Porażki (Jak?)", color_discrete_sequence=px.colors.sequential.Reds), use_container_width=True)
 
             with t_h:
                 st.write("### Aktywność i wyniki dzienne")
                 act_df = df_f.groupby(["Data", "Wynik"]).size().reset_index(name="Partie")
-                fig_act = px.bar(act_df, x="Data", y="Partie", color="Wynik", title="Ilość gier w czasie", color_discrete_map={"Wygrane":"#1e88e5", "Remisy":"#8b949e", "Przegrane":"#ef553b"})
+                fig_act = px.bar(act_df, x="Data", y="Partie", color="Wynik", color_discrete_map={"Wygrane":"#1e88e5", "Remisy":"#8b949e", "Przegrane":"#ef553b"})
                 fig_act.update_layout(legend=dict(orientation="h", yanchor="top", y=-0.2, xanchor="center", x=0.5, title=None), barmode='stack')
                 st.plotly_chart(fig_act, use_container_width=True)
                 
@@ -437,88 +331,29 @@ else:
                 mon["Win%"] = (mon["W"]/mon["G"]*100).round(0).astype(int)
                 st.dataframe(mon.rename(columns={"G":"Gry"}), use_container_width=True, hide_index=True)
 
-            with t2:
-                c1, c2 = st.columns(2)
-                c1.plotly_chart(px.pie(df_f[df_f["Wynik"]=="Wygrane"], names="Powod", hole=0.4, title="Wygrane", color_discrete_sequence=px.colors.sequential.Teal), use_container_width=True)
-                c2.plotly_chart(px.pie(df_f[df_f["Wynik"]=="Przegrane"], names="Powod", hole=0.4, title="Porażki", color_discrete_sequence=px.colors.sequential.Reds), use_container_width=True)
+            with t_c:
+                c_d, c_h_col = st.columns(2)
+                with c_d:
+                    d_st = df_f.groupby(["Dzień", "Dzień_Nr"]).agg(G=('Wynik', 'count'), W=('Wynik', lambda x: (x == 'Wygrane').sum())).reset_index().sort_values("Dzień_Nr")
+                    d_st["Win%"] = (d_st["W"] / d_st["G"] * 100).round(0).astype(int)
+                    st.plotly_chart(px.bar(d_st, x="Dzień", y="Win%", color="G", color_continuous_scale='Blues', title="Skuteczność wg Dni").update_layout(coloraxis_showscale=False), use_container_width=True)
+                with c_h_col:
+                    h_st = df_f.groupby("Godzina").agg(G=('Wynik', 'count'), W=('Wynik', lambda x: (x == 'Wygrane').sum())).reset_index()
+                    h_st["Win%"] = (h_st["W"] / h_st["G"] * 100).round(0).astype(int)
+                    st.plotly_chart(px.bar(h_st, x="Godzina", y="Win%", color="G", color_continuous_scale='Blues', title="Skuteczność wg Godzin").update_layout(xaxis=dict(tickmode='linear', tick0=0, dtick=1), coloraxis_showscale=False), use_container_width=True)
 
-            with t3:
-                h_st = df_f.groupby("Godzina").agg(G=('Wynik', 'count'), W=('Wynik', lambda x: (x == 'Wygrane').sum())).reset_index()
-                h_st["Win%"] = (h_st["W"] / h_st["G"] * 100).round(0).astype(int)
-                fig_h = px.bar(h_st, x="Godzina", y="Win%", color="G", color_continuous_scale='Blues', title=t("win_by_hour"), labels={"Godzina": t("hour"), "Win%": t("win_rate"), "G": t("games_count")})
-                fig_h.update_layout(coloraxis_showscale=False, xaxis=dict(tickmode='linear', tick0=0, dtick=1, tickangle=0))
-                st.plotly_chart(fig_h, use_container_width=True)
-                st.markdown(f"<div style='font-size:0.85rem; color: gray; margin-top: -30px; margin-bottom: 20px; text-align: center;'>{t('chart_desc')}</div>", unsafe_allow_html=True)
+                st.write("---")
                 
-                d_st = df_f.groupby(["Dzień", "Dzień_Nr"]).agg(G=('Wynik', 'count'), W=('Wynik', lambda x: (x == 'Wygrane').sum())).reset_index().sort_values("Dzień_Nr")
-                d_st["Win%"] = (d_st["W"] / d_st["G"] * 100).round(0).astype(int)
-                fig_d = px.bar(d_st, x="Dzień", y="Win%", color="G", color_continuous_scale='Blues', title=t("win_by_day"), labels={"Dzień": t("day"), "Win%": t("win_rate"), "G": t("games_count")})
-                fig_d.update_layout(coloraxis_showscale=False)
-                st.plotly_chart(fig_d, use_container_width=True)
-                st.markdown(f"<div style='font-size:0.85rem; color: gray; margin-top: -30px; margin-bottom: 20px; text-align: center;'>{t('chart_desc')}</div>", unsafe_allow_html=True)
-
-            with t4:
-                st.write("### 🛡️ Główne Grupy Debiutów")
-                c_w1, c_b1 = st.columns(2)
-                df_w = df_f[df_f["Kolor"] == "Białe"]
-                df_b = df_f[df_f["Kolor"] == "Czarne"]
-                
-                with c_w1:
-                    st.markdown(f"<h5 style='text-align: center;'>⚪ {t('color_white')}</h5>", unsafe_allow_html=True)
-                    if not df_w.empty:
-                        op_g_w = df_w.groupby("Debiut_Grupa").agg(Gry=('Wynik', 'count'), WinRate=('Wynik', lambda x: int(round((x == 'Wygrane').sum()/len(x)*100,0)))).reset_index()
-                        st.dataframe(op_g_w.sort_values("Gry", ascending=False).head(15), use_container_width=True, hide_index=True)
-                    else: st.info("Brak partii")
-                        
-                with c_b1:
-                    st.markdown(f"<h5 style='text-align: center;'>⚫ {t('color_black')}</h5>", unsafe_allow_html=True)
-                    if not df_b.empty:
-                        op_g_b = df_b.groupby("Debiut_Grupa").agg(Gry=('Wynik', 'count'), WinRate=('Wynik', lambda x: int(round((x == 'Wygrane').sum()/len(x)*100,0)))).reset_index()
-                        st.dataframe(op_g_b.sort_values("Gry", ascending=False).head(15), use_container_width=True, hide_index=True)
-                    else: st.info("Brak partii")
-
-                st.divider()
-                st.write("### 🔬 Szczegółowe Warianty")
-                c_w2, c_b2 = st.columns(2)
-                
-                with c_w2:
-                    st.markdown(f"<h5 style='text-align: center;'>⚪ {t('color_white')}</h5>", unsafe_allow_html=True)
-                    if not df_w.empty:
-                        op_w = df_w.groupby("Debiut").agg(Gry=('Wynik', 'count'), WinRate=('Wynik', lambda x: int(round((x == 'Wygrane').sum()/len(x)*100,0)))).reset_index()
-                        st.dataframe(op_w.sort_values("Gry", ascending=False).head(20), use_container_width=True, hide_index=True)
-                    else: st.info("Brak partii")
-                        
-                with c_b2:
-                    st.markdown(f"<h5 style='text-align: center;'>⚫ {t('color_black')}</h5>", unsafe_allow_html=True)
-                    if not df_b.empty:
-                        op_b = df_b.groupby("Debiut").agg(Gry=('Wynik', 'count'), WinRate=('Wynik', lambda x: int(round((x == 'Wygrane').sum()/len(x)*100,0)))).reset_index()
-                        st.dataframe(op_b.sort_values("Gry", ascending=False).head(20), use_container_width=True, hide_index=True)
-                    else: st.info("Brak partii")
-
-            with t5:
-                def get_s(c):
-                    sub = df_f[df_f["Kolor"] == c]
-                    if sub.empty: return "0%", 0, 0
-                    return f"{int(round((sub['Wynik']=='Wygrane').sum()/len(sub)*100,0))}%", len(sub), int(sub["Ruchy"].mean())
-                ws, bs = get_s("Białe"), get_s("Czarne")
-                st.markdown(f"""
-                <div class="asym-header"><div style="width:35%; text-align:center;">⚪ BIAŁE</div><div style="width:30%; text-align:center;" class="asym-label">STATYSTYKA</div><div style="width:35%; text-align:center;">⚫ CZARNE</div></div>
-                <div class="asym-row"><div class="asym-val-w">{ws[0]}</div><div class="asym-label">Win Rate</div><div class="asym-val-b">{bs[0]}</div></div>
-                <div class="asym-row"><div class="asym-val-w">{ws[1]}</div><div class="asym-label">Partie</div><div class="asym-val-b">{bs[1]}</div></div>
-                <div class="asym-row"><div class="asym-val-w">{ws[2]}</div><div class="asym-label">Śr. ruchów</div><div class="asym-val-b">{bs[2]}</div></div>
-                """, unsafe_allow_html=True)
-
-            with t6:
+                st.subheader("Długość partii vs Win%", help="Kolor słupka oznacza ilość rozegranych partii w danym przedziale ruchów.")
                 df_f["Bin"] = df_f["Ruchy"].apply(get_duration_bin)
                 dst = df_f.groupby("Bin").agg(G=('Wynik', 'count'), W=('Wynik', lambda x: (x == 'Wygrane').sum())).reset_index()
                 dst["Win%"] = (dst["W"] / dst["G"] * 100).round(0).astype(int)
                 order = ["0-20", "21-30", "31-40", "41-50", "51-60", "61-70", "71+"]
-                fig_dur = px.bar(dst.sort_values("Bin", key=lambda x: [order.index(i) for i in x]), x="Bin", y="Win%", color="G", color_continuous_scale='Blues', title=t("win_by_length"), labels={"Bin": t("length"), "Win%": t("win_rate"), "G": t("games_count")})
+                fig_dur = px.bar(dst.sort_values("Bin", key=lambda x: [order.index(i) for i in x]), x="Bin", y="Win%", color="G", color_continuous_scale='Blues')
                 fig_dur.update_layout(coloraxis_showscale=False, xaxis_title="")
                 st.plotly_chart(fig_dur, use_container_width=True)
-                st.markdown(f"<div style='font-size:0.85rem; color: gray; margin-top: -30px; margin-bottom: 20px; text-align: center;'>{t('chart_desc')}</div>", unsafe_allow_html=True)
                 
-                st.write("### Wpływ serii (Sesja 2h)")
+                st.subheader("Wpływ serii", help="Seria jest liczona w obrębie jednej ciągłej sesji gry. Sesja zostaje uznana za zakończoną, jeżeli przerwa pomiędzy partiami wyniesie więcej niż 2 godziny.")
                 df_t = df_f.sort_values('Timestamp').copy()
                 st_l, sc_l, l_ts, ct, cc = [], [], None, None, 0
                 for _, r in df_t.iterrows():
@@ -542,7 +377,46 @@ else:
                     if not sub5.empty: t_res.append({"Typ": n, "Seria": "5+ z rzędu", "Win%": int(round((sub5['Wynik']=='Wygrane').sum()/len(sub5)*100,0)), "Partie": len(sub5)})
                 if t_res: st.plotly_chart(px.bar(pd.DataFrame(t_res), x="Seria", y="Win%", color="Typ", barmode='group', text="Win%", hover_data=["Partie"], color_discrete_map={"Po serii Wygranych":"#1e88e5", "Po serii Porażek":"#ef553b"}).update_layout(legend=dict(orientation="h", yanchor="top", y=-0.2, xanchor="center", x=0.5, title=None)), use_container_width=True)
 
-            with t7:
+            with t_d:
+                st.write("### 🛡️ Główne Grupy Debiutów")
+                c_w1, c_b1 = st.columns(2)
+                df_w = df_f[df_f["Kolor"] == "Białe"]
+                df_b = df_f[df_f["Kolor"] == "Czarne"]
+                
+                with c_w1:
+                    st.markdown("<h5 style='text-align: center; color: #ffffff;'>⚪ Białe</h5>", unsafe_allow_html=True)
+                    if not df_w.empty:
+                        op_g_w = df_w.groupby("Debiut_Grupa").agg(Gry=('Wynik', 'count'), WinRate=('Wynik', lambda x: int(round((x == 'Wygrane').sum()/len(x)*100,0)))).reset_index()
+                        st.dataframe(op_g_w.sort_values("Gry", ascending=False).head(15), use_container_width=True, hide_index=True)
+                    else: st.info("Brak partii białymi w wybranym filtrze.")
+                        
+                with c_b1:
+                    st.markdown("<h5 style='text-align: center; color: #58a6ff;'>⚫ Czarne</h5>", unsafe_allow_html=True)
+                    if not df_b.empty:
+                        op_g_b = df_b.groupby("Debiut_Grupa").agg(Gry=('Wynik', 'count'), WinRate=('Wynik', lambda x: int(round((x == 'Wygrane').sum()/len(x)*100,0)))).reset_index()
+                        st.dataframe(op_g_b.sort_values("Gry", ascending=False).head(15), use_container_width=True, hide_index=True)
+                    else: st.info("Brak partii czarnymi w wybranym filtrze.")
+
+                st.divider()
+                
+                st.write("### 🔬 Szczegółowe Warianty")
+                c_w2, c_b2 = st.columns(2)
+                
+                with c_w2:
+                    st.markdown("<h5 style='text-align: center; color: #ffffff;'>⚪ Białe</h5>", unsafe_allow_html=True)
+                    if not df_w.empty:
+                        op_w = df_w.groupby("Debiut").agg(Gry=('Wynik', 'count'), WinRate=('Wynik', lambda x: int(round((x == 'Wygrane').sum()/len(x)*100,0)))).reset_index()
+                        st.dataframe(op_w.sort_values("Gry", ascending=False).head(20), use_container_width=True, hide_index=True)
+                    else: st.info("Brak partii białymi w wybranym filtrze.")
+                        
+                with c_b2:
+                    st.markdown("<h5 style='text-align: center; color: #58a6ff;'>⚫ Czarne</h5>", unsafe_allow_html=True)
+                    if not df_b.empty:
+                        op_b = df_b.groupby("Debiut").agg(Gry=('Wynik', 'count'), WinRate=('Wynik', lambda x: int(round((x == 'Wygrane').sum()/len(x)*100,0)))).reset_index()
+                        st.dataframe(op_b.sort_values("Gry", ascending=False).head(20), use_container_width=True, hide_index=True)
+                    else: st.info("Brak partii czarnymi w wybranym filtrze.")
+
+            with t_a:
                 f1, f2 = st.columns(2)
                 opp_search = f2.text_input("Nick rywala:")
                 ana = df_f[df_f["Przeciwnik"].str.lower() == opp_search.lower()].copy() if opp_search else df_f[df_f["Data"] == f1.date_input("Dzień:", value=df_f["Data"].max())].copy()
@@ -555,92 +429,62 @@ else:
                     if st.session_state.url: st.markdown(f'<a href="{st.session_state.url}" target="_blank" style="display:block; width:100%; text-align:center; background-color:#1e88e5; color:white; padding:12px; border-radius:8px; text-decoration:none; font-weight:bold; margin-top:10px;">ANALIZA ➡️</a>', unsafe_allow_html=True)
 
     elif app_m == "⚔️ Porównanie Graczy":
-        c1, c2 = st.columns(2)
-        p2 = c2.selectbox("Platforma rywala:", ["Chess.com", "Lichess"])
-        n2 = c2.text_input("Nick rywala:")
+        st.write("Wybierz rywala do porównania:")
+        c1, c2 = st.columns([1, 2])
+        p2 = c1.selectbox("Platforma rywala:", ["Chess.com", "Lichess"], label_visibility="collapsed")
+        n2 = c2.text_input("Nick rywala:", label_visibility="collapsed", placeholder="Wpisz nick rywala...")
         
-        if st.button(t("btn_rival"), use_container_width=True):
+        if st.button("Pobierz dane", use_container_width=True):
             if n2:
                 with st.spinner(f"Pobieranie danych dla {n2}..."):
                     f2 = fetch_data(n2, p2)
                     if f2[1] is not None: 
                         st.session_state.data2, st.session_state.user2, st.session_state.plat2 = f2[1], n2, p2
                         st.rerun()
-                    else:
-                        st.error("Nie udało się pobrać danych rywala.")
+                    else: st.error("Nie udało się pobrać danych rywala. Sprawdź nick i platformę.")
 
         if st.session_state.data2 is not None:
-            df2 = st.session_state.data2.copy()
-            df2["Debiut_Grupa"] = df2["Debiut_Grupa"].apply(t_op)
-            
+            df2 = st.session_state.data2
             u1, u2, p2_p = username, st.session_state.user2, st.session_state.plat2
             
-            with st.expander(t("filters"), expanded=True):
-                fx1, fx2, fx4 = st.columns(3)
-                min_date = min(df_loc["Data"].min(), df2["Data"].min())
-                max_date = max(df_loc["Data"].max(), df2["Data"].max())
+            df2_c = df2.copy()
+            if isinstance(d_r, (list, tuple)) and len(d_r) == 2:
+                df2_c = df2_c[(df2_c["Data"] >= d_r[0]) & (df2_c["Data"] <= d_r[1])]
                 
-                dr_c = fx1.date_input("Zakres dat:", value=(min_date, max_date), key="c_dr")
-                wspolne_tryby = list(set(df_loc["Tryb"].unique()) | set(df2["Tryb"].unique()))
-                sm_c = fx2.selectbox("Tryb:", ["Wszystkie"] + sorted(wspolne_tryby), key="c_sm")
-                sh_c = fx4.slider("Godziny:", 0, 23, (0, 23), key="c_sh")
-                
-                st.write(f"<span style='font-size:0.9rem; font-weight:bold;'>Kolor</span>", unsafe_allow_html=True)
-                c_w_por, c_b_por, _ = st.columns([1, 1, 4])
-                if c_w_por.button("⚪ " + t("color_white"), type="primary" if st.session_state.cw_por else "secondary", use_container_width=True, key="por_w"):
-                    st.session_state.cw_por = not st.session_state.cw_por; st.rerun()
-                if c_b_por.button("⚫ " + t("color_black"), type="primary" if st.session_state.cb_por else "secondary", use_container_width=True, key="por_b"):
-                    st.session_state.cb_por = not st.session_state.cb_por; st.rerun()
-                
-                sc_c = []
-                if st.session_state.cw_por: sc_c.append("Białe")
-                if st.session_state.cb_por: sc_c.append("Czarne")
+            df2_c = df2_c[df2_c["Kolor"].isin(s_c) & (df2_c["Godzina"] >= s_h[0]) & (df2_c["Godzina"] <= s_h[1])]
+            if s_m != "Wszystkie": df2_c = df2_c[df2_c["Tryb"] == s_m]
 
-            df1_c, df2_c = df_loc.copy(), df2.copy()
-            
-            if isinstance(dr_c, (list, tuple)) and len(dr_c) == 2:
-                df1_c = df1_c[(df1_c["Data"] >= dr_c[0]) & (df1_c["Data"] <= dr_c[1])]
-                df2_c = df2_c[(df2_c["Data"] >= dr_c[0]) & (df2_c["Data"] <= dr_c[1])]
-                
-            df1_c = df1_c[df1_c["Kolor"].isin(sc_c) & (df1_c["Godzina"] >= sh_c[0]) & (df1_c["Godzina"] <= sh_c[1])]
-            df2_c = df2_c[df2_c["Kolor"].isin(sc_c) & (df2_c["Godzina"] >= sh_c[0]) & (df2_c["Godzina"] <= sh_c[1])]
-            
-            if sm_c != "Wszystkie":
-                df1_c = df1_c[df1_c["Tryb"] == sm_c]
-                df2_c = df2_c[df2_c["Tryb"] == sm_c]
-
-            tabs_names = ["📊 Ogólne Statystyki", "📅 Historia", "♟️ Styl i Czas", "🔬 Debiuty"]
-            if p2_p in user_plats:
-                tabs_names.append("🥊 H2H")
+            tabs_names = ["📊 Stat", "📅 Hist", "⏳ Czas", "🔬 Debiut"]
+            if p2_p in user_plats: tabs_names.append("🥊 H2H")
             tabs = st.tabs(tabs_names)
 
             with tabs[0]:
-                st.markdown(f"### 🏆 Podsumowanie: {u1} vs {u2}")
+                st.markdown(f"### 🏆 {u1} vs {u2}")
                 
-                g1, g2 = len(df1_c), len(df2_c)
-                w1 = int(round((df1_c["Wynik"]=="Wygrane").sum()/g1*100,0)) if g1 > 0 else 0
+                g1, g2 = len(df_f), len(df2_c)
+                w1 = int(round((df_f["Wynik"]=="Wygrane").sum()/g1*100,0)) if g1 > 0 else 0
                 w2 = int(round((df2_c["Wynik"]=="Wygrane").sum()/g2*100,0)) if g2 > 0 else 0
-                d1 = int(round((df1_c["Wynik"]=="Remisy").sum()/g1*100,0)) if g1 > 0 else 0
+                d1 = int(round((df_f["Wynik"]=="Remisy").sum()/g1*100,0)) if g1 > 0 else 0
                 d2 = int(round((df2_c["Wynik"]=="Remisy").sum()/g2*100,0)) if g2 > 0 else 0
-                m1 = int(df1_c["Ruchy"].mean()) if g1 > 0 else 0
+                m1 = int(df_f["Ruchy"].mean()) if g1 > 0 else 0
                 m2 = int(df2_c["Ruchy"].mean()) if g2 > 0 else 0
                 
-                fav_op1_w = df1_c[df1_c["Kolor"] == "Białe"]["Debiut_Grupa"].mode()[0] if not df1_c[df1_c["Kolor"] == "Białe"].empty else "Brak"
-                fav_op1_b = df1_c[df1_c["Kolor"] == "Czarne"]["Debiut_Grupa"].mode()[0] if not df1_c[df1_c["Kolor"] == "Czarne"].empty else "Brak"
+                fav_op1_w = df_f[df_f["Kolor"] == "Białe"]["Debiut_Grupa"].mode()[0] if not df_f[df_f["Kolor"] == "Białe"].empty else "Brak"
+                fav_op1_b = df_f[df_f["Kolor"] == "Czarne"]["Debiut_Grupa"].mode()[0] if not df_f[df_f["Kolor"] == "Czarne"].empty else "Brak"
                 
                 fav_op2_w = df2_c[df2_c["Kolor"] == "Białe"]["Debiut_Grupa"].mode()[0] if not df2_c[df2_c["Kolor"] == "Białe"].empty else "Brak"
                 fav_op2_b = df2_c[df2_c["Kolor"] == "Czarne"]["Debiut_Grupa"].mode()[0] if not df2_c[df2_c["Kolor"] == "Czarne"].empty else "Brak"
 
                 k1, k2, k3, k4 = st.columns(4)
-                k1.metric("Partie", f"{g1} / {g2}", g1 - g2)
+                k1.metric("Liczba partii", f"{g1} / {g2}", g1 - g2)
                 k2.metric("Win Rate (%)", f"{w1}% / {w2}%", w1 - w2)
                 k3.metric("Draw Rate (%)", f"{d1}% / {d2}%", d1 - d2)
-                k4.metric("Śr. ruchów", f"{m1} / {m2}", m1 - m2)
+                k4.metric("Średnio ruchów", f"{m1} / {m2}", m1 - m2)
 
                 st.divider()
                 st.markdown("**Aktualny Ranking:**")
                 cx1, cx2, cx3 = st.columns(3)
-                df1_p = df1_c[df1_c["Platforma"] == p2_p] if not df1_c[df1_c["Platforma"] == p2_p].empty else df1_c
+                df1_p = df_f[df_f["Platforma"] == p2_p] if not df_f[df_f["Platforma"] == p2_p].empty else df_f
                 _, r1_s, r1_i = calc_elo(df1_p, "Rapid"); _, r2_s, r2_i = calc_elo(df2_c, "Rapid")
                 cx1.metric(f"Rapid", f"{r1_s} / {r2_s}", r1_i - r2_i if r1_i and r2_i else None)
                 
@@ -654,102 +498,78 @@ else:
                 o1, o2 = st.columns(2)
                 
                 o1.markdown(f"""
-                <div class="custom-info-box">
-                    <div class="custom-info-title">{t('fav_op')} ({u1}):</div>
-                    <div style="font-size: 0.85rem;">⚪ <b>{fav_op1_w}</b><br>⚫ <b>{fav_op1_b}</b></div>
+                <div style="padding: 12px; border-radius: 8px; background-color: rgba(88, 166, 255, 0.1); border-left: 4px solid #58a6ff; margin-bottom: 16px;">
+                    <div style="font-weight: bold; margin-bottom: 6px; color: #58a6ff;">Ulubione debiuty ({u1}):</div>
+                    <div style="font-size: 0.85rem; color: #e6edf3;">⚪ <b>{fav_op1_w}</b><br>⚫ <b>{fav_op1_b}</b></div>
                 </div>
                 """, unsafe_allow_html=True)
                 
                 o2.markdown(f"""
-                <div class="custom-info-box">
-                    <div class="custom-info-title">{t('fav_op')} ({u2}):</div>
-                    <div style="font-size: 0.85rem;">⚪ <b>{fav_op2_w}</b><br>⚫ <b>{fav_op2_b}</b></div>
+                <div style="padding: 12px; border-radius: 8px; background-color: rgba(88, 166, 255, 0.1); border-left: 4px solid #58a6ff; margin-bottom: 16px;">
+                    <div style="font-weight: bold; margin-bottom: 6px; color: #58a6ff;">Ulubione debiuty ({u2}):</div>
+                    <div style="font-size: 0.85rem; color: #e6edf3;">⚪ <b>{fav_op2_w}</b><br>⚫ <b>{fav_op2_b}</b></div>
                 </div>
                 """, unsafe_allow_html=True)
 
             with tabs[1]:
-                if not df1_c.empty and not df2_c.empty:
-                    st.write("### Porównanie aktywności dziennej")
-                    act_df1 = df1_c.groupby("Data").size().reset_index(name="Partie")
+                if not df_f.empty and not df2_c.empty:
+                    st.write("### Aktywność dzienna")
+                    act_df1 = df_f.groupby("Data").size().reset_index(name="Partie")
                     act_df1["Gracz"] = u1
                     act_df2 = df2_c.groupby("Data").size().reset_index(name="Partie")
                     act_df2["Gracz"] = u2
                     act_comb = pd.concat([act_df1, act_df2])
                     
-                    fig_act_c = px.bar(act_comb, x="Data", y="Partie", color="Gracz", barmode="group", 
-                                   title="Ilość gier w czasie",
-                                   color_discrete_sequence=["#1e88e5", "#ef553b"])
+                    fig_act_c = px.bar(act_comb, x="Data", y="Partie", color="Gracz", barmode="group", color_discrete_sequence=["#1e88e5", "#ef553b"])
                     fig_act_c.update_layout(legend=dict(orientation="h", yanchor="top", y=-0.2, xanchor="center", x=0.5, title=None))
                     st.plotly_chart(fig_act_c, use_container_width=True)
-                else:
-                    st.info("Brak wystarczających danych do wygenerowania wykresu dla podanego filtru.")
 
             with tabs[2]:
-                if not df1_c.empty and not df2_c.empty:
-                    h_df1 = df1_c.groupby("Godzina").agg(G=('Wynik', 'count'), W=('Wynik', lambda x: (x == 'Wygrane').sum())).reset_index()
-                    h_df1["Win%"] = (h_df1["W"] / h_df1["G"] * 100).round(0).astype(int)
+                c_t1, c_t2 = st.columns(2)
+                if not df_f.empty and not df2_c.empty:
+                    h_df1 = df_f.groupby("Godzina").size().reset_index(name="Partie")
                     h_df1["Gracz"] = u1
-                    
-                    h_df2 = df2_c.groupby("Godzina").agg(G=('Wynik', 'count'), W=('Wynik', lambda x: (x == 'Wygrane').sum())).reset_index()
-                    h_df2["Win%"] = (h_df2["W"] / h_df2["G"] * 100).round(0).astype(int)
+                    h_df2 = df2_c.groupby("Godzina").size().reset_index(name="Partie")
                     h_df2["Gracz"] = u2
-                    
                     h_comb = pd.concat([h_df1, h_df2])
                     
-                    fig_h = px.bar(h_comb, x="Godzina", y="Win%", color="Gracz", barmode="group", 
-                                   title=t("win_by_hour"), labels={"Godzina": t("hour"), "Win%": t("win_rate"), "G": t("games_count"), "Gracz": t("player")},
-                                   hover_data={"G": True},
-                                   color_discrete_sequence=["#1e88e5", "#ef553b"])
-                    fig_h.update_layout(xaxis=dict(tickmode='linear', tick0=0, dtick=1, tickangle=0), legend=dict(orientation="h", yanchor="top", y=-0.2, xanchor="center", x=0.5, title=None))
-                    st.plotly_chart(fig_h, use_container_width=True)
-                    st.markdown(f"<div style='font-size:0.85rem; color: gray; margin-top: -30px; margin-bottom: 20px; text-align: center;'>{t('chart_desc_comp')}</div>", unsafe_allow_html=True)
+                    fig_h = px.bar(h_comb, x="Godzina", y="Partie", color="Gracz", barmode="group", title="O jakich porach najczęściej gracie?", color_discrete_sequence=["#1e88e5", "#ef553b"])
+                    fig_h.update_layout(xaxis=dict(tickmode='linear', tick0=0, dtick=1))
+                    c_t1.plotly_chart(fig_h, use_container_width=True)
                 
-                if not df1_c.empty and not df2_c.empty:
-                    df1_c["Bin"] = df1_c["Ruchy"].apply(get_duration_bin)
+                if not df_f.empty and not df2_c.empty:
+                    df_f["Bin"] = df_f["Ruchy"].apply(get_duration_bin)
                     df2_c["Bin"] = df2_c["Ruchy"].apply(get_duration_bin)
                     
-                    b_df1 = df1_c.groupby("Bin").agg(G=('Wynik', 'count'), W=('Wynik', lambda x: (x == 'Wygrane').sum())).reset_index()
-                    b_df1["Win%"] = (b_df1["W"] / b_df1["G"] * 100).round(0).astype(int)
+                    b_df1 = df_f.groupby("Bin").size().reset_index(name="Ilość")
                     b_df1["Gracz"] = u1
-                    
-                    b_df2 = df2_c.groupby("Bin").agg(G=('Wynik', 'count'), W=('Wynik', lambda x: (x == 'Wygrane').sum())).reset_index()
-                    b_df2["Win%"] = (b_df2["W"] / b_df2["G"] * 100).round(0).astype(int)
+                    b_df2 = df2_c.groupby("Bin").size().reset_index(name="Ilość")
                     b_df2["Gracz"] = u2
-                    
                     b_comb = pd.concat([b_df1, b_df2])
                     
                     order = ["0-20", "21-30", "31-40", "41-50", "51-60", "61-70", "71+"]
-                    fig_b = px.bar(b_comb.sort_values("Bin", key=lambda x: [order.index(i) for i in x]), 
-                                   x="Bin", y="Win%", color="Gracz", barmode="group", 
-                                   title=t("win_by_length"), labels={"Bin": t("length"), "Win%": t("win_rate"), "G": t("games_count"), "Gracz": t("player")},
-                                   hover_data={"G": True},
-                                   color_discrete_sequence=["#1e88e5", "#ef553b"])
-                    fig_b.update_layout(xaxis_title="", legend=dict(orientation="h", yanchor="top", y=-0.2, xanchor="center", x=0.5, title=None))
-                    st.plotly_chart(fig_b, use_container_width=True)
-                    st.markdown(f"<div style='font-size:0.85rem; color: gray; margin-top: -30px; margin-bottom: 20px; text-align: center;'>{t('chart_desc_comp')}</div>", unsafe_allow_html=True)
+                    fig_b = px.bar(b_comb.sort_values("Bin", key=lambda x: [order.index(i) for i in x]), x="Bin", y="Ilość", color="Gracz", barmode="group", title="Jak długie partie rozgrywacie?", color_discrete_sequence=["#1e88e5", "#ef553b"])
+                    c_t2.plotly_chart(fig_b, use_container_width=True)
 
             with tabs[3]:
                 c_o1, c_o2 = st.columns(2)
                 with c_o1:
                     st.write(f"### 🛡️ Grupy Debiutów: {u1}")
-                    if not df1_c.empty:
-                        unique_groups_1 = df1_c["Debiut_Grupa"].nunique()
-                        st.info(f"**Rozegrane unikalne grupy:** {unique_groups_1}")
-                        op_g1 = df1_c.groupby("Debiut_Grupa").agg(Gry=('Wynik', 'count'), WinRate=('Wynik', lambda x: int(round((x == 'Wygrane').sum()/len(x)*100,0)))).reset_index()
+                    if not df_f.empty:
+                        st.info(f"**Rozegrane unikalne grupy:** {df_f['Debiut_Grupa'].nunique()}")
+                        op_g1 = df_f.groupby("Debiut_Grupa").agg(Gry=('Wynik', 'count'), WinRate=('Wynik', lambda x: int(round((x == 'Wygrane').sum()/len(x)*100,0)))).reset_index()
                         st.dataframe(op_g1.sort_values("Gry", ascending=False).head(15), use_container_width=True, hide_index=True)
                 with c_o2:
                     st.write(f"### 🛡️ Grupy Debiutów: {u2}")
                     if not df2_c.empty:
-                        unique_groups_2 = df2_c["Debiut_Grupa"].nunique()
-                        st.info(f"**Rozegrane unikalne grupy:** {unique_groups_2}")
+                        st.info(f"**Rozegrane unikalne grupy:** {df2_c['Debiut_Grupa'].nunique()}")
                         op_g2 = df2_c.groupby("Debiut_Grupa").agg(Gry=('Wynik', 'count'), WinRate=('Wynik', lambda x: int(round((x == 'Wygrane').sum()/len(x)*100,0)))).reset_index()
                         st.dataframe(op_g2.sort_values("Gry", ascending=False).head(15), use_container_width=True, hide_index=True)
 
             if len(tabs) > 4:
                 with tabs[4]:
-                    h2 = df1_c[(df1_c['Przeciwnik'].str.lower() == u2.lower()) & (df1_c['Platforma'] == p2_p)].copy().sort_values("Timestamp").reset_index(drop=True)
+                    h2 = df_f[(df_f['Przeciwnik'].str.lower() == u2.lower()) & (df_f['Platforma'] == p2_p)].copy().sort_values("Timestamp").reset_index(drop=True)
                     if not h2.empty:
-                        st.markdown(f"### H2H: {u1} vs {u2}")
                         h2_w, h2_d, h2_l = (h2["Wynik"] == "Wygrane").sum(), (h2["Wynik"] == "Remisy").sum(), (h2["Wynik"] == "Przegrane").sum()
                         
                         st.markdown(f"""
@@ -764,15 +584,10 @@ else:
                         h2["Partia_Nr"] = h2.index + 1
                         h2["Ty"], h2[u2] = (h2["Wynik"]=="Wygrane").cumsum(), (h2["Wynik"]=="Przegrane").cumsum()
                         
-                        fig_h2h = px.line(h2.melt(id_vars=["Partia_Nr"], value_vars=["Ty", u2]), 
-                                          x="Partia_Nr", y="value", color="variable", 
-                                          title="Wyścig zwycięstw H2H",
-                                          color_discrete_sequence=["#1e88e5", "#ef553b"])
-                        fig_h2h.update_layout(xaxis_title="Numer partii", yaxis_title="Suma wygranych", 
-                                              legend=dict(orientation="h", yanchor="top", y=-0.25, xanchor="center", x=0.5, title=None))
+                        fig_h2h = px.line(h2.melt(id_vars=["Partia_Nr"], value_vars=["Ty", u2]), x="Partia_Nr", y="value", color="variable", title="Wyścig zwycięstw H2H", color_discrete_sequence=["#1e88e5", "#ef553b"])
+                        fig_h2h.update_layout(xaxis_title="Numer partii", yaxis_title="Suma wygranych", legend=dict(orientation="h", yanchor="top", y=-0.25, xanchor="center", x=0.5, title=None))
                         st.plotly_chart(fig_h2h, use_container_width=True)
                         
                         st.write("**Historia spotkań:**")
                         st.dataframe(h2[["Data", "Tryb", "Kolor", "Wynik", "Ruchy", "Debiut"]].sort_values("Data", ascending=False), use_container_width=True, hide_index=True)
-                    else: 
-                        st.info(f"Brak zarejestrowanych bezpośrednich partii pomiędzy **{u1}** a **{u2}** (przy obecnych filtrach).")
+                    else: st.info(f"Brak zarejestrowanych bezpośrednich partii pomiędzy **{u1}** a **{u2}** (przy obecnych filtrach).")

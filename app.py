@@ -496,6 +496,7 @@ else:
                 st.subheader(t("win_by_hour"), help=t("chart_desc"))
                 fig_h = px.bar(h_st, x="Godzina", y="Win%", color="G", color_continuous_scale='Blues', labels={"Godzina": t("hour"), "Win%": t("win_rate"), "G": t("games_count")})
                 fig_h.update_layout(coloraxis_showscale=False, title="", xaxis=dict(tickmode='linear', tick0=0, dtick=1, tickangle=0))
+                fig_h.update_yaxes(range=[0, 100])
                 st.plotly_chart(fig_h, use_container_width=True)
                 
                 st.write("") # Odstęp
@@ -506,6 +507,7 @@ else:
                 st.subheader(t("win_by_day"), help=t("chart_desc"))
                 fig_d = px.bar(d_st, x="Dzień", y="Win%", color="G", color_continuous_scale='Blues', labels={"Dzień": t("day"), "Win%": t("win_rate"), "G": t("games_count")})
                 fig_d.update_layout(coloraxis_showscale=False, title="", xaxis=dict(tickangle=0))
+                fig_d.update_yaxes(range=[0, 100])
                 st.plotly_chart(fig_d, use_container_width=True)
                 
                 st.write("") # Odstęp
@@ -518,6 +520,7 @@ else:
                 st.subheader(t("win_by_length"), help=t("chart_desc"))
                 fig_dur = px.bar(dst.sort_values("Bin", key=lambda x: [order.index(i) for i in x]), x="Bin", y="Win%", color="G", color_continuous_scale='Blues', labels={"Bin": t("length"), "Win%": t("win_rate"), "G": t("games_count")})
                 fig_dur.update_layout(coloraxis_showscale=False, showlegend=False, xaxis_title="", title="")
+                fig_dur.update_yaxes(range=[0, 100])
                 st.plotly_chart(fig_dur, use_container_width=True)
                 
                 st.write("") # Odstęp
@@ -661,6 +664,43 @@ else:
             tabs = st.tabs(tabs_names)
 
             with tabs[0]:
+                
+                # --- SYMULATOR 30 DNI (Ignoruje filtry dat) ---
+                max_dt_sym = max(df_loc["Timestamp"].max(), df2["Timestamp"].max())
+                min_dt_sym = max_dt_sym - pd.Timedelta(days=30)
+                
+                df1_30 = df_loc[df_loc["Timestamp"] >= min_dt_sym]
+                df2_30 = df2[df2["Timestamp"] >= min_dt_sym]
+                
+                g1_30 = len(df1_30)
+                g2_30 = len(df2_30)
+                
+                elo1_30 = int(df1_30["ELO"].mean()) if g1_30 > 0 else 0
+                elo2_30 = int(df2_30["ELO"].mean()) if g2_30 > 0 else 0
+                
+                wr1_30 = int(round((df1_30["Wynik"]=="Wygrane").sum()/g1_30*100,0)) if g1_30 > 0 else 0
+                wr2_30 = int(round((df2_30["Wynik"]=="Wygrane").sum()/g2_30*100,0)) if g2_30 > 0 else 0
+                
+                if elo1_30 > 0 and elo2_30 > 0:
+                    prob1 = 1 / (1 + 10 ** ((elo2_30 - elo1_30) / 400))
+                    prob1_pct = int(round(prob1 * 100, 0))
+                    prob2_pct = 100 - prob1_pct
+                    fav = u1 if prob1_pct >= 50 else u2
+                    szansa = prob1_pct if prob1_pct >= 50 else prob2_pct
+                    
+                    st.markdown(f"""
+                    <div style="background: linear-gradient(135deg, rgba(30,136,229,0.1) 0%, rgba(239,85,59,0.1) 100%); border-radius: 8px; padding: 15px; margin-bottom: 20px; text-align: center; border: 1px solid #58a6ff;">
+                        <h4 style="margin: 0 0 10px 0;">⚔️ Symulator Pojedynku (Forma: Ostatnie 30 Dni)</h4>
+                        <div style="display: flex; justify-content: space-around; font-size: 0.9rem;">
+                            <div><b>{u1}</b><br>Śr. ELO: {elo1_30}<br>Win Rate: {wr1_30}%</div>
+                            <div style="font-size: 1.2rem; font-weight: bold; align-self: center;">
+                                Faworyt: {fav} ({szansa}%)
+                            </div>
+                            <div><b>{u2}</b><br>Śr. ELO: {elo2_30}<br>Win Rate: {wr2_30}%</div>
+                        </div>
+                    </div>
+                    """, unsafe_allow_html=True)
+                
                 st.markdown(f"### 🏆 Podsumowanie: {u1} vs {u2}")
                 
                 g1, g2 = len(df1_c), len(df2_c)
@@ -713,6 +753,29 @@ else:
                 </div>
                 """, unsafe_allow_html=True)
 
+                st.divider()
+                st.write("### Sposób zakończenia partii")
+                df1_r = df1_c.copy()
+                df2_r = df2_c.copy()
+                df1_r["Gracz"] = u1
+                df2_r["Gracz"] = u2
+                df_r_comb = pd.concat([df1_r, df2_r])
+                df_r_comb["Powod_T"] = df_r_comb["Powod"].apply(t_reason)
+                
+                c_r1, c_r2 = st.columns(2)
+                if not df_r_comb.empty:
+                    df_win = df_r_comb[df_r_comb["Wynik"] == "Wygrane"].groupby(["Powod_T", "Gracz"]).size().reset_index(name="Ilość")
+                    if not df_win.empty:
+                        fig_r_w = px.bar(df_win, x="Powod_T", y="Ilość", color="Gracz", barmode="group", title="Sposób wygranej", color_discrete_sequence=["#1e88e5", "#ef553b"])
+                        fig_r_w.update_layout(legend=dict(orientation="h", yanchor="top", y=-0.2, xanchor="center", x=0.5, title=None))
+                        c_r1.plotly_chart(fig_r_w, use_container_width=True)
+
+                    df_loss = df_r_comb[df_r_comb["Wynik"] == "Przegrane"].groupby(["Powod_T", "Gracz"]).size().reset_index(name="Ilość")
+                    if not df_loss.empty:
+                        fig_r_l = px.bar(df_loss, x="Powod_T", y="Ilość", color="Gracz", barmode="group", title="Sposób porażki", color_discrete_sequence=["#1e88e5", "#ef553b"])
+                        fig_r_l.update_layout(legend=dict(orientation="h", yanchor="top", y=-0.2, xanchor="center", x=0.5, title=None))
+                        c_r2.plotly_chart(fig_r_l, use_container_width=True)
+
             with tabs[1]:
                 if not df1_c.empty and not df2_c.empty:
                     st.write("### Porównanie aktywności dziennej")
@@ -727,8 +790,21 @@ else:
                                    color_discrete_sequence=["#1e88e5", "#ef553b"])
                     fig_act_c.update_layout(legend=dict(orientation="h", yanchor="top", y=-0.2, xanchor="center", x=0.5, title=None))
                     st.plotly_chart(fig_act_c, use_container_width=True)
+                    
+                    st.write("### Zmiana ELO w czasie")
+                    df1_elo = df1_c.copy()
+                    df2_elo = df2_c.copy()
+                    df1_elo["Gracz"] = u1
+                    df2_elo["Gracz"] = u2
+                    df_elo_comb = pd.concat([df1_elo, df2_elo]).sort_values("Timestamp")
+                    
+                    if not df_elo_comb.empty:
+                        fig_elo_c = px.line(df_elo_comb, x="Timestamp", y="ELO", color="Gracz", hover_data=["Tryb"],
+                                            color_discrete_sequence=["#1e88e5", "#ef553b"])
+                        fig_elo_c.update_layout(xaxis_title="", yaxis_title="ELO", legend=dict(orientation="h", yanchor="top", y=-0.2, xanchor="center", x=0.5, title=None))
+                        st.plotly_chart(fig_elo_c, use_container_width=True)
                 else:
-                    st.info("Brak wystarczających danych do wygenerowania wykresu dla podanego filtru.")
+                    st.info("Brak wystarczających danych do wygenerowania wykresów dla podanego filtru.")
 
             with tabs[2]:
                 if not df1_c.empty and not df2_c.empty:
@@ -748,7 +824,30 @@ else:
                                    hover_data={"G": True},
                                    color_discrete_sequence=["#1e88e5", "#ef553b"])
                     fig_h.update_layout(title="", xaxis=dict(tickmode='linear', tick0=0, dtick=1, tickangle=0), legend=dict(orientation="h", yanchor="top", y=-0.2, xanchor="center", x=0.5, title=None))
+                    fig_h.update_yaxes(range=[0, 100])
                     st.plotly_chart(fig_h, use_container_width=True)
+                
+                st.write("") # Odstęp
+                
+                if not df1_c.empty and not df2_c.empty:
+                    d_df1 = df1_c.groupby(["Dzień", "Dzień_Nr"]).agg(G=('Wynik', 'count'), W=('Wynik', lambda x: (x == 'Wygrane').sum())).reset_index()
+                    d_df1["Win%"] = (d_df1["W"] / d_df1["G"] * 100).round(0).astype(int)
+                    d_df1["Gracz"] = u1
+                    
+                    d_df2 = df2_c.groupby(["Dzień", "Dzień_Nr"]).agg(G=('Wynik', 'count'), W=('Wynik', lambda x: (x == 'Wygrane').sum())).reset_index()
+                    d_df2["Win%"] = (d_df2["W"] / d_df2["G"] * 100).round(0).astype(int)
+                    d_df2["Gracz"] = u2
+                    
+                    d_comb = pd.concat([d_df1, d_df2]).sort_values("Dzień_Nr")
+                    
+                    st.subheader(t("win_by_day"), help=t("chart_desc_comp"))
+                    fig_d_c = px.bar(d_comb, x="Dzień", y="Win%", color="Gracz", barmode="group", 
+                                     labels={"Dzień": t("day"), "Win%": t("win_rate"), "Gracz": t("player")},
+                                     hover_data={"G": True},
+                                     color_discrete_sequence=["#1e88e5", "#ef553b"])
+                    fig_d_c.update_layout(title="", xaxis_title="", legend=dict(orientation="h", yanchor="top", y=-0.2, xanchor="center", x=0.5, title=None))
+                    fig_d_c.update_yaxes(range=[0, 100])
+                    st.plotly_chart(fig_d_c, use_container_width=True)
                 
                 st.write("") # Odstęp
                 
@@ -775,61 +874,33 @@ else:
                                    hover_data={"G": True},
                                    color_discrete_sequence=["#1e88e5", "#ef553b"])
                     fig_b.update_layout(title="", xaxis_title="", legend=dict(orientation="h", yanchor="top", y=-0.2, xanchor="center", x=0.5, title=None))
+                    fig_b.update_yaxes(range=[0, 100])
                     st.plotly_chart(fig_b, use_container_width=True)
 
             with tabs[3]:
-                c_o1, c_o2 = st.columns(2)
-                with c_o1:
-                    st.write(f"### 🛡️ Debiuty: {u1}")
-                    df1_w = df1_c[df1_c["Kolor"] == "Białe"]
-                    df1_b = df1_c[df1_c["Kolor"] == "Czarne"]
+                st.write("### 🛡️ Najpopularniejsze Debiuty")
+                
+                def merge_openings(color_name):
+                    df1_sub = df1_c[df1_c["Kolor"] == color_name]
+                    df2_sub = df2_c[df2_c["Kolor"] == color_name]
                     
-                    if not df1_c.empty:
-                        st.info(f"**Rozegrane unikalne grupy:** {df1_c['Debiut_Grupa'].nunique()}")
+                    g1_op = df1_sub.groupby("Debiut_Grupa").size().reset_index(name=f"Partie [{u1}]")
+                    g2_op = df2_sub.groupby("Debiut_Grupa").size().reset_index(name=f"Partie [{u2}]")
                     
-                    st.markdown(f"<h5 style='text-align: center;'>⚪ {t('color_white')}</h5>", unsafe_allow_html=True)
-                    if not df1_w.empty:
-                        op_g1_w = df1_w.groupby("Debiut_Grupa").agg(Gry=('Wynik', 'count'), WinRate=('Wynik', lambda x: int(round((x == 'Wygrane').sum()/len(x)*100,0)))).reset_index()
-                        st.dataframe(op_g1_w.sort_values("Gry", ascending=False).head(15), use_container_width=True, hide_index=True)
-                        with st.expander(f"Szczegółowe Warianty - ⚪ {t('color_white')}"):
-                            op1_w = df1_w.groupby("Debiut").agg(Gry=('Wynik', 'count'), WinRate=('Wynik', lambda x: int(round((x == 'Wygrane').sum()/len(x)*100,0)))).reset_index()
-                            st.dataframe(op1_w.sort_values("Gry", ascending=False).head(20), use_container_width=True, hide_index=True)
-                    else: st.info("Brak partii")
-                        
-                    st.markdown(f"<h5 style='text-align: center;'>⚫ {t('color_black')}</h5>", unsafe_allow_html=True)
-                    if not df1_b.empty:
-                        op_g1_b = df1_b.groupby("Debiut_Grupa").agg(Gry=('Wynik', 'count'), WinRate=('Wynik', lambda x: int(round((x == 'Wygrane').sum()/len(x)*100,0)))).reset_index()
-                        st.dataframe(op_g1_b.sort_values("Gry", ascending=False).head(15), use_container_width=True, hide_index=True)
-                        with st.expander(f"Szczegółowe Warianty - ⚫ {t('color_black')}"):
-                            op1_b = df1_b.groupby("Debiut").agg(Gry=('Wynik', 'count'), WinRate=('Wynik', lambda x: int(round((x == 'Wygrane').sum()/len(x)*100,0)))).reset_index()
-                            st.dataframe(op1_b.sort_values("Gry", ascending=False).head(20), use_container_width=True, hide_index=True)
-                    else: st.info("Brak partii")
+                    m = pd.merge(g1_op, g2_op, on="Debiut_Grupa", how="outer").fillna(0)
+                    m[f"Partie [{u1}]"] = m[f"Partie [{u1}]"].astype(int)
+                    m[f"Partie [{u2}]"] = m[f"Partie [{u2}]"].astype(int)
+                    m["Razem"] = m[f"Partie [{u1}]"] + m[f"Partie [{u2}]"]
+                    return m.sort_values("Razem", ascending=False).drop(columns=["Razem"]).reset_index(drop=True)
 
-                with c_o2:
-                    st.write(f"### 🛡️ Debiuty: {u2}")
-                    df2_w = df2_c[df2_c["Kolor"] == "Białe"]
-                    df2_b = df2_c[df2_c["Kolor"] == "Czarne"]
-                    
-                    if not df2_c.empty:
-                        st.info(f"**Rozegrane unikalne grupy:** {df2_c['Debiut_Grupa'].nunique()}")
-                    
+                c_w_op, c_b_op = st.columns(2)
+                with c_w_op:
                     st.markdown(f"<h5 style='text-align: center;'>⚪ {t('color_white')}</h5>", unsafe_allow_html=True)
-                    if not df2_w.empty:
-                        op_g2_w = df2_w.groupby("Debiut_Grupa").agg(Gry=('Wynik', 'count'), WinRate=('Wynik', lambda x: int(round((x == 'Wygrane').sum()/len(x)*100,0)))).reset_index()
-                        st.dataframe(op_g2_w.sort_values("Gry", ascending=False).head(15), use_container_width=True, hide_index=True)
-                        with st.expander(f"Szczegółowe Warianty - ⚪ {t('color_white')}"):
-                            op2_w = df2_w.groupby("Debiut").agg(Gry=('Wynik', 'count'), WinRate=('Wynik', lambda x: int(round((x == 'Wygrane').sum()/len(x)*100,0)))).reset_index()
-                            st.dataframe(op2_w.sort_values("Gry", ascending=False).head(20), use_container_width=True, hide_index=True)
-                    else: st.info("Brak partii")
-                        
+                    st.dataframe(merge_openings("Białe").head(20), use_container_width=True, hide_index=True)
+                    
+                with c_b_op:
                     st.markdown(f"<h5 style='text-align: center;'>⚫ {t('color_black')}</h5>", unsafe_allow_html=True)
-                    if not df2_b.empty:
-                        op_g2_b = df2_b.groupby("Debiut_Grupa").agg(Gry=('Wynik', 'count'), WinRate=('Wynik', lambda x: int(round((x == 'Wygrane').sum()/len(x)*100,0)))).reset_index()
-                        st.dataframe(op_g2_b.sort_values("Gry", ascending=False).head(15), use_container_width=True, hide_index=True)
-                        with st.expander(f"Szczegółowe Warianty - ⚫ {t('color_black')}"):
-                            op2_b = df2_b.groupby("Debiut").agg(Gry=('Wynik', 'count'), WinRate=('Wynik', lambda x: int(round((x == 'Wygrane').sum()/len(x)*100,0)))).reset_index()
-                            st.dataframe(op2_b.sort_values("Gry", ascending=False).head(20), use_container_width=True, hide_index=True)
-                    else: st.info("Brak partii")
+                    st.dataframe(merge_openings("Czarne").head(20), use_container_width=True, hide_index=True)
 
             if len(tabs) > 4:
                 with tabs[4]:

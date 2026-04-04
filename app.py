@@ -20,12 +20,12 @@ if 'cb_por' not in st.session_state: st.session_state.cb_por = True
 st.set_page_config(page_title="ChessStats", page_icon="♟️", layout="wide")
 
 bg_dict = {
-    "Jasny": "#f3f4f6", 
-    "Ciemny": "#0e1117", 
+    "Jasny": "#f9fafb", 
+    "Ciemny": "#0d1117", 
     "Chess.com": "#312e2b", 
-    "Neon Retro": "#0a0a14"
+    "Neon Retro": "#0b0914"
 }
-bg_color = bg_dict.get(st.session_state.theme, "#0e1117")
+bg_color = bg_dict.get(st.session_state.theme, "#0d1117")
 
 components.html(
     f"""
@@ -40,29 +40,29 @@ components.html(
 
 # --- KOLORYSTYKA I STYLE WYKRESÓW (PLOTLY ENGINE) ---
 if st.session_state.theme == "Chess.com":
-    cw, cd, cl = "#81b64c", "#a7a6a2", "#fa412d"  # Zgodne z paletą
+    cw, cd, cl = "#81b64c", "#a7a6a2", "#fa412d"
     cp1, cp2 = "#81b64c", "#fa412d"
     c_scale = "Greens"
     chart_bg = "#262421" 
     grid_color = "#3d3b38"
     font_color = "#c3c3c0"
 elif st.session_state.theme == "Neon Retro":
-    cw, cd, cl = "#00ffff", "#8c43ff", "#ff007c"  
-    cp1, cp2 = "#00ffff", "#ff007c"
+    cw, cd, cl = "#00f0ff", "#8c43ff", "#ff0055"  
+    cp1, cp2 = "#00f0ff", "#ff0055"
     c_scale = "Purples"
-    chart_bg = "rgba(18, 18, 38, 0.85)"
-    grid_color = "rgba(140, 67, 255, 0.2)"
+    chart_bg = "rgba(22, 19, 43, 0.85)"
+    grid_color = "rgba(140, 67, 255, 0.15)"
     font_color = "#e0e0ff"
 elif st.session_state.theme == "Jasny":
-    cw, cd, cl = "#1d4ed8", "#6b7280", "#dc2626"
-    cp1, cp2 = "#1d4ed8", "#dc2626"
+    cw, cd, cl = "#2563eb", "#9ca3af", "#ef4444"
+    cp1, cp2 = "#2563eb", "#ef4444"
     c_scale = "Blues"
     chart_bg = "#ffffff"
-    grid_color = "#e5e7eb"
-    font_color = "#1f2937"
+    grid_color = "#f3f4f6"
+    font_color = "#374151"
 else: # Ciemny
-    cw, cd, cl = "#1e88e5", "#8b949e", "#ef553b"
-    cp1, cp2 = "#1e88e5", "#ef553b"
+    cw, cd, cl = "#2f81f7", "#8b949e", "#f85149"
+    cp1, cp2 = "#2f81f7", "#f85149"
     c_scale = "Blues"
     chart_bg = "#161b22"
     grid_color = "#30363d"
@@ -74,14 +74,14 @@ def style_chart(fig):
         paper_bgcolor=chart_bg,
         plot_bgcolor="rgba(0,0,0,0)",
         font=dict(color=font_color),
-        margin=dict(l=20, r=20, t=50, b=20),
-        title_font=dict(size=16, color=font_color, family="system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif"),
-        legend=dict(orientation="h", yanchor="top", y=-0.2, xanchor="center", x=0.5, title=None)
+        margin=dict(l=10, r=10, t=20, b=10), # Zmniejszone górne marginesy, bo tytuły są teraz na zewnątrz
+        title=None, # Usuwa wewnętrzny tytuł Plotly
+        legend=dict(orientation="h", yanchor="top", y=-0.15, xanchor="center", x=0.5, title=None)
     )
     fig.update_xaxes(showgrid=False, gridcolor=grid_color, zerolinecolor=grid_color)
     fig.update_yaxes(showgrid=True, gridcolor=grid_color, zerolinecolor=grid_color)
     
-    # NAPRAWA: Usunięcie obramowań słupków, które powodowały ich czernienie przy dużym zagęszczeniu
+    # Brak obramowań słupków (czyste kolory)
     fig.update_traces(marker_line_width=0, selector=dict(type="bar"))
     
     fig.update_layout(template="plotly_dark" if st.session_state.theme != "Jasny" else "plotly_white")
@@ -142,24 +142,27 @@ def t_reason(reason):
 
 # --- CSS (DYNAMICZNY MOTYW) ---
 css_dark = """
-    .stApp { background-color: #0e1117; color: #ffffff; }
-    [data-testid="stHeader"] { background-color: rgba(14, 17, 23, 0); }
+    .stApp { background-color: #0d1117; color: #c9d1d9; }
+    [data-testid="stHeader"] { background-color: rgba(0, 0, 0, 0); }
     .stMetric, div.row-widget.stRadio > div, .custom-info-box { background-color: #161b22; border: 1px solid #30363d; border-radius: 8px;}
-    [data-testid="stMetricValue"] { color: #ffffff !important; }
-    .custom-info-box { background-color: rgba(30, 136, 229, 0.1); border-left: 4px solid #1e88e5; color: #e6edf3; }
-    .custom-info-title { color: #1e88e5; }
-    .stButton>button[kind="primary"] { background-color: #1e88e5; color: white; border: none; }
+    [data-testid="stMetricValue"], h1, h2, h3, h4, h5 { color: #ffffff !important; }
+    .custom-info-box { background-color: rgba(47, 129, 247, 0.1); border-left: 4px solid #2f81f7; color: #c9d1d9; }
+    .custom-info-title { color: #2f81f7; }
+    .stTabs [data-baseweb="tab-list"] button { color: #8b949e; font-weight: 500; }
+    .stTabs [data-baseweb="tab-list"] button[aria-selected="true"] { color: #ffffff; border-bottom-color: #2f81f7; }
+    .stButton>button[kind="primary"] { background-color: #238636; color: white; border: 1px solid #2ea043; border-radius: 6px; font-weight: 500;}
 """
 css_light = """
-    .stApp { background-color: #f3f4f6; color: #000000; }
+    .stApp { background-color: #f9fafb; color: #111827; }
     [data-testid="stHeader"] { background-color: rgba(255, 255, 255, 0); }
-    .stMetric, div.row-widget.stRadio > div, .custom-info-box { background-color: #ffffff; border: 1px solid #d1d5db; border-radius: 8px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); }
-    [data-testid="stMetricValue"], [data-testid="stMarkdownContainer"] p, h1, h2, h3, h4, h5 { color: #000000 !important; }
-    [data-testid="stMetricLabel"] { color: #4b5563 !important; }
-    .custom-info-box { background-color: #eff6ff; border-left: 4px solid #1d4ed8; color: #1f2937; }
-    .custom-info-title { color: #1d4ed8; }
-    .stTabs [data-baseweb="tab-list"] button { color: #4b5563; }
-    .stTabs [data-baseweb="tab-list"] button[aria-selected="true"] { color: #000000; }
+    .stMetric, div.row-widget.stRadio > div, .custom-info-box { background-color: #ffffff; border: 1px solid #e5e7eb; border-radius: 12px; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05), 0 2px 4px -1px rgba(0, 0, 0, 0.03); }
+    [data-testid="stMetricValue"], [data-testid="stMarkdownContainer"] p, h1, h2, h3, h4, h5 { color: #111827 !important; }
+    [data-testid="stMetricLabel"] { color: #6b7280 !important; }
+    .custom-info-box { background-color: #eff6ff; border-left: 4px solid #2563eb; color: #374151; }
+    .custom-info-title { color: #2563eb; }
+    .stTabs [data-baseweb="tab-list"] button { color: #6b7280; font-weight: 500; }
+    .stTabs [data-baseweb="tab-list"] button[aria-selected="true"] { color: #111827; border-bottom-color: #2563eb; }
+    .stButton>button[kind="primary"] { background-color: #2563eb; color: white; border: none; border-radius: 8px; font-weight: 600; box-shadow: 0 4px 6px rgba(37, 99, 235, 0.2); }
 """
 css_chesscom = """
     .stApp { 
@@ -194,38 +197,39 @@ css_chesscom = """
 """
 css_neon = """
     .stApp { 
-        background-color: #0a0a14; 
-        background-image: radial-gradient(circle at top right, #1a0b2e, #0a0a14);
+        background-color: #0b0914; 
+        background-image: radial-gradient(circle at 50% 0%, #1a103c, #0b0914);
         background-attachment: fixed;
         color: #e0e0ff; 
     }
     [data-testid="stHeader"] { background-color: rgba(0, 0, 0, 0); }
     .stMetric, div.row-widget.stRadio > div { 
-        background-color: rgba(18, 18, 38, 0.85); 
-        border: 1px solid #8c43ff; 
+        background-color: rgba(22, 19, 43, 0.85); 
+        border: 1px solid rgba(140, 67, 255, 0.4); 
         border-radius: 12px;
-        box-shadow: 0 0 10px rgba(140, 67, 255, 0.2); 
+        box-shadow: 0 0 15px rgba(140, 67, 255, 0.15); 
     }
-    [data-testid="stMetricValue"], [data-testid="stMarkdownContainer"] p, h1, h2, h3, h4, h5 { 
-        color: #00ffff !important; 
-        text-shadow: 0 0 4px rgba(0, 255, 255, 0.4); 
+    [data-testid="stMetricValue"], h1, h2, h3, h4, h5 { 
+        color: #00f0ff !important; 
+        text-shadow: 0 0 6px rgba(0, 240, 255, 0.4); 
     }
-    [data-testid="stMetricLabel"] { color: #ff007c !important; }
-    .custom-info-box { background-color: rgba(0, 255, 255, 0.08); border-left: 4px solid #00ffff; color: #e0e0ff; }
-    .custom-info-title { color: #ff007c; text-shadow: 0 0 5px rgba(255,0,124,0.4); }
+    [data-testid="stMetricLabel"] { color: #ff0055 !important; font-weight: bold; }
+    .custom-info-box { background-color: rgba(0, 240, 255, 0.05); border-left: 4px solid #00f0ff; color: #e0e0ff; border-radius: 8px;}
+    .custom-info-title { color: #ff0055; text-shadow: 0 0 5px rgba(255,0,85,0.4); }
     .stTabs [data-baseweb="tab-list"] button { color: #6a6a8c; text-transform: uppercase; letter-spacing: 1px;}
-    .stTabs [data-baseweb="tab-list"] button[aria-selected="true"] { color: #00ffff; border-bottom-color: #00ffff; text-shadow: 0 0 8px rgba(0,255,255,0.6); }
+    .stTabs [data-baseweb="tab-list"] button[aria-selected="true"] { color: #00f0ff; border-bottom-color: #00f0ff; text-shadow: 0 0 8px rgba(0,240,255,0.5); }
     .stButton>button[kind="primary"] { 
-        background-color: rgba(0, 255, 255, 0.1); 
-        color: #00ffff; 
-        border: 1px solid #00ffff; 
-        border-radius: 4px;
-        box-shadow: 0 0 10px rgba(0, 255, 255, 0.3);
+        background-color: rgba(0, 240, 255, 0.1); 
+        color: #00f0ff; 
+        border: 1px solid #00f0ff; 
+        border-radius: 6px;
+        box-shadow: 0 0 10px rgba(0, 240, 255, 0.2);
         text-transform: uppercase;
         letter-spacing: 1px;
+        font-weight: bold;
     }
-    .stButton>button[kind="primary"]:hover { background-color: rgba(0, 255, 255, 0.3); box-shadow: 0 0 20px rgba(0, 255, 255, 0.6); }
-    .js-plotly-plot { border-radius: 12px; overflow: hidden; border: 1px solid #8c43ff; box-shadow: 0 0 15px rgba(140, 67, 255, 0.15); }
+    .stButton>button[kind="primary"]:hover { background-color: rgba(0, 240, 255, 0.2); box-shadow: 0 0 20px rgba(0, 240, 255, 0.5); }
+    .js-plotly-plot { border-radius: 12px; overflow: hidden; border: 1px solid rgba(140, 67, 255, 0.4); box-shadow: 0 0 15px rgba(140, 67, 255, 0.15); }
 """
 
 active_css = css_dark
@@ -608,27 +612,31 @@ else:
                 for m in ["Rapid", "Blitz", "Bullet"]:
                     mdf = df_f[df_f["Tryb"] == m].sort_values("Timestamp")
                     if not mdf.empty:
-                        fig_elo = px.line(mdf, x="Timestamp", y="ELO", color="Konto", title=f"Ranking {m}", markers=True)
+                        st.write(f"### Ranking {m}")
+                        fig_elo = px.line(mdf, x="Timestamp", y="ELO", color="Konto", markers=True)
                         fig_elo = style_chart(fig_elo)
                         st.plotly_chart(fig_elo, use_container_width=True)
 
                 st.divider()
+                st.write("### Sposób zakończenia partii")
                 c1, c2 = st.columns(2)
                 df_f_pie = df_f.copy()
                 df_f_pie["Powod_T"] = df_f_pie["Powod"].apply(t_reason)
                 
-                fig_pie_w = px.pie(df_f_pie[df_f_pie["Wynik"]=="Wygrane"], names="Powod_T", hole=0.4, title=t("win_reason"), color_discrete_sequence=[cw, "#5ab4ac", "#d8b365", "#01665e"])
+                c1.write(f"**{t('win_reason')}**")
+                fig_pie_w = px.pie(df_f_pie[df_f_pie["Wynik"]=="Wygrane"], names="Powod_T", hole=0.4, color_discrete_sequence=[cw, "#5ab4ac", "#d8b365", "#01665e"])
                 fig_pie_w = style_chart(fig_pie_w)
                 c1.plotly_chart(fig_pie_w, use_container_width=True)
                 
-                fig_pie_l = px.pie(df_f_pie[df_f_pie["Wynik"]=="Przegrane"], names="Powod_T", hole=0.4, title=t("loss_reason"), color_discrete_sequence=[cl, "#c51b7d", "#e9a3c9", "#4d9221"])
+                c2.write(f"**{t('loss_reason')}**")
+                fig_pie_l = px.pie(df_f_pie[df_f_pie["Wynik"]=="Przegrane"], names="Powod_T", hole=0.4, color_discrete_sequence=[cl, "#c51b7d", "#e9a3c9", "#4d9221"])
                 fig_pie_l = style_chart(fig_pie_l)
                 c2.plotly_chart(fig_pie_l, use_container_width=True)
 
             with t_hist:
                 st.write("### Aktywność i wyniki dzienne")
                 act_df = df_f.groupby(["Data", "Wynik"]).size().reset_index(name="Partie")
-                fig_act = px.bar(act_df, x="Data", y="Partie", color="Wynik", title="Ilość gier w czasie", color_discrete_map={"Wygrane":cw, "Remisy":cd, "Przegrane":cl})
+                fig_act = px.bar(act_df, x="Data", y="Partie", color="Wynik", color_discrete_map={"Wygrane":cw, "Remisy":cd, "Przegrane":cl})
                 fig_act.update_layout(barmode='stack')
                 fig_act = style_chart(fig_act)
                 st.plotly_chart(fig_act, use_container_width=True)
@@ -641,7 +649,8 @@ else:
                 h_st = df_f.groupby("Godzina").agg(G=('Wynik', 'count'), W=('Wynik', lambda x: (x == 'Wygrane').sum())).reset_index()
                 h_st["Win%"] = (h_st["W"] / h_st["G"] * 100).round(0).astype(int)
                 
-                fig_h = px.bar(h_st, x="Godzina", y="Win%", color="G", color_continuous_scale=c_scale, labels={"Godzina": t("hour"), "Win%": t("win_rate"), "G": t("games_count")}, title=t("win_by_hour"))
+                st.subheader(t("win_by_hour"), help=t("chart_desc"))
+                fig_h = px.bar(h_st, x="Godzina", y="Win%", color="G", color_continuous_scale=c_scale, labels={"Godzina": t("hour"), "Win%": t("win_rate"), "G": t("games_count")})
                 fig_h.update_layout(coloraxis_showscale=False)
                 fig_h.update_yaxes(range=[0, 100])
                 fig_h = style_chart(fig_h)
@@ -652,7 +661,8 @@ else:
                 d_st = df_f.groupby(["Dzień", "Dzień_Nr"]).agg(G=('Wynik', 'count'), W=('Wynik', lambda x: (x == 'Wygrane').sum())).reset_index().sort_values("Dzień_Nr")
                 d_st["Win%"] = (d_st["W"] / d_st["G"] * 100).round(0).astype(int)
                 
-                fig_d = px.bar(d_st, x="Dzień", y="Win%", color="G", color_continuous_scale=c_scale, labels={"Dzień": t("day"), "Win%": t("win_rate"), "G": t("games_count")}, title=t("win_by_day"))
+                st.subheader(t("win_by_day"), help=t("chart_desc"))
+                fig_d = px.bar(d_st, x="Dzień", y="Win%", color="G", color_continuous_scale=c_scale, labels={"Dzień": t("day"), "Win%": t("win_rate"), "G": t("games_count")})
                 fig_d.update_layout(coloraxis_showscale=False)
                 fig_d.update_yaxes(range=[0, 100])
                 fig_d = style_chart(fig_d)
@@ -665,7 +675,8 @@ else:
                 dst["Win%"] = (dst["W"] / dst["G"] * 100).round(0).astype(int)
                 order = ["0-20", "21-30", "31-40", "41-50", "51-60", "61-70", "71+"]
                 
-                fig_dur = px.bar(dst.sort_values("Bin", key=lambda x: [order.index(i) for i in x]), x="Bin", y="Win%", color="G", color_continuous_scale=c_scale, labels={"Bin": t("length"), "Win%": t("win_rate"), "G": t("games_count")}, title=t("win_by_length"))
+                st.subheader(t("win_by_length"), help=t("chart_desc"))
+                fig_dur = px.bar(dst.sort_values("Bin", key=lambda x: [order.index(i) for i in x]), x="Bin", y="Win%", color="G", color_continuous_scale=c_scale, labels={"Bin": t("length"), "Win%": t("win_rate"), "G": t("games_count")})
                 fig_dur.update_layout(coloraxis_showscale=False)
                 fig_dur.update_yaxes(range=[0, 100])
                 fig_dur = style_chart(fig_dur)
@@ -696,7 +707,7 @@ else:
                     sub5 = df_t[(df_t['ST'] == s) & (df_t['SC'] >= 5)] 
                     if not sub5.empty: t_res.append({"Typ": n, "Seria": "5+ z rzędu", "Win%": int(round((sub5['Wynik']=='Wygrane').sum()/len(sub5)*100,0)), "Partie": len(sub5)})
                 if t_res: 
-                    fig_str = px.bar(pd.DataFrame(t_res), x="Seria", y="Win%", color="Typ", barmode='group', text="Win%", hover_data=["Partie"], color_discrete_map={"Po serii Wygranych":cw, "Po serii Porażek":cl}, title="Skuteczność po seriach")
+                    fig_str = px.bar(pd.DataFrame(t_res), x="Seria", y="Win%", color="Typ", barmode='group', text="Win%", hover_data=["Partie"], color_discrete_map={"Po serii Wygranych":cw, "Po serii Porażek":cl})
                     fig_str = style_chart(fig_str)
                     st.plotly_chart(fig_str, use_container_width=True)
 
@@ -863,185 +874,4 @@ else:
                 o2.markdown(f"""
                 <div class="custom-info-box">
                     <div class="custom-info-title">{t('fav_op')} ({u2}):</div>
-                    <div style="font-size: 0.85rem;">⚪ <b>{fav_op2_w}</b><br>⚫ <b>{fav_op2_b}</b></div>
-                </div>
-                """, unsafe_allow_html=True)
-
-                st.divider()
-                st.write("### Sposób zakończenia partii")
-                df1_r = df1_c.copy()
-                df2_r = df2_c.copy()
-                df1_r["Gracz"] = u1
-                df2_r["Gracz"] = u2
-                df_r_comb = pd.concat([df1_r, df2_r])
-                df_r_comb["Powod_T"] = df_r_comb["Powod"].apply(t_reason)
-                
-                c_r1, c_r2 = st.columns(2)
-                if not df_r_comb.empty:
-                    df_win = df_r_comb[df_r_comb["Wynik"] == "Wygrane"].groupby(["Powod_T", "Gracz"]).size().reset_index(name="Ilość")
-                    if not df_win.empty:
-                        fig_r_w = px.bar(df_win, x="Powod_T", y="Ilość", color="Gracz", barmode="group", title="Sposób wygranej", color_discrete_sequence=[cp1, cp2])
-                        fig_r_w = style_chart(fig_r_w)
-                        c_r1.plotly_chart(fig_r_w, use_container_width=True)
-
-                    df_loss = df_r_comb[df_r_comb["Wynik"] == "Przegrane"].groupby(["Powod_T", "Gracz"]).size().reset_index(name="Ilość")
-                    if not df_loss.empty:
-                        fig_r_l = px.bar(df_loss, x="Powod_T", y="Ilość", color="Gracz", barmode="group", title="Sposób porażki", color_discrete_sequence=[cp1, cp2])
-                        fig_r_l = style_chart(fig_r_l)
-                        c_r2.plotly_chart(fig_r_l, use_container_width=True)
-
-            with tabs[1]:
-                if not df1_c.empty and not df2_c.empty:
-                    act_df1 = df1_c.groupby("Data").size().reset_index(name="Partie")
-                    act_df1["Gracz"] = u1
-                    act_df2 = df2_c.groupby("Data").size().reset_index(name="Partie")
-                    act_df2["Gracz"] = u2
-                    act_comb = pd.concat([act_df1, act_df2])
-                    
-                    fig_act_c = px.bar(act_comb, x="Data", y="Partie", color="Gracz", barmode="group", 
-                                   title="Aktywność dzienna",
-                                   color_discrete_sequence=[cp1, cp2])
-                    fig_act_c = style_chart(fig_act_c)
-                    st.plotly_chart(fig_act_c, use_container_width=True)
-                    
-                    st.write("### Zmiana ELO w czasie")
-                    df1_elo = df1_c.copy()
-                    df2_elo = df2_c.copy()
-                    df1_elo["Gracz"] = u1
-                    df2_elo["Gracz"] = u2
-                    df_elo_comb = pd.concat([df1_elo, df2_elo]).sort_values("Timestamp")
-                    
-                    if not df_elo_comb.empty:
-                        for m in ["Rapid", "Blitz", "Bullet"]:
-                            mdf = df_elo_comb[df_elo_comb["Tryb"] == m]
-                            if not mdf.empty:
-                                fig_elo_c = px.line(mdf, x="Timestamp", y="ELO", color="Gracz", title=f"Ranking {m}",
-                                                    color_discrete_sequence=[cp1, cp2])
-                                fig_elo_c = style_chart(fig_elo_c)
-                                st.plotly_chart(fig_elo_c, use_container_width=True)
-                else:
-                    st.info("Brak wystarczających danych do wygenerowania wykresów dla podanego filtru.")
-
-            with tabs[2]:
-                if not df1_c.empty and not df2_c.empty:
-                    h_df1 = df1_c.groupby("Godzina").agg(G=('Wynik', 'count'), W=('Wynik', lambda x: (x == 'Wygrane').sum())).reset_index()
-                    h_df1["Win%"] = (h_df1["W"] / h_df1["G"] * 100).round(0).astype(int)
-                    h_df1["Gracz"] = u1
-                    
-                    h_df2 = df2_c.groupby("Godzina").agg(G=('Wynik', 'count'), W=('Wynik', lambda x: (x == 'Wygrane').sum())).reset_index()
-                    h_df2["Win%"] = (h_df2["W"] / h_df2["G"] * 100).round(0).astype(int)
-                    h_df2["Gracz"] = u2
-                    
-                    h_comb = pd.concat([h_df1, h_df2])
-                    
-                    fig_h_c = px.bar(h_comb, x="Godzina", y="Win%", color="Gracz", barmode="group", 
-                                   labels={"Godzina": t("hour"), "Win%": t("win_rate"), "G": t("games_count"), "Gracz": t("player")},
-                                   hover_data={"G": True},
-                                   color_discrete_sequence=[cp1, cp2], title=t("win_by_hour"))
-                    fig_h_c.update_yaxes(range=[0, 100])
-                    fig_h_c = style_chart(fig_h_c)
-                    st.plotly_chart(fig_h_c, use_container_width=True)
-                
-                st.write("") 
-                
-                if not df1_c.empty and not df2_c.empty:
-                    d_df1 = df1_c.groupby(["Dzień", "Dzień_Nr"]).agg(G=('Wynik', 'count'), W=('Wynik', lambda x: (x == 'Wygrane').sum())).reset_index()
-                    d_df1["Win%"] = (d_df1["W"] / d_df1["G"] * 100).round(0).astype(int)
-                    d_df1["Gracz"] = u1
-                    
-                    d_df2 = df2_c.groupby(["Dzień", "Dzień_Nr"]).agg(G=('Wynik', 'count'), W=('Wynik', lambda x: (x == 'Wygrane').sum())).reset_index()
-                    d_df2["Win%"] = (d_df2["W"] / d_df2["G"] * 100).round(0).astype(int)
-                    d_df2["Gracz"] = u2
-                    
-                    d_comb = pd.concat([d_df1, d_df2]).sort_values("Dzień_Nr")
-                    
-                    fig_d_c = px.bar(d_comb, x="Dzień", y="Win%", color="Gracz", barmode="group", 
-                                     labels={"Dzień": t("day"), "Win%": t("win_rate"), "Gracz": t("player")},
-                                     hover_data={"G": True},
-                                     color_discrete_sequence=[cp1, cp2], title=t("win_by_day"))
-                    fig_d_c.update_yaxes(range=[0, 100])
-                    fig_d_c = style_chart(fig_d_c)
-                    st.plotly_chart(fig_d_c, use_container_width=True)
-                
-                st.write("") 
-                
-                if not df1_c.empty and not df2_c.empty:
-                    df1_c["Bin"] = df1_c["Ruchy"].apply(get_duration_bin)
-                    df2_c["Bin"] = df2_c["Ruchy"].apply(get_duration_bin)
-                    
-                    b_df1 = df1_c.groupby("Bin").agg(G=('Wynik', 'count'), W=('Wynik', lambda x: (x == 'Wygrane').sum())).reset_index()
-                    b_df1["Win%"] = (b_df1["W"] / b_df1["G"] * 100).round(0).astype(int)
-                    b_df1["Gracz"] = u1
-                    
-                    b_df2 = df2_c.groupby("Bin").agg(G=('Wynik', 'count'), W=('Wynik', lambda x: (x == 'Wygrane').sum())).reset_index()
-                    b_df2["Win%"] = (b_df2["W"] / b_df2["G"] * 100).round(0).astype(int)
-                    b_df2["Gracz"] = u2
-                    
-                    b_comb = pd.concat([b_df1, b_df2])
-                    order = ["0-20", "21-30", "31-40", "41-50", "51-60", "61-70", "71+"]
-                    
-                    fig_b_c = px.bar(b_comb.sort_values("Bin", key=lambda x: [order.index(i) for i in x]), 
-                                   x="Bin", y="Win%", color="Gracz", barmode="group", 
-                                   labels={"Bin": t("length"), "Win%": t("win_rate"), "G": t("games_count"), "Gracz": t("player")},
-                                   hover_data={"G": True},
-                                   color_discrete_sequence=[cp1, cp2], title=t("win_by_length"))
-                    fig_b_c.update_yaxes(range=[0, 100])
-                    fig_b_c = style_chart(fig_b_c)
-                    st.plotly_chart(fig_b_c, use_container_width=True)
-
-            with tabs[3]:
-                st.write("### 🛡️ Najpopularniejsze Debiuty")
-                
-                def merge_openings(color_name):
-                    df1_sub = df1_c[df1_c["Kolor"] == color_name]
-                    df2_sub = df2_c[df2_c["Kolor"] == color_name]
-                    
-                    g1_op = df1_sub.groupby("Debiut_Grupa").size().reset_index(name=f"Partie [{u1}]")
-                    g2_op = df2_sub.groupby("Debiut_Grupa").size().reset_index(name=f"Partie [{u2}]")
-                    
-                    m = pd.merge(g1_op, g2_op, on="Debiut_Grupa", how="outer").fillna(0)
-                    m[f"Partie [{u1}]"] = m[f"Partie [{u1}]"].astype(int)
-                    m[f"Partie [{u2}]"] = m[f"Partie [{u2}]"].astype(int)
-                    m["Razem"] = m[f"Partie [{u1}]"] + m[f"Partie [{u2}]"]
-                    return m.sort_values("Razem", ascending=False).drop(columns=["Razem"]).reset_index(drop=True)
-
-                c_w_op, c_b_op = st.columns(2)
-                with c_w_op:
-                    st.markdown(f"<h5 style='text-align: center;'>⚪ {t('color_white')}</h5>", unsafe_allow_html=True)
-                    st.dataframe(merge_openings("Białe").head(20), use_container_width=True, hide_index=True)
-                    
-                with c_b_op:
-                    st.markdown(f"<h5 style='text-align: center;'>⚫ {t('color_black')}</h5>", unsafe_allow_html=True)
-                    st.dataframe(merge_openings("Czarne").head(20), use_container_width=True, hide_index=True)
-
-            if len(tabs) > 4:
-                with tabs[4]:
-                    h2 = df1_c[(df1_c['Przeciwnik'].str.lower() == u2.lower()) & (df1_c['Platforma'] == p2_p)].copy().sort_values("Timestamp").reset_index(drop=True)
-                    if not h2.empty:
-                        st.markdown(f"### H2H: {u1} vs {u2}")
-                        h2_w, h2_d, h2_l = (h2["Wynik"] == "Wygrane").sum(), (h2["Wynik"] == "Remisy").sum(), (h2["Wynik"] == "Przegrane").sum()
-                        
-                        # NAPRAWA: Zmieniony layout panelu informacyjnego H2H na bardziej responsywny
-                        st.markdown(f"""
-                        <div class="asym-header" style="font-size:1.1rem;">
-                            <div style="color:{cp1};">{u1} ({h2_w})</div>
-                            <div style="color:{cd}; font-size: 0.9rem;">REMISY: {h2_d} <br> RAZEM: {len(h2)}</div>
-                            <div style="color:{cp2};">{u2} ({h2_l})</div>
-                        </div>
-                        """, unsafe_allow_html=True)
-                        st.write("")
-                        
-                        h2["Partia_Nr"] = h2.index + 1
-                        h2["Ty"], h2[u2] = (h2["Wynik"]=="Wygrane").cumsum(), (h2["Wynik"]=="Przegrane").cumsum()
-                        
-                        fig_h2h = px.line(h2.melt(id_vars=["Partia_Nr"], value_vars=["Ty", u2]), 
-                                          x="Partia_Nr", y="value", color="variable", 
-                                          title="Wyścig zwycięstw H2H",
-                                          color_discrete_sequence=[cp1, cp2])
-                        fig_h2h = style_chart(fig_h2h)
-                        st.plotly_chart(fig_h2h, use_container_width=True)
-                        
-                        st.write("**Historia spotkań:**")
-                        st.dataframe(h2[["Data", "Tryb", "Kolor", "Wynik", "Ruchy", "Debiut"]].sort_values("Data", ascending=False), use_container_width=True, hide_index=True)
-                    else: 
-                        st.info(f"Brak zarejestrowanych bezpośrednich partii pomiędzy **{u1}** a **{u2}** (przy obecnych filtrach).")
+                    <div style="font-size: 0.85rem;">⚪ <b>

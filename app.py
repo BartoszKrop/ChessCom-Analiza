@@ -10,7 +10,7 @@ import streamlit.components.v1 as components
 # --- INICJALIZACJA STANU SESJI (USTAWIENIA) ---
 if 'ui_lang' not in st.session_state: st.session_state.ui_lang = "Polski"
 if 'op_lang' not in st.session_state: st.session_state.op_lang = "English"
-if 'theme' not in st.session_state: st.session_state.theme = "Chess.com" # Domyślnie na nowy!
+if 'theme' not in st.session_state: st.session_state.theme = "Chess.com"
 if 'cw_solo' not in st.session_state: st.session_state.cw_solo = True
 if 'cb_solo' not in st.session_state: st.session_state.cb_solo = True
 if 'cw_por' not in st.session_state: st.session_state.cw_por = True
@@ -22,7 +22,7 @@ st.set_page_config(page_title="ChessStats", page_icon="♟️", layout="wide")
 bg_dict = {
     "Jasny": "#f3f4f6", 
     "Ciemny": "#0e1117", 
-    "Chess.com": "#2c2724", 
+    "Chess.com": "#312e2b", 
     "Neon Retro": "#0a0a14"
 }
 bg_color = bg_dict.get(st.session_state.theme, "#0e1117")
@@ -40,14 +40,14 @@ components.html(
 
 # --- KOLORYSTYKA I STYLE WYKRESÓW (PLOTLY ENGINE) ---
 if st.session_state.theme == "Chess.com":
-    cw, cd, cl = "#7fa650", "#8b8987", "#fa412d"  # Zgaszony zielony, Szary, Czerwony
-    cp1, cp2 = "#7fa650", "#fa412d"
+    cw, cd, cl = "#81b64c", "#a7a6a2", "#fa412d"  # Zgodne z paletą
+    cp1, cp2 = "#81b64c", "#fa412d"
     c_scale = "Greens"
-    chart_bg = "rgba(38, 36, 33, 0.9)" # Tło karty wykresu
+    chart_bg = "#262421" 
     grid_color = "#3d3b38"
     font_color = "#c3c3c0"
 elif st.session_state.theme == "Neon Retro":
-    cw, cd, cl = "#00ffff", "#8c43ff", "#ff007c"  # Cyjan, Fiolet, Różowy
+    cw, cd, cl = "#00ffff", "#8c43ff", "#ff007c"  
     cp1, cp2 = "#00ffff", "#ff007c"
     c_scale = "Purples"
     chart_bg = "rgba(18, 18, 38, 0.85)"
@@ -72,16 +72,18 @@ else: # Ciemny
 def style_chart(fig):
     fig.update_layout(
         paper_bgcolor=chart_bg,
-        plot_bgcolor="rgba(0,0,0,0)", # Przezroczyste wnętrze
+        plot_bgcolor="rgba(0,0,0,0)",
         font=dict(color=font_color),
         margin=dict(l=20, r=20, t=50, b=20),
-        title_font=dict(size=16, color=font_color),
+        title_font=dict(size=16, color=font_color, family="system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif"),
         legend=dict(orientation="h", yanchor="top", y=-0.2, xanchor="center", x=0.5, title=None)
     )
     fig.update_xaxes(showgrid=False, gridcolor=grid_color, zerolinecolor=grid_color)
     fig.update_yaxes(showgrid=True, gridcolor=grid_color, zerolinecolor=grid_color)
     
-    # Dodajemy delikatne zaokrąglenia i marginesy dla samego kontenera Plotly (w locie)
+    # NAPRAWA: Usunięcie obramowań słupków, które powodowały ich czernienie przy dużym zagęszczeniu
+    fig.update_traces(marker_line_width=0, selector=dict(type="bar"))
+    
     fig.update_layout(template="plotly_dark" if st.session_state.theme != "Jasny" else "plotly_white")
     return fig
 
@@ -142,8 +144,8 @@ def t_reason(reason):
 css_dark = """
     .stApp { background-color: #0e1117; color: #ffffff; }
     [data-testid="stHeader"] { background-color: rgba(14, 17, 23, 0); }
-    .stMetric, div.row-widget.stRadio > div, .asym-header { background-color: #161b22; border: 1px solid #30363d; border-radius: 8px;}
-    [data-testid="stMetricValue"], .asym-val-w { color: #ffffff !important; }
+    .stMetric, div.row-widget.stRadio > div, .custom-info-box { background-color: #161b22; border: 1px solid #30363d; border-radius: 8px;}
+    [data-testid="stMetricValue"] { color: #ffffff !important; }
     .custom-info-box { background-color: rgba(30, 136, 229, 0.1); border-left: 4px solid #1e88e5; color: #e6edf3; }
     .custom-info-title { color: #1e88e5; }
     .stButton>button[kind="primary"] { background-color: #1e88e5; color: white; border: none; }
@@ -151,8 +153,8 @@ css_dark = """
 css_light = """
     .stApp { background-color: #f3f4f6; color: #000000; }
     [data-testid="stHeader"] { background-color: rgba(255, 255, 255, 0); }
-    .stMetric, div.row-widget.stRadio > div, .asym-header { background-color: #ffffff; border: 1px solid #d1d5db; border-radius: 8px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); }
-    [data-testid="stMetricValue"], .asym-val-w, [data-testid="stMarkdownContainer"] p, h1, h2, h3, h4, h5 { color: #000000 !important; }
+    .stMetric, div.row-widget.stRadio > div, .custom-info-box { background-color: #ffffff; border: 1px solid #d1d5db; border-radius: 8px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); }
+    [data-testid="stMetricValue"], [data-testid="stMarkdownContainer"] p, h1, h2, h3, h4, h5 { color: #000000 !important; }
     [data-testid="stMetricLabel"] { color: #4b5563 !important; }
     .custom-info-box { background-color: #eff6ff; border-left: 4px solid #1d4ed8; color: #1f2937; }
     .custom-info-title { color: #1d4ed8; }
@@ -161,38 +163,34 @@ css_light = """
 """
 css_chesscom = """
     .stApp { 
-        background-color: #2c2724;
-        background-image: linear-gradient(180deg, #3c342d 0%, #26211d 100%);
-        background-attachment: fixed;
+        background-color: #312e2b;
         color: #ffffff; 
+        font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
     }
     [data-testid="stHeader"] { background-color: rgba(0, 0, 0, 0); }
-    .stMetric, div.row-widget.stRadio > div, .asym-header { 
-        background-color: rgba(38, 36, 33, 0.9); 
-        border: 1px solid #45413c; 
-        border-radius: 8px; 
-        box-shadow: 0 4px 6px rgba(0,0,0,0.3);
+    .stMetric, div.row-widget.stRadio > div { 
+        background-color: #262421; 
+        border: none; 
+        border-radius: 5px; 
     }
-    [data-testid="stMetricValue"], .asym-val-w, [data-testid="stMarkdownContainer"] p, h1, h2, h3, h4, h5 { color: #ffffff !important; }
+    [data-testid="stMetricValue"], [data-testid="stMarkdownContainer"] p, h1, h2, h3, h4, h5 { color: #ffffff !important; }
     [data-testid="stMetricLabel"] { color: #c3c3c0 !important; }
-    .custom-info-box { background-color: rgba(127, 166, 80, 0.15); border-left: 4px solid #7fa650; color: #e6edf3; }
-    .custom-info-title { color: #7fa650; }
-    .stTabs [data-baseweb="tab-list"] button { color: #8b8987; font-weight: bold; }
-    .stTabs [data-baseweb="tab-list"] button[aria-selected="true"] { color: #ffffff; border-bottom-color: #7fa650; }
-    /* Stylizacja primary button (jak przycisk Graj) */
+    .custom-info-box { background-color: #262421; border-left: 4px solid #81b64c; color: #c3c3c0; border-radius: 5px; }
+    .custom-info-title { color: #ffffff; }
+    .stTabs [data-baseweb="tab-list"] button { color: #8b8987; font-weight: 600; }
+    .stTabs [data-baseweb="tab-list"] button[aria-selected="true"] { color: #ffffff; border-bottom-color: #81b64c; }
     .stButton>button[kind="primary"] { 
-        background-color: #7fa650; 
+        background-color: #81b64c; 
         color: white; 
         border: none; 
-        border-bottom: 4px solid #5f7d3c;
-        border-radius: 8px;
+        border-bottom: 4px solid #537b2f;
+        border-radius: 5px;
         font-weight: bold;
         font-size: 1.1rem;
         transition: all 0.1s;
     }
     .stButton>button[kind="primary"]:active { border-bottom: 0px; transform: translateY(4px); }
-    /* Wypełnienie tła wykresów jako kart */
-    .js-plotly-plot { border-radius: 8px; overflow: hidden; box-shadow: 0 4px 6px rgba(0,0,0,0.2); border: 1px solid #45413c; }
+    .js-plotly-plot { border-radius: 5px; overflow: hidden; background-color: #262421; }
 """
 css_neon = """
     .stApp { 
@@ -202,13 +200,13 @@ css_neon = """
         color: #e0e0ff; 
     }
     [data-testid="stHeader"] { background-color: rgba(0, 0, 0, 0); }
-    .stMetric, div.row-widget.stRadio > div, .asym-header { 
+    .stMetric, div.row-widget.stRadio > div { 
         background-color: rgba(18, 18, 38, 0.85); 
         border: 1px solid #8c43ff; 
         border-radius: 12px;
         box-shadow: 0 0 10px rgba(140, 67, 255, 0.2); 
     }
-    [data-testid="stMetricValue"], .asym-val-w, [data-testid="stMarkdownContainer"] p, h1, h2, h3, h4, h5 { 
+    [data-testid="stMetricValue"], [data-testid="stMarkdownContainer"] p, h1, h2, h3, h4, h5 { 
         color: #00ffff !important; 
         text-shadow: 0 0 4px rgba(0, 255, 255, 0.4); 
     }
@@ -247,6 +245,27 @@ st.markdown(f"""
     div.row-widget.stRadio > div {{ flex-direction: row; justify-content: center; padding: 10px; }}
     .custom-info-box {{ padding: 16px; border-radius: 8px; margin-bottom: 16px; }}
     .custom-info-title {{ font-weight: bold; margin-bottom: 8px; font-size: 1.1rem; }}
+    
+    /* Elastyczny kontener H2H pod mobile */
+    .asym-header {{
+        display: flex;
+        flex-direction: row;
+        flex-wrap: wrap;
+        justify-content: space-around;
+        align-items: center;
+        background-color: {chart_bg};
+        padding: 15px;
+        border-radius: 5px;
+        margin-bottom: 15px;
+        gap: 10px;
+        border: {"none" if st.session_state.theme == "Chess.com" else "1px solid " + grid_color};
+    }}
+    .asym-header > div {{
+        flex: 1 1 auto;
+        min-width: 100px;
+        text-align: center;
+        font-weight: bold;
+    }}
     
     /* Ukrywanie obramowania i tła zębatki ustawień */
     [data-testid="stPopover"] > button {{
@@ -494,12 +513,11 @@ else:
     df_loc = df.copy()
     df_loc["Debiut_Grupa"] = df_loc["Debiut_Grupa"].apply(t_op)
     
-    # EKRAN GŁÓWNY APLIKACJI - Flexbox dla avatara i nicku
     if profile.get("avatar"):
-        border_color = cw if st.session_state.theme == "Neon Retro" else "#45413c"
+        border_color = cw if st.session_state.theme == "Neon Retro" else "transparent"
         st.markdown(f"""
             <div style="display: flex; align-items: center; gap: 15px; margin-bottom: 15px;">
-                <img src="{profile.get("avatar")}" width="60" style="border-radius: 10px; border: 2px solid {border_color}; box-shadow: 0 4px 6px rgba(0,0,0,0.3);">
+                <img src="{profile.get("avatar")}" width="60" style="border-radius: 10px; border: 2px solid {border_color}; box-shadow: 0 2px 4px rgba(0,0,0,0.3);">
                 <h2 style="margin: 0; padding: 0;">{username}</h2>
             </div>
         """, unsafe_allow_html=True)
@@ -731,7 +749,7 @@ else:
                     g_sel = ana[ana["label"] == sel].iloc[0]
                     if st.button("Przygotuj analizę", type="primary", use_container_width=True):
                         st.session_state.url = g_sel["Link"] if g_sel["Platforma"]=="Lichess" else import_to_lichess(g_sel["PGN_Raw"]); st.rerun()
-                    if st.session_state.url: st.markdown(f'<a href="{st.session_state.url}" target="_blank" style="display:block; width:100%; text-align:center; background-color:{cw}; color:white; padding:12px; border-radius:8px; text-decoration:none; font-weight:bold; margin-top:10px;">ANALIZA ➡️</a>', unsafe_allow_html=True)
+                    if st.session_state.url: st.markdown(f'<a href="{st.session_state.url}" target="_blank" style="display:block; width:100%; text-align:center; background-color:{cw}; color:white; padding:12px; border-radius:5px; text-decoration:none; font-weight:bold; margin-top:10px;">ANALIZA ➡️</a>', unsafe_allow_html=True)
                 else:
                     st.info("Brak partii do analizy dla podanych kryteriów.")
 
@@ -1003,11 +1021,12 @@ else:
                         st.markdown(f"### H2H: {u1} vs {u2}")
                         h2_w, h2_d, h2_l = (h2["Wynik"] == "Wygrane").sum(), (h2["Wynik"] == "Remisy").sum(), (h2["Wynik"] == "Przegrane").sum()
                         
+                        # NAPRAWA: Zmieniony layout panelu informacyjnego H2H na bardziej responsywny
                         st.markdown(f"""
                         <div class="asym-header" style="font-size:1.1rem;">
-                            <div style="width:30%; text-align:center; color:{cp1};">{u1} ({h2_w})</div>
-                            <div style="width:40%; text-align:center; color:{cd};">REMISY: {h2_d} | RAZEM: {len(h2)}</div>
-                            <div style="width:30%; text-align:center; color:{cp2};">{u2} ({h2_l})</div>
+                            <div style="color:{cp1};">{u1} ({h2_w})</div>
+                            <div style="color:{cd}; font-size: 0.9rem;">REMISY: {h2_d} <br> RAZEM: {len(h2)}</div>
+                            <div style="color:{cp2};">{u2} ({h2_l})</div>
                         </div>
                         """, unsafe_allow_html=True)
                         st.write("")

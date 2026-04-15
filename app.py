@@ -21,10 +21,11 @@ if 'cb_por' not in st.session_state: st.session_state.cb_por = True
 if 'fetch_args' not in st.session_state: st.session_state.fetch_args = []
 
 bg_dict = {
-    "Jasny": "#f3f4f6", 
-    "Ciemny": "#0e1117", 
-    "Chess.com": "#312e2b", 
-    "Neon Retro": "#0a0a14"
+    "Jasny": "#f3f4f6",
+    "Ciemny": "#0e1117",
+    "Chess.com": "#312e2b",
+    "Neon Retro": "#0a0a14",
+    "Morski": "#0d1b2a",
 }
 bg_color = bg_dict.get(st.session_state.theme, "#312e2b")
 
@@ -83,6 +84,13 @@ elif st.session_state.theme == "Jasny":
     chart_bg = "#ffffff"
     grid_color = "#e5e7eb"
     font_color = "#1f2937"
+elif st.session_state.theme == "Morski":
+    cw, cd, cl = "#00b4d8", "#90e0ef", "#ff6b6b"
+    cp1, cp2 = "#00b4d8", "#ff6b6b"
+    c_scale = "Blues"
+    chart_bg = "#1b2838"
+    grid_color = "#2a3a4a"
+    font_color = "#caf0f8"
 else: # Ciemny
     cw, cd, cl = "#1e88e5", "#8b949e", "#ef553b"
     cp1, cp2 = "#1e88e5", "#ef553b"
@@ -289,10 +297,51 @@ css_neon = """
     .stButton>button[kind="primary"]:hover { background-color: rgba(0, 255, 255, 0.3); box-shadow: 0 0 20px rgba(0, 255, 255, 0.6); }
 """
 
+css_morski = """
+    .stApp {
+        background-color: #0d1b2a;
+        background-image: linear-gradient(160deg, #0d1b2a 0%, #1b2e45 100%);
+        background-attachment: fixed;
+        color: #caf0f8;
+    }
+    [data-testid="stHeader"] { background-color: rgba(0, 0, 0, 0); }
+    .stMetric, div.row-widget.stRadio > div {
+        background-color: #1b2838;
+        border: 1px solid #2a3a4a;
+        border-radius: 10px;
+        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.4);
+    }
+    [data-testid="stMetricValue"], [data-testid="stMarkdownContainer"] p, h1, h2, h3, h4, h5 {
+        color: #caf0f8 !important;
+    }
+    [data-testid="stMetricLabel"] { color: #90e0ef !important; }
+    .stTabs [data-baseweb="tab-list"] { background-color: transparent; }
+    .stTabs [data-baseweb="tab-list"] button { color: #486a7a; font-weight: 600; }
+    .stTabs [data-baseweb="tab-list"] button[aria-selected="true"] { color: #00b4d8; border-bottom: 3px solid #00b4d8; }
+    .stButton>button[kind="primary"] {
+        background-color: #00b4d8;
+        color: #0d1b2a;
+        border: none;
+        border-bottom: 4px solid #0077b6;
+        border-radius: 6px;
+        font-weight: bold;
+        font-size: 1.05rem;
+        transition: all 0.1s;
+    }
+    .stButton>button[kind="primary"]:active { border-bottom: 0px; transform: translateY(4px); }
+    .stButton>button[kind="secondary"] {
+        background-color: #1b2838;
+        color: #90e0ef;
+        border: 1px solid #2a3a4a;
+        border-radius: 6px;
+    }
+"""
+
 active_css = css_dark
 if st.session_state.theme == "Jasny": active_css = css_light
 elif st.session_state.theme == "Chess.com": active_css = css_chesscom
 elif st.session_state.theme == "Neon Retro": active_css = css_neon
+elif st.session_state.theme == "Morski": active_css = css_morski
 
 st.markdown(f"""
     <style>
@@ -385,7 +434,8 @@ def import_to_lichess(pgn_text):
     try:
         res = requests.post("https://lichess.org/api/import", data={'pgn': pgn_text}, headers={"Accept": "application/json"}, timeout=10)
         return res.json().get("url") if res.status_code == 200 else None
-    except: return None
+    except Exception:
+        return None
 
 def calc_elo(df, mode):
     mdf = df[df["Tryb"] == mode]
@@ -431,7 +481,8 @@ def fetch_data(user, platform="Chess.com"):
                                     "Ruchy": extract_moves_count(pgn), "Debiut": deb, "Debiut_Grupa": get_opening_group(deb), "Przeciwnik": g["black" if is_w else "white"]["username"],
                                     "Kolor": "Białe" if is_w else "Czarne", "Powod": my_r if out=="Przegrane" else opp_r, "PGN_Raw": pgn, "Link": ""
                                 })
-                except: continue 
+                except Exception:
+                    continue 
             return {"avatar": p_res.json().get("avatar", "")}, pd.DataFrame(all_games, columns=cols) if all_games else pd.DataFrame(columns=cols)
             
         elif platform == "Lichess":
@@ -456,9 +507,11 @@ def fetch_data(user, platform="Chess.com"):
                         "Przeciwnik": g["players"][opp_col].get("user", {}).get("name", "Anonim"), "Kolor": "Białe" if my_col == "white" else "Czarne",
                         "Powod": g.get("status"), "PGN_Raw": g.get("moves", ""), "Link": f"https://lichess.org/{g['id']}"
                     })
-                except: continue
+                except Exception:
+                    continue
             return {"avatar": p_res.json().get("profile", {}).get("avatar", "")}, pd.DataFrame(all_games, columns=cols) if all_games else pd.DataFrame(columns=cols)
-    except: return None, pd.DataFrame(columns=cols)
+    except Exception:
+        return None, pd.DataFrame(columns=cols)
 
 # --- SESSION & START ---
 for k in ['data','data2','url', 'user', 'user2', 'plat2']: 
@@ -471,7 +524,7 @@ if st.session_state.data is None:
     with c_l2.expander("⚙️ Ustawienia"):
         st.selectbox("🌍 Język UI", ["Polski", "English", "Deutsch"], key="ui_lang")
         st.selectbox("♟️ Język Debiutów", ["Polski", "English", "Deutsch"], key="op_lang")
-        st.radio("🎨 Motyw", ["Chess.com", "Neon Retro", "Ciemny", "Jasny"], key="theme", horizontal=True)
+        st.radio("🎨 Motyw", ["Chess.com", "Neon Retro", "Morski", "Ciemny", "Jasny"], key="theme", horizontal=True)
 
     log_m = st.radio("Zasięg:", ["Jeden profil", "Połącz profile (C+L)"], horizontal=True)
     if log_m == "Jeden profil":
@@ -528,8 +581,8 @@ else:
         c_l_ui, c_l_op = st.columns(2)
         c_l_ui.selectbox("🌍 Język UI", ["Polski", "English", "Deutsch"], key="ui_lang")
         c_l_op.selectbox("♟️ Język Debiutów", ["Polski", "English", "Deutsch"], key="op_lang")
-        st.radio("🎨 Motyw", ["Chess.com", "Neon Retro", "Ciemny", "Jasny"], key="theme", horizontal=True)
-        
+        st.radio("🎨 Motyw", ["Chess.com", "Neon Retro", "Morski", "Ciemny", "Jasny"], key="theme", horizontal=True)
+
         c_btn1, c_btn2 = st.columns(2)
         with c_btn1:
             if st.button(t("btn_refresh"), use_container_width=True):
@@ -561,7 +614,9 @@ else:
 
     if app_m == "👤 Moja Analiza":
         m1, m2, m3 = st.columns(3)
-        p_r, c_r, _ = calc_elo(df_loc, "Rapid"); p_b, c_b, _ = calc_elo(df_loc, "Blitz"); p_bl, c_bl, _ = calc_elo(df_loc, "Bullet")
+        p_r, c_r, _ = calc_elo(df_loc, "Rapid")
+        p_b, c_b, _ = calc_elo(df_loc, "Blitz")
+        p_bl, c_bl, _ = calc_elo(df_loc, "Bullet")
         m1.metric("Rapid (Peak / Teraz)", f"{p_r} / {c_r}")
         m2.metric("Blitz (Peak / Teraz)", f"{p_b} / {c_b}")
         m3.metric("Bullet (Peak / Teraz)", f"{p_bl} / {c_bl}")
@@ -571,12 +626,14 @@ else:
             d_r = f1.date_input("Zakres dat:", value=(df_loc["Data"].min(), df_loc["Data"].max()))
             s_m = f2.selectbox("Tryb:", ["Wszystkie"] + sorted(df_loc["Tryb"].unique().tolist()))
             
-            st.write(f"<span style='font-size:0.9rem; font-weight:bold;'>Kolor</span>", unsafe_allow_html=True)
+            st.markdown("<span style='font-size:0.9rem; font-weight:bold;'>Kolor</span>", unsafe_allow_html=True)
             c_w_btn, c_b_btn, _ = st.columns([1, 1, 4])
             if c_w_btn.button("⚪ Białe", type="primary" if st.session_state.cw_solo else "secondary", use_container_width=True, key="sw_solo"):
-                st.session_state.cw_solo = not st.session_state.cw_solo; st.rerun()
+                st.session_state.cw_solo = not st.session_state.cw_solo
+                st.rerun()
             if c_b_btn.button("⚫ Czarne", type="primary" if st.session_state.cb_solo else "secondary", use_container_width=True, key="sb_solo"):
-                st.session_state.cb_solo = not st.session_state.cb_solo; st.rerun()
+                st.session_state.cb_solo = not st.session_state.cb_solo
+                st.rerun()
             
             s_c = []
             if st.session_state.cw_solo: s_c.append("Białe")
@@ -603,7 +660,9 @@ else:
             with t_stat:
                 w, d, l = (df_f["Wynik"]=="Wygrane").sum(), (df_f["Wynik"]=="Remisy").sum(), (df_f["Wynik"]=="Przegrane").sum()
                 k1, k2, k3 = st.columns(3)
-                k1.metric("Partie", len(df_f)); k2.metric("W/R/P", f"{w}/{d}/{l}"); k3.metric("Win%", f"{int(round(w/len(df_f)*100,0))}%")
+                k1.metric("Partie", len(df_f))
+                k2.metric("W/R/P", f"{w}/{d}/{l}")
+                k3.metric("Win%", f"{int(round(w/len(df_f)*100,0))}%")
                 
                 mod_w = df_f[df_f["Kolor"] == "Białe"]["Debiut_Grupa"].mode()
                 fav_w = mod_w.iloc[0] if not mod_w.empty else "Brak"
@@ -858,9 +917,11 @@ else:
                 
                 c_w_por, c_b_por, _ = st.columns([1, 1, 4])
                 if c_w_por.button("⚪ Białe", type="primary" if st.session_state.cw_por else "secondary", use_container_width=True, key="por_w"):
-                    st.session_state.cw_por = not st.session_state.cw_por; st.rerun()
+                    st.session_state.cw_por = not st.session_state.cw_por
+                    st.rerun()
                 if c_b_por.button("⚫ Czarne", type="primary" if st.session_state.cb_por else "secondary", use_container_width=True, key="por_b"):
-                    st.session_state.cb_por = not st.session_state.cb_por; st.rerun()
+                    st.session_state.cb_por = not st.session_state.cb_por
+                    st.rerun()
                 
                 sc_c = []
                 if st.session_state.cw_por: sc_c.append("Białe")
@@ -902,7 +963,7 @@ else:
                 k3.metric("Draw Rate (%)", f"{d1}% / {d2}%", d1 - d2)
 
                 st.divider()
-                st.markdown("<h4 style='color: #ffffff;'>Sposób zakończenia partii</h4>", unsafe_allow_html=True)
+                st.markdown(f"<h4 style='color: {font_color};'>Sposób zakończenia partii</h4>", unsafe_allow_html=True)
                 st.divider()
                 
                 df1_r = df1_c.copy()
@@ -949,7 +1010,7 @@ else:
                     fig_act_c = style_chart(fig_act_c)
                     st.plotly_chart(fig_act_c, use_container_width=True)
                     
-                    st.markdown("<h4 style='color: #ffffff; margin-top:20px;'>Zmiana ELO w czasie</h4>", unsafe_allow_html=True)
+                    st.markdown(f"<h4 style='color: {font_color}; margin-top:20px;'>Zmiana ELO w czasie</h4>", unsafe_allow_html=True)
                     st.divider()
                     
                     df1_elo = df1_c.copy()

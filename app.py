@@ -529,7 +529,7 @@ def extract_move_times_from_lichess_clocks(clocks, is_white):
     return deltas
 
 def build_move_pace_table(df):
-    labels = ["0-10", "11-20", "21-30", "31-40", "41-50", "51-60", "61-70", "71-80", "81-90", "91-100"]
+    labels = ["0-10"] + [f"{i*10+1}-{(i+1)*10}" for i in range(1, NUM_DECILES)]
     buckets = {label: [] for label in labels}
     has_data = False
     for arr in df["MoveTimes"]:
@@ -554,10 +554,11 @@ def build_move_pace_table(df):
     return pd.DataFrame(rows)
 
 def build_html_report(df, username):
+    total_games = len(df)
     w = int((df["Wynik"] == "Wygrane").sum())
     d = int((df["Wynik"] == "Remisy").sum())
     l = int((df["Wynik"] == "Przegrane").sum())
-    winp = int(round((w / len(df)) * 100)) if len(df) else 0
+    winp = int(round((w / total_games) * 100)) if total_games else 0
     pace_df = build_move_pace_table(df)
     pace_html = pace_df.fillna("-").to_html(index=False)
     return f"""
@@ -571,7 +572,7 @@ def build_html_report(df, username):
       th {{ background:#313131; }}
     </style></head><body>
       <h1>ChessStats – {username}</h1>
-      <div class='card'><b>Partie:</b> {len(df)} | <b>W/R/P:</b> {w}/{d}/{l} | <b>Win%:</b> {winp}%</div>
+      <div class='card'><b>Partie:</b> {total_games} | <b>W/R/P:</b> {w}/{d}/{l} | <b>Win%:</b> {winp}%</div>
       <div class='card'><h3>Tempo ruchu (0-10 ... 91-100)</h3>{pace_html}</div>
     </body></html>
     """
@@ -849,7 +850,9 @@ else:
         if not df_f.empty:
             d1, d2 = st.columns(2)
             raw_df = df_f.copy()
-            raw_df["MoveTimes"] = raw_df["MoveTimes"].apply(lambda x: json.dumps(x) if isinstance(x, list) else "[]")
+            raw_df["MoveTimes"] = raw_df["MoveTimes"].apply(
+                lambda x: json.dumps(x) if isinstance(x, list) else (x if isinstance(x, str) else "[]")
+            )
             raw_csv = raw_df.to_csv(index=False).encode("utf-8")
             report_html = build_html_report(df_f, username).encode("utf-8")
             d1.download_button(t("download_raw"), data=raw_csv, file_name=f"chessstats_raw_{username}.csv", mime="text/csv", use_container_width=True)

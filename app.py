@@ -12,6 +12,9 @@ MAX_MOVE_TIME_SECONDS = 300
 NUM_DECILES = 10
 VIEW_MY = "👤 Moja Analiza"
 VIEW_COMPARE = "⚔️ Porównanie Graczy"
+SCOPE_SINGLE = "Jeden profil"
+SCOPE_MERGE = "Połącz profile (C+L)"
+SCOPE_COMPARE = "Porównanie graczy (start)"
 
 # --- KONFIGURACJA STRONY (MUSI BYĆ PIERWSZA) ---
 st.set_page_config(page_title="ChessStats", page_icon="♟️", layout="wide")
@@ -526,7 +529,7 @@ def extract_move_times_from_lichess_clocks(clocks, is_white):
     return deltas
 
 def build_move_pace_table(df):
-    labels = [f"{i}-{i+9}" for i in range(0, 100, NUM_DECILES)]
+    labels = ["0-10", "11-20", "21-30", "31-40", "41-50", "51-60", "61-70", "71-80", "81-90", "91-100"]
     buckets = {label: [] for label in labels}
     for arr in df["MoveTimes"]:
         vals = arr if isinstance(arr, list) else []
@@ -550,7 +553,7 @@ def build_html_report(df, username):
     w = int((df["Wynik"] == "Wygrane").sum())
     d = int((df["Wynik"] == "Remisy").sum())
     l = int((df["Wynik"] == "Przegrane").sum())
-    winp = round((w / len(df)) * 100) if len(df) else 0
+    winp = int(round((w / len(df)) * 100, 0)) if len(df) else 0
     pace_df = build_move_pace_table(df)
     pace_html = pace_df.fillna("-").to_html(index=False)
     return f"""
@@ -679,8 +682,9 @@ if st.session_state.data is None:
         st.selectbox(tu("♟️ Język Debiutów"), ["Polski", "English", "Deutsch"], key="op_lang")
         st.radio(tu("🎨 Motyw"), ["Chess.com", "Neon Retro", "Morski", "Ciemny", "Jasny"], key="theme", horizontal=True)
 
-    log_m = st.radio(tu("Zasięg:"), [tu("Jeden profil"), tu("Połącz profile (C+L)"), tu("Porównanie graczy (start)")], horizontal=True)
-    if log_m == tu("Jeden profil"):
+    scope_options = [SCOPE_SINGLE, SCOPE_MERGE, SCOPE_COMPARE]
+    log_m = st.radio(tu("Zasięg:"), scope_options, horizontal=True, format_func=tu)
+    if log_m == SCOPE_SINGLE:
         c1, c2 = st.columns([1, 4])
         plat = c1.selectbox("Plat:", ["Chess.com", "Lichess"])
         nick = c2.text_input("Nick:")
@@ -693,7 +697,7 @@ if st.session_state.data is None:
                         st.session_state.fetch_args = [(nick, plat)]
                         st.rerun()
                     else: st.error("Nie znaleziono partii dla tego gracza.")
-    elif log_m == tu("Połącz profile (C+L)"):
+    elif log_m == SCOPE_MERGE:
         c1, c2 = st.columns(2)
         p1, n1 = c1.selectbox("P1:", ["Chess.com", "Lichess"]), c1.text_input("Nick 1:")
         p2, n2 = c2.selectbox("P2:", ["Lichess", "Chess.com"]), c2.text_input("Nick 2:")
@@ -756,11 +760,10 @@ else:
         st.markdown(f"<h2 style='margin-bottom: 15px;'>{username}</h2>", unsafe_allow_html=True)
     
     with st.expander(tu("⚙️ Ustawienia")):
-        app_options = [tu(VIEW_MY), tu(VIEW_COMPARE)]
+        app_options = [VIEW_MY, VIEW_COMPARE]
         default_view = st.session_state.get("default_view", VIEW_MY)
-        default_view = tu(default_view) if default_view in [VIEW_MY, VIEW_COMPARE] else default_view
         default_idx = app_options.index(default_view) if default_view in app_options else 0
-        app_m = st.radio(tu("Widok:"), app_options, label_visibility="collapsed", horizontal=True, index=default_idx)
+        app_m = st.radio(tu("Widok:"), app_options, label_visibility="collapsed", horizontal=True, index=default_idx, format_func=tu)
         st.session_state.default_view = app_m
         c_l_ui, c_l_op = st.columns(2)
         c_l_ui.selectbox(tu("🌍 Język UI"), ["Polski", "English", "Deutsch"], key="ui_lang")
@@ -797,7 +800,7 @@ else:
                 st.session_state.default_view = VIEW_MY
                 st.rerun()
 
-    if app_m == tu(VIEW_MY):
+    if app_m == VIEW_MY:
         m1, m2, m3 = st.columns(3)
         p_r, c_r, _ = calc_elo(df_loc, "Rapid")
         p_b, c_b, _ = calc_elo(df_loc, "Blitz")
@@ -1109,7 +1112,7 @@ else:
                 else:
                     st.info(tu("Brak partii do analizy."))
 
-    elif app_m == tu(VIEW_COMPARE):
+    elif app_m == VIEW_COMPARE:
         c1, c2 = st.columns(2)
         p2 = c2.selectbox("Platforma rywala:", ["Chess.com", "Lichess"])
         n2 = c2.text_input("Nick rywala:")

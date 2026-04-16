@@ -9,6 +9,9 @@ import streamlit.components.v1 as components
 
 API_TIMEOUT = 10  # seconds for individual API requests
 MAX_MOVE_TIME_SECONDS = 300
+NUM_DECILES = 10
+VIEW_MY = "👤 Moja Analiza"
+VIEW_COMPARE = "⚔️ Porównanie Graczy"
 
 # --- KONFIGURACJA STRONY (MUSI BYĆ PIERWSZA) ---
 st.set_page_config(page_title="ChessStats", page_icon="♟️", layout="wide")
@@ -22,7 +25,7 @@ if 'cb_solo' not in st.session_state: st.session_state.cb_solo = True
 if 'cw_por' not in st.session_state: st.session_state.cw_por = True
 if 'cb_por' not in st.session_state: st.session_state.cb_por = True
 if 'fetch_args' not in st.session_state: st.session_state.fetch_args = []
-if 'default_view' not in st.session_state: st.session_state.default_view = "👤 Moja Analiza"
+if 'default_view' not in st.session_state: st.session_state.default_view = VIEW_MY
 
 bg_dict = {
     "Jasny": "#f3f4f6",
@@ -221,6 +224,7 @@ ui_phrases = {
     "Zasięg:": {"en": "Scope:", "de": "Umfang:"},
     "Jeden profil": {"en": "Single profile", "de": "Ein Profil"},
     "Połącz profile (C+L)": {"en": "Merge profiles (C+L)", "de": "Profile verbinden (C+L)"},
+    "Porównanie graczy (start)": {"en": "Player comparison (start)", "de": "Spielervergleich (Start)"},
     "Pobieranie...": {"en": "Downloading...", "de": "Laden..."},
     "Łączenie...": {"en": "Merging...", "de": "Zusammenführen..."},
     "Widok:": {"en": "View:", "de": "Ansicht:"},
@@ -476,14 +480,17 @@ def extract_moves_count(pgn):
     return int(matches[-1]) if matches else 0
 
 def _clock_to_seconds(clock_text):
-    parts = clock_text.split(":")
-    if len(parts) == 3:
-        h, m, s = parts
-        return int(h) * 3600 + int(m) * 60 + float(s)
-    if len(parts) == 2:
-        m, s = parts
-        return int(m) * 60 + float(s)
-    return float(clock_text)
+    try:
+        parts = clock_text.split(":")
+        if len(parts) == 3:
+            h, m, s = parts
+            return int(h) * 3600 + int(m) * 60 + float(s)
+        if len(parts) == 2:
+            m, s = parts
+            return int(m) * 60 + float(s)
+        return float(clock_text)
+    except (ValueError, TypeError):
+        return 0.0
 
 def extract_move_times_from_pgn(pgn, is_white):
     if not pgn:
@@ -519,7 +526,7 @@ def extract_move_times_from_lichess_clocks(clocks, is_white):
     return deltas
 
 def build_move_pace_table(df):
-    labels = [f"{i}-{i+9}" for i in range(0, 100, 10)]
+    labels = [f"{i}-{i+9}" for i in range(0, 100, NUM_DECILES)]
     buckets = {label: [] for label in labels}
     for arr in df["MoveTimes"]:
         vals = arr if isinstance(arr, list) else []
@@ -527,7 +534,7 @@ def build_move_pace_table(df):
             continue
         n = len(vals)
         for i, v in enumerate(vals):
-            bucket_idx = min(int((i / n) * 10), 9)
+            bucket_idx = min(int((i / n) * NUM_DECILES), NUM_DECILES - 1)
             buckets[labels[bucket_idx]].append(v)
     rows = []
     for label in labels:
@@ -672,7 +679,7 @@ if st.session_state.data is None:
         st.selectbox(tu("♟️ Język Debiutów"), ["Polski", "English", "Deutsch"], key="op_lang")
         st.radio(tu("🎨 Motyw"), ["Chess.com", "Neon Retro", "Morski", "Ciemny", "Jasny"], key="theme", horizontal=True)
 
-    log_m = st.radio(tu("Zasięg:"), [tu("Jeden profil"), tu("Połącz profile (C+L)"), t("compare_quick")], horizontal=True)
+    log_m = st.radio(tu("Zasięg:"), [tu("Jeden profil"), tu("Połącz profile (C+L)"), tu("Porównanie graczy (start)")], horizontal=True)
     if log_m == tu("Jeden profil"):
         c1, c2 = st.columns([1, 4])
         plat = c1.selectbox("Plat:", ["Chess.com", "Lichess"])
@@ -698,7 +705,7 @@ if st.session_state.data is None:
                         st.session_state.data = (f1[0], pd.concat([f1[1], f2[1]], ignore_index=True))
                         st.session_state.user, st.session_state.platforms = f"{n1}+{n2}", list(set([p1, p2]))
                         st.session_state.fetch_args = [(n1, p1), (n2, p2)]
-                        st.session_state.default_view = "👤 Moja Analiza"
+                        st.session_state.default_view = VIEW_MY
                         st.rerun()
                     else: st.error("Błąd pobierania danych. Upewnij się, że oba konta posiadają historię gier.")
     else:
@@ -719,7 +726,7 @@ if st.session_state.data is None:
                         st.session_state.data2 = f2[1]
                         st.session_state.user2 = n2
                         st.session_state.plat2 = p2
-                        st.session_state.default_view = "⚔️ Porównanie Graczy"
+                        st.session_state.default_view = VIEW_COMPARE
                         st.rerun()
                     else:
                         st.error("Nie udało się pobrać danych dla obu graczy.")
@@ -749,9 +756,9 @@ else:
         st.markdown(f"<h2 style='margin-bottom: 15px;'>{username}</h2>", unsafe_allow_html=True)
     
     with st.expander(tu("⚙️ Ustawienia")):
-        app_options = [tu("👤 Moja Analiza"), tu("⚔️ Porównanie Graczy")]
-        default_view = st.session_state.get("default_view", "👤 Moja Analiza")
-        default_view = tu(default_view) if default_view in ["👤 Moja Analiza", "⚔️ Porównanie Graczy"] else default_view
+        app_options = [tu(VIEW_MY), tu(VIEW_COMPARE)]
+        default_view = st.session_state.get("default_view", VIEW_MY)
+        default_view = tu(default_view) if default_view in [VIEW_MY, VIEW_COMPARE] else default_view
         default_idx = app_options.index(default_view) if default_view in app_options else 0
         app_m = st.radio(tu("Widok:"), app_options, label_visibility="collapsed", horizontal=True, index=default_idx)
         st.session_state.default_view = app_m
@@ -787,10 +794,10 @@ else:
                 for k in ['data','data2','url','user','user2','plat2']: st.session_state[k] = None if k in ['data','data2','url'] else ""
                 st.session_state.platforms = []
                 st.session_state.fetch_args = []
-                st.session_state.default_view = "👤 Moja Analiza"
+                st.session_state.default_view = VIEW_MY
                 st.rerun()
 
-    if app_m == tu("👤 Moja Analiza"):
+    if app_m == tu(VIEW_MY):
         m1, m2, m3 = st.columns(3)
         p_r, c_r, _ = calc_elo(df_loc, "Rapid")
         p_b, c_b, _ = calc_elo(df_loc, "Blitz")
@@ -1102,7 +1109,7 @@ else:
                 else:
                     st.info(tu("Brak partii do analizy."))
 
-    elif app_m == tu("⚔️ Porównanie Graczy"):
+    elif app_m == tu(VIEW_COMPARE):
         c1, c2 = st.columns(2)
         p2 = c2.selectbox("Platforma rywala:", ["Chess.com", "Lichess"])
         n2 = c2.text_input("Nick rywala:")

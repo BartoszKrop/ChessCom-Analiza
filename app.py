@@ -8,6 +8,13 @@ import json
 import streamlit.components.v1 as components
 
 API_TIMEOUT = 10  # seconds for individual API requests
+MAX_MOVE_TIME_SECONDS = 300
+NUM_DECILES = 10
+VIEW_MY = "👤 Moja Analiza"
+VIEW_COMPARE = "⚔️ Porównanie Graczy"
+SCOPE_SINGLE = "Jeden profil"
+SCOPE_MERGE = "Połącz profile (C+L)"
+SCOPE_COMPARE = "Porównanie graczy (start)"
 
 # --- KONFIGURACJA STRONY (MUSI BYĆ PIERWSZA) ---
 st.set_page_config(page_title="ChessStats", page_icon="♟️", layout="wide")
@@ -21,6 +28,7 @@ if 'cb_solo' not in st.session_state: st.session_state.cb_solo = True
 if 'cw_por' not in st.session_state: st.session_state.cw_por = True
 if 'cb_por' not in st.session_state: st.session_state.cb_por = True
 if 'fetch_args' not in st.session_state: st.session_state.fetch_args = []
+if 'default_view' not in st.session_state: st.session_state.default_view = VIEW_MY
 
 bg_dict = {
     "Jasny": "#f3f4f6",
@@ -143,7 +151,18 @@ ui_dict = {
     "hour": {"pl": "Godzina", "en": "Hour", "de": "Stunde"},
     "length": {"pl": "Długość (ruchy)", "en": "Length (moves)", "de": "Länge (Züge)"},
     "day": {"pl": "Dzień", "en": "Day", "de": "Tag"},
-    "player": {"pl": "Gracz", "en": "Player", "de": "Spieler"}
+    "player": {"pl": "Gracz", "en": "Player", "de": "Spieler"},
+    "download_raw": {"pl": "Pobierz surowe dane (CSV)", "en": "Download raw data (CSV)", "de": "Rohdaten herunterladen (CSV)"},
+    "download_report": {"pl": "Pobierz raport (HTML)", "en": "Download report (HTML)", "de": "Bericht herunterladen (HTML)"},
+    "move_pace": {"pl": "Tempo ruchu w trakcie partii", "en": "Move pace during game", "de": "Zugtempo im Spielverlauf"},
+    "decile": {"pl": "Segment partii", "en": "Game segment", "de": "Spielsegment"},
+    "avg_move_seconds": {"pl": "Śr. sekundy / ruch", "en": "Avg seconds / move", "de": "Ø Sekunden / Zug"},
+    "analysis2": {"pl": "🧩 Analiza 2", "en": "🧩 Analysis 2", "de": "🧩 Analyse 2"},
+    "board_engine": {"pl": "Interaktywna tablica + podpowiedzi silnika", "en": "Interactive board + engine hints", "de": "Interaktives Brett + Engine-Hinweise"},
+    "open_analysis": {"pl": "Otwórz analizę", "en": "Open analysis", "de": "Analyse öffnen"},
+    "prepare_analysis": {"pl": "Przygotuj analizę (Lichess Engine)", "en": "Prepare analysis (Lichess Engine)", "de": "Analyse vorbereiten (Lichess Engine)"},
+    "compare_quick": {"pl": "Porównanie graczy (start)", "en": "Player comparison (start)", "de": "Spielervergleich (Start)"},
+    "no_tempo_data": {"pl": "Brak danych zegara do analizy tempa ruchu dla aktualnych partii.", "en": "No clock data available for move-pace analysis in current games.", "de": "Keine Uhrdaten für die Zugtempo-Analyse in den aktuellen Partien verfügbar."}
 }
 
 reason_dict = {
@@ -200,9 +219,44 @@ op_translations = {
     "Queen's Pawn Opening": {"pl": "Pion Hetmański", "de": "Damenbauernspiel"},
 }
 
+ui_phrases = {
+    "⚙️ Ustawienia": {"en": "⚙️ Settings", "de": "⚙️ Einstellungen"},
+    "🌍 Język UI": {"en": "🌍 UI Language", "de": "🌍 UI-Sprache"},
+    "♟️ Język Debiutów": {"en": "♟️ Openings Language", "de": "♟️ Eröffnungssprache"},
+    "🎨 Motyw": {"en": "🎨 Theme", "de": "🎨 Design"},
+    "Zasięg:": {"en": "Scope:", "de": "Umfang:"},
+    "Jeden profil": {"en": "Single profile", "de": "Ein Profil"},
+    "Połącz profile (C+L)": {"en": "Merge profiles (C+L)", "de": "Profile verbinden (C+L)"},
+    "Porównanie graczy (start)": {"en": "Player comparison (start)", "de": "Spielervergleich (Start)"},
+    "Pobieranie...": {"en": "Downloading...", "de": "Laden..."},
+    "Łączenie...": {"en": "Merging...", "de": "Zusammenführen..."},
+    "Widok:": {"en": "View:", "de": "Ansicht:"},
+    "🔍 Filtry": {"en": "🔍 Filters", "de": "🔍 Filter"},
+    "Zakres dat:": {"en": "Date range:", "de": "Datumsbereich:"},
+    "Tryb:": {"en": "Mode:", "de": "Modus:"},
+    "Godziny:": {"en": "Hours:", "de": "Stunden:"},
+    "Dzień do analizy:": {"en": "Day to analyze:", "de": "Tag für Analyse:"},
+    "Nick rywala (opcjonalnie):": {"en": "Opponent nickname (optional):", "de": "Gegnername (optional):"},
+    "Grupa debiutu:": {"en": "Opening group:", "de": "Eröffnungsgruppe:"},
+    "Wszystkie": {"en": "All", "de": "Alle"},
+    "Mecz:": {"en": "Game:", "de": "Partie:"},
+    "Mecz do tablicy:": {"en": "Game for board:", "de": "Partie fürs Brett:"},
+    "Uruchom porównanie": {"en": "Start comparison", "de": "Vergleich starten"},
+    "Pobieranie i porównywanie...": {"en": "Downloading and comparing...", "de": "Laden und vergleichen..."},
+    "Przesyłanie PGN do analizy...": {"en": "Uploading PGN for analysis...", "de": "PGN zur Analyse wird hochgeladen..."},
+    "Przygotowanie interaktywnej analizy...": {"en": "Preparing interactive analysis...", "de": "Interaktive Analyse wird vorbereitet..."},
+    "Brak partii do analizy.": {"en": "No games for analysis.", "de": "Keine Partien zur Analyse."},
+    "⚔️ Porównanie Graczy": {"en": "⚔️ Player Comparison", "de": "⚔️ Spielervergleich"},
+    "👤 Moja Analiza": {"en": "👤 My Analysis", "de": "👤 Meine Analyse"},
+}
+
 def t(key, default=""):
     l = lang_map.get(st.session_state.ui_lang, "pl")
     return ui_dict.get(key, {}).get(l, default if default else key)
+
+def tu(text):
+    l = lang_map.get(st.session_state.ui_lang, "pl")
+    return ui_phrases.get(text, {}).get(l, text)
 
 def t_reason(reason):
     l = lang_map.get(st.session_state.ui_lang, "pl")
@@ -428,6 +482,101 @@ def extract_moves_count(pgn):
     matches = re.findall(r'(\d+)\.', pgn)
     return int(matches[-1]) if matches else 0
 
+def _clock_to_seconds(clock_text):
+    try:
+        parts = clock_text.split(":")
+        if len(parts) == 3:
+            h, m, s = parts
+            return int(h) * 3600 + int(m) * 60 + float(s)
+        if len(parts) == 2:
+            m, s = parts
+            return int(m) * 60 + float(s)
+        return 0.0
+    except (ValueError, TypeError):
+        return 0.0
+
+def extract_move_times_from_pgn(pgn, is_white):
+    if not pgn:
+        return []
+    clocks = re.findall(r'\[%clk ([0-9:\.]+)\]', pgn)
+    if not clocks:
+        return []
+    try:
+        sec = [_clock_to_seconds(c) for c in clocks]
+    except Exception:
+        return []
+    my_idx = list(range(0 if is_white else 1, len(sec), 2))
+    my_clocks = [sec[i] for i in my_idx]
+    if len(my_clocks) < 2:
+        return []
+    deltas = []
+    for i in range(1, len(my_clocks)):
+        d = my_clocks[i - 1] - my_clocks[i]
+        if 0 <= d <= MAX_MOVE_TIME_SECONDS:
+            deltas.append(round(d, 2))
+    return deltas
+
+def extract_move_times_from_lichess_clocks(clocks, is_white):
+    if not clocks or len(clocks) < 4:
+        return []
+    my_idx = list(range(0 if is_white else 1, len(clocks), 2))
+    my_clocks = [float(clocks[i]) / 100 for i in my_idx]
+    deltas = []
+    for i in range(1, len(my_clocks)):
+        d = my_clocks[i - 1] - my_clocks[i]
+        if 0 <= d <= MAX_MOVE_TIME_SECONDS:
+            deltas.append(round(d, 2))
+    return deltas
+
+def build_move_pace_table(df):
+    labels = ["0-10"] + [f"{i*10+1}-{(i+1)*10}" for i in range(1, NUM_DECILES)]
+    buckets = {label: [] for label in labels}
+    has_data = False
+    for arr in df["MoveTimes"]:
+        vals = arr if isinstance(arr, list) else []
+        if len(vals) < 2:
+            continue
+        has_data = True
+        n = len(vals)
+        for i, v in enumerate(vals):
+            bucket_idx = min(int((i / n) * NUM_DECILES), NUM_DECILES - 1)
+            buckets[labels[bucket_idx]].append(v)
+    if not has_data:
+        return pd.DataFrame(columns=["Segment", "AvgSec", "Moves"])
+    rows = []
+    for label in labels:
+        data = buckets[label]
+        rows.append({
+            "Segment": label,
+            "AvgSec": round(sum(data) / len(data), 2) if data else None,
+            "Moves": len(data),
+        })
+    return pd.DataFrame(rows)
+
+def build_html_report(df, username):
+    total_games = len(df)
+    w = int((df["Wynik"] == "Wygrane").sum())
+    d = int((df["Wynik"] == "Remisy").sum())
+    l = int((df["Wynik"] == "Przegrane").sum())
+    winp = int(round((w / total_games) * 100)) if total_games else 0
+    pace_df = build_move_pace_table(df)
+    pace_html = pace_df.fillna("-").to_html(index=False)
+    return f"""
+    <html><head><meta charset='utf-8'>
+    <style>
+      body {{ font-family: Arial, sans-serif; background:#1f1f1f; color:#f2f2f2; padding:24px; }}
+      .card {{ background:#2a2a2a; border-radius:10px; padding:16px; margin-bottom:16px; }}
+      h1 {{ color:#81b64c; }}
+      table {{ border-collapse: collapse; width: 100%; background:#2a2a2a; }}
+      th, td {{ border:1px solid #3a3a3a; padding:8px; text-align:center; }}
+      th {{ background:#313131; }}
+    </style></head><body>
+      <h1>ChessStats – {username}</h1>
+      <div class='card'><b>Partie:</b> {total_games} | <b>W/R/P:</b> {w}/{d}/{l} | <b>Win%:</b> {winp}%</div>
+      <div class='card'><h3>Tempo ruchu (0-10 ... 91-100)</h3>{pace_html}</div>
+    </body></html>
+    """
+
 def get_duration_bin(moves):
     bins = ["0-20", "21-30", "31-40", "41-50", "51-60", "61-70", "71+"]
     if moves <= 20: return bins[0]
@@ -459,7 +608,7 @@ def calc_elo(df, mode):
 
 @st.cache_data(show_spinner=False, ttl=3600)
 def fetch_data(user, platform="Chess.com"):
-    cols = ["Konto", "Platforma", "Timestamp", "Godzina", "Dzień", "Dzień_Nr", "Data", "Miesiąc", "Tryb", "Wynik", "ELO", "Elo_Rywala", "Ruchy", "Debiut", "Debiut_Grupa", "Przeciwnik", "Kolor", "Powod", "PGN_Raw", "Link"]
+    cols = ["Konto", "Platforma", "Timestamp", "Godzina", "Dzień", "Dzień_Nr", "Data", "Miesiąc", "Tryb", "Wynik", "ELO", "Elo_Rywala", "Ruchy", "Debiut", "Debiut_Grupa", "Przeciwnik", "Kolor", "Powod", "PGN_Raw", "Link", "MoveTimes"]
     try:
         headers = {"User-Agent": f"AnalizySzachowe-V30-{user}"}
         days_map = {0: 'Pn', 1: 'Wt', 2: 'Śr', 3: 'Czw', 4: 'Pt', 5: 'Sb', 6: 'Nd'}
@@ -488,7 +637,8 @@ def fetch_data(user, platform="Chess.com"):
                                     "Data": ts.date(), "Miesiąc": ts.strftime("%Y-%m"), "Tryb": g.get("time_class", "Inne").capitalize(), "Wynik": out, 
                                     "ELO": g["white" if is_w else "black"].get("rating", 0), "Elo_Rywala": g["black" if is_w else "white"].get("rating", 0),
                                     "Ruchy": extract_moves_count(pgn), "Debiut": deb, "Debiut_Grupa": get_opening_group(deb), "Przeciwnik": g["black" if is_w else "white"]["username"],
-                                    "Kolor": "Białe" if is_w else "Czarne", "Powod": my_r if out=="Przegrane" else opp_r, "PGN_Raw": pgn, "Link": ""
+                                    "Kolor": "Białe" if is_w else "Czarne", "Powod": my_r if out=="Przegrane" else opp_r, "PGN_Raw": pgn, "Link": "",
+                                    "MoveTimes": extract_move_times_from_pgn(pgn, is_w)
                                 })
                 except Exception:
                     continue 
@@ -498,7 +648,7 @@ def fetch_data(user, platform="Chess.com"):
             p_res = requests.get(f"https://lichess.org/api/user/{user}", headers=headers, timeout=API_TIMEOUT)
             if p_res.status_code != 200: return None, pd.DataFrame(columns=cols)
             # Lichess streams all user games at once — timeout is higher to allow large histories
-            g_res = requests.get(f"https://lichess.org/api/games/user/{user}?opening=true", headers={"Accept": "application/x-ndjson"}, timeout=60)
+            g_res = requests.get(f"https://lichess.org/api/games/user/{user}?opening=true&clocks=true", headers={"Accept": "application/x-ndjson"}, timeout=60)
             for line in g_res.text.strip().split('\n'):
                 if not line: continue
                 try:
@@ -515,7 +665,8 @@ def fetch_data(user, platform="Chess.com"):
                         "ELO": g["players"][my_col].get("rating", 0), "Elo_Rywala": g["players"][opp_col].get("rating", 0),
                         "Ruchy": len(m_l)//2 + len(m_l)%2, "Debiut": deb, "Debiut_Grupa": get_opening_group(deb),
                         "Przeciwnik": g["players"][opp_col].get("user", {}).get("name", "Anonim"), "Kolor": "Białe" if my_col == "white" else "Czarne",
-                        "Powod": g.get("status"), "PGN_Raw": g.get("moves", ""), "Link": f"https://lichess.org/{g['id']}"
+                        "Powod": g.get("status"), "PGN_Raw": g.get("moves", ""), "Link": f"https://lichess.org/{g['id']}",
+                        "MoveTimes": extract_move_times_from_lichess_clocks(g.get("clocks", []), my_col == "white")
                     })
                 except Exception:
                     continue
@@ -531,42 +682,68 @@ if 'platforms' not in st.session_state: st.session_state.platforms = []
 if st.session_state.data is None:
     c_l1, c_l2 = st.columns([7, 3])
     c_l1.title(f"♟️ {t('title')}")
-    with c_l2.expander("⚙️ Ustawienia"):
-        st.selectbox("🌍 Język UI", ["Polski", "English", "Deutsch"], key="ui_lang")
-        st.selectbox("♟️ Język Debiutów", ["Polski", "English", "Deutsch"], key="op_lang")
-        st.radio("🎨 Motyw", ["Chess.com", "Neon Retro", "Morski", "Ciemny", "Jasny"], key="theme", horizontal=True)
+    with c_l2.expander(tu("⚙️ Ustawienia")):
+        st.selectbox(tu("🌍 Język UI"), ["Polski", "English", "Deutsch"], key="ui_lang")
+        st.selectbox(tu("♟️ Język Debiutów"), ["Polski", "English", "Deutsch"], key="op_lang")
+        st.radio(tu("🎨 Motyw"), ["Chess.com", "Neon Retro", "Morski", "Ciemny", "Jasny"], key="theme", horizontal=True)
 
-    log_m = st.radio("Zasięg:", ["Jeden profil", "Połącz profile (C+L)"], horizontal=True)
-    if log_m == "Jeden profil":
+    scope_options = [SCOPE_SINGLE, SCOPE_MERGE, SCOPE_COMPARE]
+    log_m = st.radio(tu("Zasięg:"), scope_options, horizontal=True, format_func=tu)
+    if log_m == SCOPE_SINGLE:
         c1, c2 = st.columns([1, 4])
         plat = c1.selectbox("Plat:", ["Chess.com", "Lichess"])
         nick = c2.text_input("Nick:")
         if st.button(t("btn_analize"), type="primary", use_container_width=True):
             if nick:
-                with st.spinner("Pobieranie..."):
+                with st.spinner(tu("Pobieranie...")):
                     f = fetch_data(nick, plat)
                     if f[0] is not None and not f[1].empty: 
                         st.session_state.data, st.session_state.user, st.session_state.platforms = f, nick, [plat]
                         st.session_state.fetch_args = [(nick, plat)]
                         st.rerun()
                     else: st.error("Nie znaleziono partii dla tego gracza.")
-    else:
+    elif log_m == SCOPE_MERGE:
         c1, c2 = st.columns(2)
         p1, n1 = c1.selectbox("P1:", ["Chess.com", "Lichess"]), c1.text_input("Nick 1:")
         p2, n2 = c2.selectbox("P2:", ["Lichess", "Chess.com"]), c2.text_input("Nick 2:")
         if st.button(t("btn_connect"), type="primary", use_container_width=True):
             if n1 and n2:
-                with st.spinner("Łączenie..."):
+                with st.spinner(tu("Łączenie...")):
                     f1, f2 = fetch_data(n1, p1), fetch_data(n2, p2)
                     if f1[0] is not None and not f1[1].empty and f2[0] is not None and not f2[1].empty:
                         st.session_state.data = (f1[0], pd.concat([f1[1], f2[1]], ignore_index=True))
                         st.session_state.user, st.session_state.platforms = f"{n1}+{n2}", list(set([p1, p2]))
                         st.session_state.fetch_args = [(n1, p1), (n2, p2)]
+                        st.session_state.default_view = VIEW_MY
                         st.rerun()
                     else: st.error("Błąd pobierania danych. Upewnij się, że oba konta posiadają historię gier.")
+    else:
+        c1, c2 = st.columns(2)
+        p1 = c1.selectbox("Platforma gracza 1:", ["Chess.com", "Lichess"], key="q_p1")
+        n1 = c1.text_input("Nick gracza 1:", key="q_n1")
+        p2 = c2.selectbox("Platforma gracza 2:", ["Chess.com", "Lichess"], key="q_p2")
+        n2 = c2.text_input("Nick gracza 2:", key="q_n2")
+        if st.button(tu("Uruchom porównanie"), type="primary", use_container_width=True):
+            if n1 and n2:
+                with st.spinner(tu("Pobieranie i porównywanie...")):
+                    f1, f2 = fetch_data(n1, p1), fetch_data(n2, p2)
+                    if f1[0] is not None and not f1[1].empty and f2[0] is not None and not f2[1].empty:
+                        st.session_state.data = f1
+                        st.session_state.user = n1
+                        st.session_state.platforms = [p1]
+                        st.session_state.fetch_args = [(n1, p1)]
+                        st.session_state.data2 = f2[1]
+                        st.session_state.user2 = n2
+                        st.session_state.plat2 = p2
+                        st.session_state.default_view = VIEW_COMPARE
+                        st.rerun()
+                    else:
+                        st.error("Nie udało się pobrać danych dla obu graczy.")
 else:
     profile, df_raw = st.session_state.data
     df_loc = df_raw.copy()
+    if "MoveTimes" not in df_loc.columns:
+        df_loc["MoveTimes"] = [[] for _ in range(len(df_loc))]
     username, user_plats = st.session_state.user, st.session_state.platforms
     
     if df_loc.empty:
@@ -587,12 +764,16 @@ else:
     else:
         st.markdown(f"<h2 style='margin-bottom: 15px;'>{username}</h2>", unsafe_allow_html=True)
     
-    with st.expander("⚙️ Ustawienia"):
-        app_m = st.radio("Widok:", ["👤 Moja Analiza", "⚔️ Porównanie Graczy"], label_visibility="collapsed", horizontal=True)
+    with st.expander(tu("⚙️ Ustawienia")):
+        app_options = [VIEW_MY, VIEW_COMPARE]
+        default_view = st.session_state.get("default_view", VIEW_MY)
+        default_idx = app_options.index(default_view) if default_view in app_options else 0
+        app_m = st.radio(tu("Widok:"), app_options, label_visibility="collapsed", horizontal=True, index=default_idx, format_func=tu)
+        st.session_state.default_view = app_m
         c_l_ui, c_l_op = st.columns(2)
-        c_l_ui.selectbox("🌍 Język UI", ["Polski", "English", "Deutsch"], key="ui_lang")
-        c_l_op.selectbox("♟️ Język Debiutów", ["Polski", "English", "Deutsch"], key="op_lang")
-        st.radio("🎨 Motyw", ["Chess.com", "Neon Retro", "Morski", "Ciemny", "Jasny"], key="theme", horizontal=True)
+        c_l_ui.selectbox(tu("🌍 Język UI"), ["Polski", "English", "Deutsch"], key="ui_lang")
+        c_l_op.selectbox(tu("♟️ Język Debiutów"), ["Polski", "English", "Deutsch"], key="op_lang")
+        st.radio(tu("🎨 Motyw"), ["Chess.com", "Neon Retro", "Morski", "Ciemny", "Jasny"], key="theme", horizontal=True)
 
         c_btn1, c_btn2 = st.columns(2)
         with c_btn1:
@@ -621,9 +802,10 @@ else:
                 for k in ['data','data2','url','user','user2','plat2']: st.session_state[k] = None if k in ['data','data2','url'] else ""
                 st.session_state.platforms = []
                 st.session_state.fetch_args = []
+                st.session_state.default_view = VIEW_MY
                 st.rerun()
 
-    if app_m == "👤 Moja Analiza":
+    if app_m == VIEW_MY:
         m1, m2, m3 = st.columns(3)
         p_r, c_r, _ = calc_elo(df_loc, "Rapid")
         p_b, c_b, _ = calc_elo(df_loc, "Blitz")
@@ -632,10 +814,10 @@ else:
         m2.metric("Blitz (Peak / Teraz)", f"{p_b} / {c_b}")
         m3.metric("Bullet (Peak / Teraz)", f"{p_bl} / {c_bl}")
 
-        with st.expander("🔍 Filtry"):
+        with st.expander(tu("🔍 Filtry")):
             f1, f2 = st.columns(2)
-            d_r = f1.date_input("Zakres dat:", value=(df_loc["Data"].min(), df_loc["Data"].max()))
-            s_m = f2.selectbox("Tryb:", ["Wszystkie"] + sorted(df_loc["Tryb"].unique().tolist()))
+            d_r = f1.date_input(tu("Zakres dat:"), value=(df_loc["Data"].min(), df_loc["Data"].max()))
+            s_m = f2.selectbox(tu("Tryb:"), [tu("Wszystkie")] + sorted(df_loc["Tryb"].unique().tolist()))
             
             st.markdown("<span style='font-size:0.9rem; font-weight:bold;'>Kolor</span>", unsafe_allow_html=True)
             c_w_btn, c_b_btn, _ = st.columns([1, 1, 4])
@@ -650,7 +832,7 @@ else:
             if st.session_state.cw_solo: s_c.append("Białe")
             if st.session_state.cb_solo: s_c.append("Czarne")
             
-            s_h = st.slider("Godziny:", 0, 23, (0, 23))
+            s_h = st.slider(tu("Godziny:"), 0, 23, (0, 23))
 
         df_f = df_loc.copy()
         
@@ -663,10 +845,20 @@ else:
             df_f = df_f[df_f["Data"] == d_r]
             
         df_f = df_f[df_f["Kolor"].isin(s_c) & (df_f["Godzina"] >= s_h[0]) & (df_f["Godzina"] <= s_h[1])].copy()
-        if s_m != "Wszystkie": df_f = df_f[df_f["Tryb"] == s_m].copy()
+        if s_m != tu("Wszystkie"): df_f = df_f[df_f["Tryb"] == s_m].copy()
 
         if not df_f.empty:
-            t_stat, t_hist, t_czas, t_deb, t_ana = st.tabs(["📊 Statystyki", "📅 Historia", "⏳ Czas", "🔬 Debiuty", "🧠 Analiza"])
+            d1, d2 = st.columns(2)
+            raw_df = df_f.copy()
+            raw_df["MoveTimes"] = raw_df["MoveTimes"].apply(
+                lambda x: json.dumps(x) if isinstance(x, list) else (x if isinstance(x, str) else "[]")
+            )
+            raw_csv = raw_df.to_csv(index=False).encode("utf-8")
+            report_html = build_html_report(df_f, username).encode("utf-8")
+            d1.download_button(t("download_raw"), data=raw_csv, file_name=f"chessstats_raw_{username}.csv", mime="text/csv", use_container_width=True)
+            d2.download_button(t("download_report"), data=report_html, file_name=f"chessstats_report_{username}.html", mime="text/html", use_container_width=True)
+
+            t_stat, t_hist, t_czas, t_deb, t_ana, t_ana2 = st.tabs(["📊 Statystyki", "📅 Historia", "⏳ Czas", "🔬 Debiuty", "🧠 Analiza", t("analysis2")])
             
             with t_stat:
                 w, d, l = (df_f["Wynik"]=="Wygrane").sum(), (df_f["Wynik"]=="Remisy").sum(), (df_f["Wynik"]=="Przegrane").sum()
@@ -766,6 +958,19 @@ else:
                 fig_dur.update_yaxes(range=[0, 100])
                 fig_dur = style_chart(fig_dur)
                 st.plotly_chart(fig_dur, use_container_width=True)
+
+                pace_df = build_move_pace_table(df_f)
+                pace_plot = pace_df.dropna(subset=["AvgSec"])
+                st.markdown(f"### {t('move_pace')}")
+                if not pace_plot.empty:
+                    fig_pace = px.line(
+                        pace_plot, x="Segment", y="AvgSec", markers=True,
+                        labels={"Segment": t("decile"), "AvgSec": t("avg_move_seconds")}
+                    )
+                    fig_pace = style_chart(fig_pace)
+                    st.plotly_chart(fig_pace, use_container_width=True)
+                else:
+                    st.info(t("no_tempo_data"))
                 
                 st.subheader("Wpływ serii na wyniki", help=t("streak_desc"))
                 df_t = df_f.sort_values('Timestamp').copy()
@@ -861,14 +1066,14 @@ else:
 
             with t_ana:
                 fa1, fa2, fa3 = st.columns([1,1,1])
-                d_val = fa1.date_input("Dzień do analizy:", value=df_f["Data"].max())
-                opp_search = fa2.text_input("Nick rywala (opcjonalnie):")
-                deb_search = fa3.selectbox("Grupa debiutu:", ["Wszystkie"] + sorted(df_f["Debiut_Grupa"].unique().tolist()))
+                d_val = fa1.date_input(tu("Dzień do analizy:"), value=df_f["Data"].max())
+                opp_search = fa2.text_input(tu("Nick rywala (opcjonalnie):"))
+                deb_search = fa3.selectbox(tu("Grupa debiutu:"), [tu("Wszystkie")] + sorted(df_f["Debiut_Grupa"].unique().tolist()))
                 
                 ana = df_f.copy()
-                if opp_search or deb_search != "Wszystkie":
+                if opp_search or deb_search != tu("Wszystkie"):
                     if opp_search: ana = ana[ana["Przeciwnik"].str.lower().str.contains(opp_search.lower())]
-                    if deb_search != "Wszystkie": ana = ana[ana["Debiut_Grupa"] == deb_search]
+                    if deb_search != tu("Wszystkie"): ana = ana[ana["Debiut_Grupa"] == deb_search]
                 else:
                     ana = ana[ana["Data"] == d_val]
                     
@@ -879,10 +1084,10 @@ else:
                         return "D"
                     
                     ana["label"] = ana.apply(lambda x: f"{x['Data']} {x['Timestamp'].strftime('%H:%M')} | {x['Tryb']} vs {x['Przeciwnik']} ({'C' if x['Platforma'] == 'Chess.com' else 'L'}) ({get_res(x['Wynik'])})", axis=1)
-                    sel = st.selectbox("Mecz:", ana.sort_values("Timestamp", ascending=False)["label"])
+                    sel = st.selectbox(tu("Mecz:"), ana.sort_values("Timestamp", ascending=False)["label"])
                     g_sel = ana[ana["label"] == sel].iloc[0]
-                    if st.button("Przygotuj analizę (Lichess Engine)", type="primary", use_container_width=True):
-                        with st.spinner("Przesyłanie PGN do analizy..."):
+                    if st.button(t("prepare_analysis"), type="primary", use_container_width=True):
+                        with st.spinner(tu("Przesyłanie PGN do analizy...")):
                             st.session_state.url = g_sel["Link"] if g_sel["Platforma"]=="Lichess" else import_to_lichess(g_sel["PGN_Raw"]); st.rerun()
                     if st.session_state.url:
                         btn_html = (
@@ -894,12 +1099,32 @@ else:
                 else:
                     st.info("Brak partii do analizy dla podanych kryteriów.")
 
-    elif app_m == "⚔️ Porównanie Graczy":
+            with t_ana2:
+                st.markdown(f"### {t('board_engine')}")
+                ana2_df = df_f.sort_values("Timestamp", ascending=False).copy()
+                ana2_df["label2"] = ana2_df.apply(
+                    lambda x: f"{x['Data']} {x['Timestamp'].strftime('%H:%M')} | {x['Tryb']} vs {x['Przeciwnik']}",
+                    axis=1
+                )
+                if not ana2_df.empty:
+                    sel2 = st.selectbox(tu("Mecz do tablicy:"), ana2_df["label2"], key="ana2_sel")
+                    g2 = ana2_df[ana2_df["label2"] == sel2].iloc[0]
+                    if st.button(t("open_analysis"), type="primary", use_container_width=True, key="ana2_open"):
+                        with st.spinner(tu("Przygotowanie interaktywnej analizy...")):
+                            st.session_state.url = g2["Link"] if g2["Platforma"] == "Lichess" else import_to_lichess(g2["PGN_Raw"])
+                            st.rerun()
+                    if st.session_state.url:
+                        emb = st.session_state.url.replace("https://lichess.org/", "https://lichess.org/embed/") + "?theme=auto&pieceSet=cburnett"
+                        components.html(f"<iframe src='{emb}' width='100%' height='640' frameborder='0'></iframe>", height=650)
+                else:
+                    st.info(tu("Brak partii do analizy."))
+
+    elif app_m == VIEW_COMPARE:
         c1, c2 = st.columns(2)
         p2 = c2.selectbox("Platforma rywala:", ["Chess.com", "Lichess"])
         n2 = c2.text_input("Nick rywala:")
         
-        if st.button("Pobierz dane rywala", type="primary", use_container_width=True):
+        if st.button(t("btn_rival"), type="primary", use_container_width=True):
             if n2:
                 with st.spinner(f"Pobieranie danych dla {n2}..."):
                     f2 = fetch_data(n2, p2)
@@ -911,6 +1136,8 @@ else:
 
         if st.session_state.data2 is not None:
             df2 = st.session_state.data2.copy()
+            if "MoveTimes" not in df2.columns:
+                df2["MoveTimes"] = [[] for _ in range(len(df2))]
             df2["Debiut_Grupa"] = df2["Debiut_Grupa"].apply(t_op)
             
             u1, u2, p2_p = username, st.session_state.user2, st.session_state.plat2
@@ -1097,6 +1324,23 @@ else:
                     fig_b_c.update_yaxes(range=[0, 100])
                     fig_b_c = style_chart(fig_b_c)
                     st.plotly_chart(fig_b_c, use_container_width=True)
+
+                    p1_df = build_move_pace_table(df1_c).dropna(subset=["AvgSec"])
+                    p2_df = build_move_pace_table(df2_c).dropna(subset=["AvgSec"])
+                    if not p1_df.empty or not p2_df.empty:
+                        p1_df["Gracz"] = u1
+                        p2_df["Gracz"] = u2
+                        pace_comp = pd.concat([p1_df, p2_df], ignore_index=True)
+                        st.markdown(f"### {t('move_pace')}")
+                        fig_pace_c = px.line(
+                            pace_comp, x="Segment", y="AvgSec", color="Gracz", markers=True,
+                            color_discrete_sequence=[cp1, cp2],
+                            labels={"Segment": t("decile"), "AvgSec": t("avg_move_seconds")}
+                        )
+                        fig_pace_c = style_chart(fig_pace_c)
+                        st.plotly_chart(fig_pace_c, use_container_width=True)
+                    else:
+                        st.info(t("no_tempo_data"))
 
             with tabs[3]:
                 st.write("### 🛡️ Najpopularniejsze Debiuty (Wspólne)")

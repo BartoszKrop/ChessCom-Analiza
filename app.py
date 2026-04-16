@@ -8,6 +8,7 @@ import json
 import streamlit.components.v1 as components
 
 API_TIMEOUT = 10  # seconds for individual API requests
+MAX_MOVE_TIME_SECONDS = 300
 
 # --- KONFIGURACJA STRONY (MUSI BYĆ PIERWSZA) ---
 st.set_page_config(page_title="ChessStats", page_icon="♟️", layout="wide")
@@ -145,7 +146,7 @@ ui_dict = {
     "length": {"pl": "Długość (ruchy)", "en": "Length (moves)", "de": "Länge (Züge)"},
     "day": {"pl": "Dzień", "en": "Day", "de": "Tag"},
     "player": {"pl": "Gracz", "en": "Player", "de": "Spieler"},
-    "download_raw": {"pl": "Pobierz suche dane (CSV)", "en": "Download raw data (CSV)", "de": "Rohdaten herunterladen (CSV)"},
+    "download_raw": {"pl": "Pobierz surowe dane (CSV)", "en": "Download raw data (CSV)", "de": "Rohdaten herunterladen (CSV)"},
     "download_report": {"pl": "Pobierz raport (HTML)", "en": "Download report (HTML)", "de": "Bericht herunterladen (HTML)"},
     "move_pace": {"pl": "Tempo ruchu w trakcie partii", "en": "Move pace during game", "de": "Zugtempo im Spielverlauf"},
     "decile": {"pl": "Segment partii", "en": "Game segment", "de": "Spielsegment"},
@@ -232,6 +233,12 @@ ui_phrases = {
     "Grupa debiutu:": {"en": "Opening group:", "de": "Eröffnungsgruppe:"},
     "Wszystkie": {"en": "All", "de": "Alle"},
     "Mecz:": {"en": "Game:", "de": "Partie:"},
+    "Mecz do tablicy:": {"en": "Game for board:", "de": "Partie fürs Brett:"},
+    "Uruchom porównanie": {"en": "Start comparison", "de": "Vergleich starten"},
+    "Pobieranie i porównywanie...": {"en": "Downloading and comparing...", "de": "Laden und vergleichen..."},
+    "Przesyłanie PGN do analizy...": {"en": "Uploading PGN for analysis...", "de": "PGN zur Analyse wird hochgeladen..."},
+    "Przygotowanie interaktywnej analizy...": {"en": "Preparing interactive analysis...", "de": "Interaktive Analyse wird vorbereitet..."},
+    "Brak partii do analizy.": {"en": "No games for analysis.", "de": "Keine Partien zur Analyse."},
     "⚔️ Porównanie Graczy": {"en": "⚔️ Player Comparison", "de": "⚔️ Spielervergleich"},
     "👤 Moja Analiza": {"en": "👤 My Analysis", "de": "👤 Meine Analyse"},
 }
@@ -495,7 +502,7 @@ def extract_move_times_from_pgn(pgn, is_white):
     deltas = []
     for i in range(1, len(my_clocks)):
         d = my_clocks[i - 1] - my_clocks[i]
-        if 0 <= d <= 300:
+        if 0 <= d <= MAX_MOVE_TIME_SECONDS:
             deltas.append(round(d, 2))
     return deltas
 
@@ -507,7 +514,7 @@ def extract_move_times_from_lichess_clocks(clocks, is_white):
     deltas = []
     for i in range(1, len(my_clocks)):
         d = my_clocks[i - 1] - my_clocks[i]
-        if 0 <= d <= 300:
+        if 0 <= d <= MAX_MOVE_TIME_SECONDS:
             deltas.append(round(d, 2))
     return deltas
 
@@ -536,7 +543,7 @@ def build_html_report(df, username):
     w = int((df["Wynik"] == "Wygrane").sum())
     d = int((df["Wynik"] == "Remisy").sum())
     l = int((df["Wynik"] == "Przegrane").sum())
-    winp = int(round((w / len(df)) * 100, 0)) if len(df) else 0
+    winp = round((w / len(df)) * 100) if len(df) else 0
     pace_df = build_move_pace_table(df)
     pace_html = pace_df.fillna("-").to_html(index=False)
     return f"""
@@ -700,9 +707,9 @@ if st.session_state.data is None:
         n1 = c1.text_input("Nick gracza 1:", key="q_n1")
         p2 = c2.selectbox("Platforma gracza 2:", ["Chess.com", "Lichess"], key="q_p2")
         n2 = c2.text_input("Nick gracza 2:", key="q_n2")
-        if st.button("Uruchom porównanie", type="primary", use_container_width=True):
+        if st.button(tu("Uruchom porównanie"), type="primary", use_container_width=True):
             if n1 and n2:
-                with st.spinner("Pobieranie i porównywanie..."):
+                with st.spinner(tu("Pobieranie i porównywanie...")):
                     f1, f2 = fetch_data(n1, p1), fetch_data(n2, p2)
                     if f1[0] is not None and not f1[1].empty and f2[0] is not None and not f2[1].empty:
                         st.session_state.data = f1
@@ -1063,7 +1070,7 @@ else:
                     sel = st.selectbox(tu("Mecz:"), ana.sort_values("Timestamp", ascending=False)["label"])
                     g_sel = ana[ana["label"] == sel].iloc[0]
                     if st.button(t("prepare_analysis"), type="primary", use_container_width=True):
-                        with st.spinner("Przesyłanie PGN do analizy..."):
+                        with st.spinner(tu("Przesyłanie PGN do analizy...")):
                             st.session_state.url = g_sel["Link"] if g_sel["Platforma"]=="Lichess" else import_to_lichess(g_sel["PGN_Raw"]); st.rerun()
                     if st.session_state.url:
                         btn_html = (
@@ -1083,17 +1090,17 @@ else:
                     axis=1
                 )
                 if not ana2_df.empty:
-                    sel2 = st.selectbox("Mecz do tablicy:", ana2_df["label2"], key="ana2_sel")
+                    sel2 = st.selectbox(tu("Mecz do tablicy:"), ana2_df["label2"], key="ana2_sel")
                     g2 = ana2_df[ana2_df["label2"] == sel2].iloc[0]
                     if st.button(t("open_analysis"), type="primary", use_container_width=True, key="ana2_open"):
-                        with st.spinner("Przygotowanie interaktywnej analizy..."):
+                        with st.spinner(tu("Przygotowanie interaktywnej analizy...")):
                             st.session_state.url = g2["Link"] if g2["Platforma"] == "Lichess" else import_to_lichess(g2["PGN_Raw"])
                             st.rerun()
                     if st.session_state.url:
                         emb = st.session_state.url.replace("https://lichess.org/", "https://lichess.org/embed/") + "?theme=auto&pieceSet=cburnett"
                         components.html(f"<iframe src='{emb}' width='100%' height='640' frameborder='0'></iframe>", height=650)
                 else:
-                    st.info("Brak partii do analizy.")
+                    st.info(tu("Brak partii do analizy."))
 
     elif app_m == tu("⚔️ Porównanie Graczy"):
         c1, c2 = st.columns(2)

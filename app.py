@@ -491,7 +491,7 @@ def _clock_to_seconds(clock_text):
         if len(parts) == 2:
             m, s = parts
             return int(m) * 60 + float(s)
-        return float(clock_text)
+        return 0.0
     except (ValueError, TypeError):
         return 0.0
 
@@ -531,14 +531,18 @@ def extract_move_times_from_lichess_clocks(clocks, is_white):
 def build_move_pace_table(df):
     labels = ["0-10", "11-20", "21-30", "31-40", "41-50", "51-60", "61-70", "71-80", "81-90", "91-100"]
     buckets = {label: [] for label in labels}
+    has_data = False
     for arr in df["MoveTimes"]:
         vals = arr if isinstance(arr, list) else []
         if len(vals) < 2:
             continue
+        has_data = True
         n = len(vals)
         for i, v in enumerate(vals):
             bucket_idx = min(int((i / n) * NUM_DECILES), NUM_DECILES - 1)
             buckets[labels[bucket_idx]].append(v)
+    if not has_data:
+        return pd.DataFrame(columns=["Segment", "AvgSec", "Moves"])
     rows = []
     for label in labels:
         data = buckets[label]
@@ -553,7 +557,7 @@ def build_html_report(df, username):
     w = int((df["Wynik"] == "Wygrane").sum())
     d = int((df["Wynik"] == "Remisy").sum())
     l = int((df["Wynik"] == "Przegrane").sum())
-    winp = int(round((w / len(df)) * 100, 0)) if len(df) else 0
+    winp = int(round((w / len(df)) * 100)) if len(df) else 0
     pace_df = build_move_pace_table(df)
     pace_html = pace_df.fillna("-").to_html(index=False)
     return f"""

@@ -154,6 +154,9 @@ ui_dict = {
     "player": {"pl": "Gracz", "en": "Player", "de": "Spieler"},
     "download_raw": {"pl": "Pobierz surowe dane (CSV)", "en": "Download raw data (CSV)", "de": "Rohdaten herunterladen (CSV)"},
     "download_report": {"pl": "Pobierz raport (HTML)", "en": "Download report (HTML)", "de": "Bericht herunterladen (HTML)"},
+    "download_menu": {"pl": "Pobierz raporty", "en": "Download reports", "de": "Berichte herunterladen"},
+    "download_choose": {"pl": "Wybierz format", "en": "Choose format", "de": "Format wählen"},
+    "download_now": {"pl": "Pobierz", "en": "Download", "de": "Herunterladen"},
     "move_pace": {"pl": "Tempo ruchu w trakcie partii", "en": "Move pace during game", "de": "Zugtempo im Spielverlauf"},
     "decile": {"pl": "Segment partii", "en": "Game segment", "de": "Spielsegment"},
     "avg_move_seconds": {"pl": "Śr. sekundy / ruch", "en": "Avg seconds / move", "de": "Ø Sekunden / Zug"},
@@ -594,6 +597,17 @@ def import_to_lichess(pgn_text):
     except Exception:
         return None
 
+def to_lichess_analysis_url(url):
+    if not isinstance(url, str):
+        return None
+    base = url.strip()
+    if not base:
+        return None
+    if "lichess.org" not in base:
+        return base
+    base = base.split("?")[0].rstrip("/")
+    return base if base.endswith("/analysis") else f"{base}/analysis"
+
 def calc_elo(df, mode):
     mdf = df[df["Tryb"] == mode]
     if mdf.empty: return "-", "-", None
@@ -848,15 +862,29 @@ else:
         if s_m != tu("Wszystkie"): df_f = df_f[df_f["Tryb"] == s_m].copy()
 
         if not df_f.empty:
-            d1, d2 = st.columns(2)
             raw_df = df_f.copy()
             raw_df["MoveTimes"] = raw_df["MoveTimes"].apply(
                 lambda x: json.dumps(x) if isinstance(x, list) else (x if isinstance(x, str) else "[]")
             )
             raw_csv = raw_df.to_csv(index=False).encode("utf-8")
-            report_html = build_html_report(df_f, username).encode("utf-8")
-            d1.download_button(t("download_raw"), data=raw_csv, file_name=f"chessstats_raw_{username}.csv", mime="text/csv", use_container_width=True)
-            d2.download_button(t("download_report"), data=report_html, file_name=f"chessstats_report_{username}.html", mime="text/html", use_container_width=True)
+            report_html = build_html_report(df_loc, username).encode("utf-8")
+            with st.popover(t("download_menu"), use_container_width=True):
+                export_choice = st.radio(
+                    t("download_choose"),
+                    options=["raw", "html"],
+                    format_func=lambda x: t("download_raw") if x == "raw" else t("download_report"),
+                    horizontal=True,
+                    key="download_choice"
+                )
+                is_raw = export_choice == "raw"
+                st.download_button(
+                    t("download_now"),
+                    data=raw_csv if is_raw else report_html,
+                    file_name=f"chessstats_raw_{username}.csv" if is_raw else f"chessstats_report_{username}.html",
+                    mime="text/csv" if is_raw else "text/html",
+                    use_container_width=True,
+                    key="download_selected_file"
+                )
 
             t_stat, t_hist, t_czas, t_deb, t_ana, t_ana2 = st.tabs(["📊 Statystyki", "📅 Historia", "⏳ Czas", "🔬 Debiuty", "🧠 Analiza", t("analysis2")])
             
@@ -1010,6 +1038,7 @@ else:
                         tot_w = len(df_w)
                         op_g_w = df_w.groupby("Debiut_Grupa").agg(Gry=('Wynik', 'count'), WinRate=('Wynik', lambda x: int(round((x == 'Wygrane').sum()/len(x)*100,0)))).reset_index()
                         op_g_w["% Całości"] = (op_g_w["Gry"] / tot_w * 100).round(1)
+                        op_g_w = op_g_w[["Debiut_Grupa", "Gry", "% Całości", "WinRate"]]
                         
                         st.dataframe(
                             op_g_w.sort_values("Gry", ascending=False).head(15), 
@@ -1023,6 +1052,7 @@ else:
                         with st.expander(f"Szczegółowe Warianty - ⚪ {t('color_white')}"):
                             op_w = df_w.groupby("Debiut").agg(Gry=('Wynik', 'count'), WinRate=('Wynik', lambda x: int(round((x == 'Wygrane').sum()/len(x)*100,0)))).reset_index()
                             op_w["% Całości"] = (op_w["Gry"] / tot_w * 100).round(1)
+                            op_w = op_w[["Debiut", "Gry", "% Całości", "WinRate"]]
                             st.dataframe(
                                 op_w.sort_values("Gry", ascending=False).head(20), 
                                 use_container_width=True, hide_index=True,
@@ -1040,6 +1070,7 @@ else:
                         tot_b = len(df_b)
                         op_g_b = df_b.groupby("Debiut_Grupa").agg(Gry=('Wynik', 'count'), WinRate=('Wynik', lambda x: int(round((x == 'Wygrane').sum()/len(x)*100,0)))).reset_index()
                         op_g_b["% Całości"] = (op_g_b["Gry"] / tot_b * 100).round(1)
+                        op_g_b = op_g_b[["Debiut_Grupa", "Gry", "% Całości", "WinRate"]]
                         
                         st.dataframe(
                             op_g_b.sort_values("Gry", ascending=False).head(15), 
@@ -1053,6 +1084,7 @@ else:
                         with st.expander(f"Szczegółowe Warianty - ⚫ {t('color_black')}"):
                             op_b = df_b.groupby("Debiut").agg(Gry=('Wynik', 'count'), WinRate=('Wynik', lambda x: int(round((x == 'Wygrane').sum()/len(x)*100,0)))).reset_index()
                             op_b["% Całości"] = (op_b["Gry"] / tot_b * 100).round(1)
+                            op_b = op_b[["Debiut", "Gry", "% Całości", "WinRate"]]
                             st.dataframe(
                                 op_b.sort_values("Gry", ascending=False).head(20), 
                                 use_container_width=True, hide_index=True,
@@ -1114,8 +1146,10 @@ else:
                             st.session_state.url = g2["Link"] if g2["Platforma"] == "Lichess" else import_to_lichess(g2["PGN_Raw"])
                             st.rerun()
                     if st.session_state.url:
-                        emb = st.session_state.url.replace("https://lichess.org/", "https://lichess.org/embed/") + "?theme=auto&pieceSet=cburnett"
+                        analysis_url = to_lichess_analysis_url(st.session_state.url)
+                        emb = analysis_url.replace("https://lichess.org/", "https://lichess.org/embed/") + "?theme=auto&pieceSet=cburnett"
                         components.html(f"<iframe src='{emb}' width='100%' height='640' frameborder='0'></iframe>", height=650)
+                        st.caption("Tryb analizy pozwala sprawdzać warianty „co jeśli” oraz podpowiedzi silnika.")
                 else:
                     st.info(tu("Brak partii do analizy."))
 
@@ -1349,8 +1383,18 @@ else:
                     df1_sub = df1_c[df1_c["Kolor"] == color_name]
                     df2_sub = df2_c[df2_c["Kolor"] == color_name]
                     
-                    g1_op = df1_sub.groupby("Debiut_Grupa").size().reset_index(name=f"Partie [{u1}]")
-                    g2_op = df2_sub.groupby("Debiut_Grupa").size().reset_index(name=f"Partie [{u2}]")
+                    g1_op = df1_sub.groupby("Debiut_Grupa").agg(
+                        **{
+                            f"Partie [{u1}]": ("Wynik", "count"),
+                            f"WinRate [{u1}]": ("Wynik", lambda x: round((x == "Wygrane").sum() / len(x) * 100, 1))
+                        }
+                    ).reset_index()
+                    g2_op = df2_sub.groupby("Debiut_Grupa").agg(
+                        **{
+                            f"Partie [{u2}]": ("Wynik", "count"),
+                            f"WinRate [{u2}]": ("Wynik", lambda x: round((x == "Wygrane").sum() / len(x) * 100, 1))
+                        }
+                    ).reset_index()
                     
                     m = pd.merge(g1_op, g2_op, on="Debiut_Grupa", how="outer").fillna(0)
                     m[f"Partie [{u1}]"] = m[f"Partie [{u1}]"].astype(int)
@@ -1361,12 +1405,22 @@ else:
                     
                     tot1, tot2 = len(df1_sub), len(df2_sub)
                     
-                    m[f"% Całości ({u1} vs {u2})"] = m.apply(
-                        lambda r: f"{round(r[f'Partie [{u1}]']/tot1*100, 1) if tot1 else 0}% vs {round(r[f'Partie [{u2}]']/tot2*100, 1) if tot2 else 0}%", 
-                        axis=1
-                    )
+                    m[f"% Całości [{u1}]"] = ((m[f"Partie [{u1}]"] / tot1 * 100).round(1) if tot1 else 0.0)
+                    m[f"% Całości [{u2}]"] = ((m[f"Partie [{u2}]"] / tot2 * 100).round(1) if tot2 else 0.0)
                     
-                    return m.drop(columns=["Razem"])
+                    m = m[
+                        [
+                            "Debiut_Grupa",
+                            f"Partie [{u1}]",
+                            f"% Całości [{u1}]",
+                            f"WinRate [{u1}]",
+                            f"Partie [{u2}]",
+                            f"% Całości [{u2}]",
+                            f"WinRate [{u2}]"
+                        ]
+                    ]
+                    
+                    return m
 
                 c_w_op, c_b_op = st.columns(2)
                 with c_w_op:

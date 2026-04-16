@@ -7,6 +7,8 @@ import re
 import json
 import streamlit.components.v1 as components
 
+API_TIMEOUT = 10  # seconds for individual API requests
+
 # --- KONFIGURACJA STRONY (MUSI BYĆ PIERWSZA) ---
 st.set_page_config(page_title="ChessStats", page_icon="♟️", layout="wide")
 
@@ -413,7 +415,13 @@ def get_opening_group(opening_name):
 def extract_opening(pgn):
     if not pgn: return "Nieznany"
     match = re.search(r'openings/(.*?)"', pgn)
-    return match.group(1).replace('-', ' ').title() if match else "Inny"
+    if not match: return "Inny"
+    slug = match.group(1)
+    # Chess.com URLs encode apostrophes as hyphens (e.g., King-s-Pawn → King's-Pawn)
+    slug = re.sub(r'(?<=[A-Za-z])-s(?=-[A-Z]|-$)', "'s", slug)
+    result = slug.replace('-', ' ').title()
+    # Fix title() incorrectly capitalizing the 's in possessives (King'S → King's)
+    return re.sub(r"(?<=[A-Za-z])'S\b", "'s", result)
 
 def extract_moves_count(pgn):
     if not pgn: return 0
@@ -459,12 +467,13 @@ def fetch_data(user, platform="Chess.com"):
         k_id = f"{user} ({'C' if platform == 'Chess.com' else 'L'})"
         
         if platform == "Chess.com":
-            p_res = requests.get(f"https://api.chess.com/pub/player/{user}", headers=headers)
-            a_res = requests.get(f"https://api.chess.com/pub/player/{user}/games/archives", headers=headers)
+            p_res = requests.get(f"https://api.chess.com/pub/player/{user}", headers=headers, timeout=API_TIMEOUT)
+            a_res = requests.get(f"https://api.chess.com/pub/player/{user}/games/archives", headers=headers, timeout=API_TIMEOUT)
             if p_res.status_code != 200: return None, pd.DataFrame(columns=cols)
+            if a_res.status_code != 200: return None, pd.DataFrame(columns=cols)
             for url in a_res.json().get("archives", []):
                 try:
-                    m_res = requests.get(url, headers=headers, timeout=10)
+                    m_res = requests.get(url, headers=headers, timeout=API_TIMEOUT)
                     if m_res.status_code == 200:
                         for g in m_res.json().get("games", []):
                             if "end_time" in g:
@@ -486,9 +495,10 @@ def fetch_data(user, platform="Chess.com"):
             return {"avatar": p_res.json().get("avatar", "")}, pd.DataFrame(all_games, columns=cols) if all_games else pd.DataFrame(columns=cols)
             
         elif platform == "Lichess":
-            p_res = requests.get(f"https://lichess.org/api/user/{user}", headers=headers)
+            p_res = requests.get(f"https://lichess.org/api/user/{user}", headers=headers, timeout=API_TIMEOUT)
             if p_res.status_code != 200: return None, pd.DataFrame(columns=cols)
-            g_res = requests.get(f"https://lichess.org/api/games/user/{user}?opening=true", headers={"Accept": "application/x-ndjson"})
+            # Lichess streams all user games at once — timeout is higher to allow large histories
+            g_res = requests.get(f"https://lichess.org/api/games/user/{user}?opening=true", headers={"Accept": "application/x-ndjson"}, timeout=60)
             for line in g_res.text.strip().split('\n'):
                 if not line: continue
                 try:
@@ -555,7 +565,8 @@ if st.session_state.data is None:
                         st.rerun()
                     else: st.error("Błąd pobierania danych. Upewnij się, że oba konta posiadają historię gier.")
 else:
-    profile, df_loc = st.session_state.data
+    profile, df_raw = st.session_state.data
+    df_loc = df_raw.copy()
     username, user_plats = st.session_state.user, st.session_state.platforms
     
     if df_loc.empty:

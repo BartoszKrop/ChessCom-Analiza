@@ -368,6 +368,7 @@ def render_training_component(mode_name, learning_mode, difficulty, opening_tree
         const variants = tree.variants || [];
         const userTurn = (APP_CONFIG.playerColor === "black") ? "b" : "w";
         const botTurn = userTurn === "w" ? "b" : "w";
+        const BOT_RANDOM_SKILL_THRESHOLD = 6;
         let variantIndex = 0;
         let currentVariant = null;
         let currentPly = 0;
@@ -422,12 +423,11 @@ def render_training_component(mode_name, learning_mode, difficulty, opening_tree
             const legal = game.moves({ verbose: true }) || [];
             if (!legal.length) return null;
             const d = getDifficulty();
-            const captures = legal.filter(m => !!m.captured);
-            const checks = legal.filter(m => (m.san || "").includes("+"));
-            if (d.skill <= 6) {
+            const captures = legal.filter(m => (m.flags || "").includes("c"));
+            if (d.skill <= BOT_RANDOM_SKILL_THRESHOLD) {
                 return legal[Math.floor(Math.random() * legal.length)];
             }
-            const pool = captures.length ? captures : (checks.length ? checks : legal);
+            const pool = captures.length ? captures : legal;
             return pool[Math.floor(Math.random() * pool.length)];
         }
 

@@ -377,6 +377,7 @@ def render_training_component(mode_name, learning_mode, difficulty, opening_tree
             "https://cdn.jsdelivr.net/npm/@chrisoakman/chessboardjs@1.0.0/dist/chessboard-1.0.0.min.js",
             "https://unpkg.com/@chrisoakman/chessboardjs@1.0.0/dist/chessboard-1.0.0.min.js"
         ];
+        const SCRIPT_LOAD_TIMEOUT_MS = 4500;
         let variantIndex = 0;
         let currentVariant = null;
         let currentPly = 0;
@@ -394,12 +395,12 @@ def render_training_component(mode_name, learning_mode, difficulty, opening_tree
             }) || null;
         }
 
-        function loadScriptWithFallback(sources) {
+        function loadScriptWithFallback(sources, label) {
             return new Promise((resolve, reject) => {
                 let idx = 0;
                 const tryNext = () => {
                     if (idx >= sources.length) {
-                        reject(new Error("Brak dostępnych źródeł skryptu."));
+                        reject(new Error(`Brak dostępnych źródeł skryptu: ${label}.`));
                         return;
                     }
                     const src = sources[idx++];
@@ -431,7 +432,7 @@ def render_training_component(mode_name, learning_mode, difficulty, opening_tree
                             existing.dataset.loadError = "1";
                             tryNext();
                         };
-                        const timeoutId = setTimeout(() => settleError(), 4500);
+                        const timeoutId = setTimeout(() => settleError(), SCRIPT_LOAD_TIMEOUT_MS);
                         existing.addEventListener("load", () => {
                             clearTimeout(timeoutId);
                             settleSuccess();
@@ -461,10 +462,13 @@ def render_training_component(mode_name, learning_mode, difficulty, opening_tree
         }
 
         async function loadBoardDependencies() {
-            if (typeof Chess === "undefined") await loadScriptWithFallback(CHESS_SCRIPT_SOURCES);
-            if (typeof Chessboard === "undefined") await loadScriptWithFallback(CHESSBOARD_SCRIPT_SOURCES);
+            if (typeof Chess === "undefined") await loadScriptWithFallback(CHESS_SCRIPT_SOURCES, "chess.js");
+            if (typeof Chessboard === "undefined") await loadScriptWithFallback(CHESSBOARD_SCRIPT_SOURCES, "chessboard.js");
             if (typeof Chess === "undefined" || typeof Chessboard === "undefined") {
-                throw new Error("Nie udało się załadować bibliotek szachowych.");
+                const missing = [];
+                if (typeof Chess === "undefined") missing.push("Chess");
+                if (typeof Chessboard === "undefined") missing.push("Chessboard");
+                throw new Error(`Nie udało się załadować bibliotek szachowych: ${missing.join(", ")}.`);
             }
         }
 

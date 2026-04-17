@@ -5,11 +5,21 @@ import plotly.express as px
 from datetime import datetime, date
 import re
 import json
+from io import BytesIO
 import streamlit.components.v1 as components
+from reportlab.lib import colors
+from reportlab.lib.pagesizes import A4
+from reportlab.lib.styles import getSampleStyleSheet
+from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle
 
 API_TIMEOUT = 10  # seconds for individual API requests
 MAX_MOVE_TIME_SECONDS = 300
 NUM_DECILES = 10
+BOT_DIFFICULTY_SETTINGS = {
+    "Łatwy": {"skill": 4, "depth": 8, "evalDepth": 10},
+    "Średni": {"skill": 12, "depth": 12, "evalDepth": 12},
+    "Trudny": {"skill": 20, "depth": 16, "evalDepth": 13},
+}
 VIEW_MY = "👤 Moja Analiza"
 VIEW_COMPARE = "⚔️ Porównanie Graczy"
 SCOPE_SINGLE = "Jeden profil"
@@ -153,7 +163,7 @@ ui_dict = {
     "day": {"pl": "Dzień", "en": "Day", "de": "Tag"},
     "player": {"pl": "Gracz", "en": "Player", "de": "Spieler"},
     "download_raw": {"pl": "Pobierz surowe dane (CSV)", "en": "Download raw data (CSV)", "de": "Rohdaten herunterladen (CSV)"},
-    "download_report": {"pl": "Pobierz raport (HTML)", "en": "Download report (HTML)", "de": "Bericht herunterladen (HTML)"},
+    "download_report": {"pl": "Pobierz raport (PDF)", "en": "Download report (PDF)", "de": "Bericht herunterladen (PDF)"},
     "download_menu": {"pl": "Pobierz raporty", "en": "Download reports", "de": "Berichte herunterladen"},
     "download_choose": {"pl": "Wybierz format", "en": "Choose format", "de": "Format wählen"},
     "download_now": {"pl": "Pobierz", "en": "Download", "de": "Herunterladen"},
@@ -268,12 +278,23 @@ def t_op(eng_name):
     if l == "en": return eng_name
     return op_translations.get(eng_name, {}).get(l, eng_name)
 
-def render_training_component(mode_name, learning_mode, difficulty, caro_kann_tree):
+def format_bytes(size_bytes):
+    value = float(max(size_bytes if size_bytes is not None else 0, 0))
+    units = ["B", "KB", "MB", "GB"]
+    unit_idx = 0
+    while value >= 1024 and unit_idx < len(units) - 1:
+        value /= 1024
+        unit_idx += 1
+    return f"{value:.1f} {units[unit_idx]}"
+
+def render_training_component(mode_name, learning_mode, difficulty, opening_tree, player_color):
     cfg = {
         "mode": mode_name,
         "learningMode": learning_mode,
         "difficulty": difficulty,
-        "tree": caro_kann_tree,
+        "tree": opening_tree,
+        "playerColor": player_color,
+        "difficultyMap": BOT_DIFFICULTY_SETTINGS,
         "theme": {
             "bg": bg_color,
             "card": chart_bg,
@@ -334,54 +355,34 @@ def render_training_component(mode_name, learning_mode, difficulty, caro_kann_tr
     </style>
     <script>
         const APP_CONFIG = __APP_CONFIG__;
-        const game = new Chess();
         const statusBox = document.getElementById("coach-status");
         const scoreBox = document.getElementById("move-score");
         const nextBtn = document.getElementById("next-line");
-        const difficultyMap = {
+        const difficultyMap = APP_CONFIG.difficultyMap || {
             "Łatwy": { skill: 4, depth: 8, evalDepth: 10 },
-            "Średni": { skill: 10, depth: 11, evalDepth: 11 },
-            "Trudny": { skill: 18, depth: 14, evalDepth: 12 }
+            "Średni": { skill: 12, depth: 12, evalDepth: 12 },
+            "Trudny": { skill: 20, depth: 16, evalDepth: 13 }
         };
         const modeOpening = APP_CONFIG.mode === "Trening Debiutów";
         const tree = APP_CONFIG.tree || { variants: [] };
         const variants = tree.variants || [];
+        const userTurn = (APP_CONFIG.playerColor === "black") ? "b" : "w";
+        const botTurn = userTurn === "w" ? "b" : "w";
+        const BOT_RANDOM_SKILL_THRESHOLD = 6;
         let variantIndex = 0;
         let currentVariant = null;
         let currentPly = 0;
         let board = null;
-        const engine = new Worker("https://cdnjs.cloudflare.com/ajax/libs/stockfish.js/10.0.2/stockfish.js");
-
-        const normalizeSan = (san) => (san || "").replace(/[+#?!]/g, "").trim();
-        const buildMove = (from, to, promotionHint = null) => {
-            const move = { from, to };
-            const piece = game.get(from);
-            if (promotionHint) move.promotion = promotionHint;
-            if (!promotionHint && piece && piece.type === "p" && (to.endsWith("8") || to.endsWith("1"))) {
-                move.promotion = "q";
-            }
-            return move;
-        };
-        const uciToMove = (uci) => buildMove(uci.slice(0, 2), uci.slice(2, 4), uci[4] || null);
-        const scoreToCp = (scoreObj, turn) => {
-            if (!scoreObj) return 0;
-            if (scoreObj.type === "mate") {
-                const base = scoreObj.value > 0 ? 10000 : -10000;
-                return turn === "w" ? base : -base;
-            }
-            return turn === "w" ? scoreObj.value : -scoreObj.value;
-        };
+        let game = null;
 
         function setStatus(text) { statusBox.textContent = text; }
         function setMoveScore(text, color) {
             scoreBox.textContent = text || "";
             scoreBox.style.color = color || APP_CONFIG.theme.accent;
         }
-
         function getDifficulty() {
             return difficultyMap[APP_CONFIG.difficulty] || difficultyMap["Średni"];
         }
-
         function chooseVariant() {
             if (!variants.length) return null;
             if (APP_CONFIG.learningMode === "Losowo") {
@@ -391,8 +392,19 @@ def render_training_component(mode_name, learning_mode, difficulty, caro_kann_tr
             variantIndex += 1;
             return selected;
         }
+        const normalizeSan = (san) => (san || "").replace(/[+#?!]/g, "").trim();
+        const buildMove = (from, to, promotionHint = null) => {
+            const move = { from, to };
+            const piece = game ? game.get(from) : null;
+            if (promotionHint) move.promotion = promotionHint;
+            if (!promotionHint && piece && piece.type === "p" && (to.endsWith("8") || to.endsWith("1"))) {
+                move.promotion = "q";
+            }
+            return move;
+        };
 
         function resetOpening() {
+            if (!game || !board) return;
             game.reset();
             currentPly = 0;
             currentVariant = chooseVariant();
@@ -406,69 +418,31 @@ def render_training_component(mode_name, learning_mode, difficulty, caro_kann_tr
             setStatus(`Wariant: ${currentVariant.name} | Oczekiwany ruch: ${expected}`);
         }
 
-        function classifyMove(delta) {
-            if (delta < 25) return { text: "Excellent", color: "#81b64c" };
-            if (delta < 75) return { text: "Good", color: "#5ab4ac" };
-            if (delta < 150) return { text: "Inaccuracy", color: "#d8b365" };
-            if (delta < 300) return { text: "Mistake", color: "#ef553b" };
-            return { text: "Blunder - tracisz w chuj!", color: "#fa412d" };
-        }
-
-        function askEngine(positionFen, goCmd) {
-            return new Promise((resolve) => {
-                let lastScore = null;
-                const handler = (event) => {
-                    const line = (event.data || "").trim();
-                    const cp = line.match(/score cp (-?[0-9]+)/);
-                    const mate = line.match(/score mate (-?[0-9]+)/);
-                    if (cp) lastScore = { type: "cp", value: parseInt(cp[1], 10) };
-                    if (mate) lastScore = { type: "mate", value: parseInt(mate[1], 10) };
-                    if (line.startsWith("bestmove")) {
-                        engine.removeEventListener("message", handler);
-                        resolve({ line, score: lastScore });
-                    }
-                };
-                engine.addEventListener("message", handler);
-                engine.postMessage(`position fen ${positionFen}`);
-                engine.postMessage(goCmd);
-            });
-        }
-
-        async function evaluatePosition(fen, depth) {
-            const turn = fen.split(" ")[1] || "w";
-            const out = await askEngine(fen, `go depth ${depth}`);
-            return scoreToCp(out.score, turn);
-        }
-
-        async function getBestMove(fen, depth) {
-            const out = await askEngine(fen, `go depth ${depth}`);
-            return (out.line.split(" ")[1] || "").trim();
-        }
-
-        async function playBotMove() {
-            if (game.turn() !== "b") return;
+        function chooseBotMove() {
+            if (!game) return null;
+            const legal = game.moves({ verbose: true }) || [];
+            if (!legal.length) return null;
             const d = getDifficulty();
-            engine.postMessage(`setoption name Skill Level value ${d.skill}`);
-            const best = await getBestMove(game.fen(), d.depth);
-            if (!best || best === "(none)") return;
-            game.move(uciToMove(best));
+            const captures = legal.filter(m => (m.flags || "").includes("c"));
+            if (d.skill <= BOT_RANDOM_SKILL_THRESHOLD) {
+                return legal[Math.floor(Math.random() * legal.length)];
+            }
+            const pool = captures.length ? captures : legal;
+            return pool[Math.floor(Math.random() * pool.length)];
+        }
+
+        function playBotMove() {
+            if (!game || !board || game.turn() !== botTurn) return;
+            const chosen = chooseBotMove();
+            if (!chosen) return;
+            game.move(chosen);
             board.position(game.fen());
+            setMoveScore("Bot wykonał ruch", APP_CONFIG.theme.accent);
             setStatus("Bot wykonał ruch. Twój ruch.");
         }
 
-        async function handleBotTurn(beforeFen) {
-            const d = getDifficulty();
-            const movedColor = (beforeFen.split(" ")[1] || "w");
-            const evalBefore = await evaluatePosition(beforeFen, d.evalDepth);
-            const evalAfter = await evaluatePosition(game.fen(), d.evalDepth);
-            const rawDelta = movedColor === "w" ? (evalBefore - evalAfter) : (evalAfter - evalBefore);
-            const delta = Math.max(0, Math.round(rawDelta));
-            const bucket = classifyMove(delta);
-            setMoveScore(`${bucket.text} | Δ ${delta} cp`, bucket.color);
-            if (!game.game_over() && game.turn() === "b") await playBotMove();
-        }
-
         function onDrop(source, target) {
+            if (!game || !board) return "snapback";
             if (modeOpening) {
                 if (!currentVariant) return "snapback";
                 const expected = currentVariant.line?.[currentPly];
@@ -501,40 +475,56 @@ def render_training_component(mode_name, learning_mode, difficulty, caro_kann_tr
                 return;
             }
 
-            if (game.turn() !== "w") return "snapback";
-            const beforeFen = game.fen();
+            if (game.turn() !== userTurn) return "snapback";
             const move = game.move(buildMove(source, target));
             if (!move) return "snapback";
             board.position(game.fen());
-            handleBotTurn(beforeFen);
+            if (!game.game_over() && game.turn() === botTurn) {
+                setTimeout(() => playBotMove(), 280);
+            }
         }
 
-        board = Chessboard("board", {
-            draggable: true,
-            position: "start",
-            pieceTheme: "https://cdnjs.cloudflare.com/ajax/libs/chessboard.js/1.0.0/img/chesspieces/wikipedia/{piece}.png",
-            onDrop
-        });
-
-        engine.postMessage("uci");
-        engine.postMessage("isready");
-        nextBtn.onclick = () => {
+        function initTrainingModule() {
+            if (typeof Chess === "undefined" || typeof Chessboard === "undefined") {
+                setStatus("Nie udało się załadować modułu planszy. Odśwież stronę i spróbuj ponownie.");
+                nextBtn.disabled = true;
+                return;
+            }
+            game = new Chess();
+            board = Chessboard("board", {
+                draggable: true,
+                position: "start",
+                orientation: userTurn === "w" ? "white" : "black",
+                pieceTheme: "https://cdnjs.cloudflare.com/ajax/libs/chessboard.js/1.0.0/img/chesspieces/wikipedia/{piece}.png",
+                onDrop
+            });
+            nextBtn.disabled = false;
+            nextBtn.onclick = () => {
+                if (modeOpening) {
+                    resetOpening();
+                } else {
+                    game.reset();
+                    board.position(game.fen());
+                    setMoveScore("", APP_CONFIG.theme.accent);
+                    if (userTurn === "w") {
+                        setStatus("Nowa partia z botem. Twój ruch białymi.");
+                    } else {
+                        setStatus("Nowa partia z botem. Bot rozpoczyna.");
+                        setTimeout(() => playBotMove(), 280);
+                    }
+                }
+            };
             if (modeOpening) {
                 resetOpening();
+            } else if (userTurn === "w") {
+                setStatus("Tryb sparingu z botem. Twój ruch białymi.");
             } else {
-                game.reset();
-                board.position(game.fen());
-                setMoveScore("", APP_CONFIG.theme.accent);
-                setStatus("Nowa partia z botem. Twój ruch białymi.");
+                setStatus("Tryb sparingu z botem. Bot rozpoczyna.");
+                setTimeout(() => playBotMove(), 280);
             }
-        };
-
-        if (modeOpening) {
-            resetOpening();
-        } else {
-            setStatus("Tryb sparingu z botem. Twój ruch białymi.");
         }
-        window.addEventListener("beforeunload", () => engine.terminate());
+
+        initTrainingModule();
     </script>
     """
     html = html.replace("__APP_CONFIG__", json.dumps(cfg, ensure_ascii=False))
@@ -828,29 +818,171 @@ def build_move_pace_table(df):
         })
     return pd.DataFrame(rows)
 
-def build_html_report(df, username):
+def build_report_summary(df):
     total_games = len(df)
     w = int((df["Wynik"] == "Wygrane").sum())
     d = int((df["Wynik"] == "Remisy").sum())
     l = int((df["Wynik"] == "Przegrane").sum())
-    winp = int(round((w / total_games) * 100)) if total_games else 0
-    pace_df = build_move_pace_table(df)
-    pace_html = pace_df.fillna("-").to_html(index=False)
+    winp = round((w / total_games) * 100, 1) if total_games else 0
+    date_from = df["Data"].min() if total_games else "-"
+    date_to = df["Data"].max() if total_games else "-"
+    mode_stats = (
+        df.groupby("Tryb")
+        .agg(
+            Partie=("Wynik", "count"),
+            Wygrane=("Wynik", lambda x: int((x == "Wygrane").sum())),
+        )
+        .reset_index()
+        .sort_values("Partie", ascending=False)
+    )
+    if not mode_stats.empty:
+        mode_stats["Win%"] = (mode_stats["Wygrane"] / mode_stats["Partie"] * 100).round(1)
+    color_stats = (
+        df.groupby("Kolor")
+        .agg(
+            Partie=("Wynik", "count"),
+            Wygrane=("Wynik", lambda x: int((x == "Wygrane").sum())),
+            Remisy=("Wynik", lambda x: int((x == "Remisy").sum())),
+            Przegrane=("Wynik", lambda x: int((x == "Przegrane").sum())),
+        )
+        .reset_index()
+        .sort_values("Partie", ascending=False)
+    )
+    if not color_stats.empty:
+        color_stats["Win%"] = (color_stats["Wygrane"] / color_stats["Partie"] * 100).round(1)
+    opening_stats = (
+        df.groupby("Debiut_Grupa")
+        .agg(
+            Partie=("Wynik", "count"),
+            Wygrane=("Wynik", lambda x: int((x == "Wygrane").sum())),
+        )
+        .reset_index()
+        .sort_values("Partie", ascending=False)
+        .head(10)
+    )
+    if not opening_stats.empty:
+        opening_stats["Win%"] = (opening_stats["Wygrane"] / opening_stats["Partie"] * 100).round(1)
+    reason_stats = (
+        df.groupby("Powod")
+        .agg(Partie=("Powod", "count"))
+        .reset_index()
+        .sort_values("Partie", ascending=False)
+        .head(10)
+    )
+    return {
+        "total_games": total_games,
+        "w": w,
+        "d": d,
+        "l": l,
+        "winp": winp,
+        "date_from": date_from,
+        "date_to": date_to,
+        "mode_stats": mode_stats,
+        "color_stats": color_stats,
+        "opening_stats": opening_stats,
+        "reason_stats": reason_stats,
+        "pace_df": build_move_pace_table(df),
+    }
+
+def build_html_report(df, username):
+    summary = build_report_summary(df)
+    mode_html = summary["mode_stats"].fillna("-").to_html(index=False)
+    color_html = summary["color_stats"].fillna("-").to_html(index=False)
+    opening_html = summary["opening_stats"].fillna("-").to_html(index=False)
+    reason_html = summary["reason_stats"].fillna("-").to_html(index=False)
+    pace_html = summary["pace_df"].fillna("-").to_html(index=False)
     return f"""
     <html><head><meta charset='utf-8'>
     <style>
-      body {{ font-family: Arial, sans-serif; background:#1f1f1f; color:#f2f2f2; padding:24px; }}
-      .card {{ background:#2a2a2a; border-radius:10px; padding:16px; margin-bottom:16px; }}
-      h1 {{ color:#81b64c; }}
-      table {{ border-collapse: collapse; width: 100%; background:#2a2a2a; }}
-      th, td {{ border:1px solid #3a3a3a; padding:8px; text-align:center; }}
-      th {{ background:#313131; }}
+      body {{ font-family: Inter, Arial, sans-serif; background:#14181f; color:#e5e7eb; padding:28px; }}
+      .hero {{ background: linear-gradient(135deg,#1f2937,#111827); border-radius:16px; padding:18px 20px; margin-bottom:16px; border:1px solid #374151; }}
+      .kpi {{ display:flex; flex-wrap:wrap; gap:10px; margin-top:10px; }}
+      .chip {{ background:#1f2937; border:1px solid #374151; border-radius:999px; padding:6px 12px; font-size:13px; }}
+      .card {{ background:#1f2937; border-radius:12px; padding:14px; margin-bottom:14px; border:1px solid #374151; }}
+      h1 {{ color:#81b64c; margin:0 0 6px; }}
+      h3 {{ margin:0 0 10px; color:#f3f4f6; }}
+      table {{ border-collapse: collapse; width: 100%; background:#1f2937; }}
+      th, td {{ border:1px solid #374151; padding:8px; text-align:center; }}
+      th {{ background:#111827; }}
     </style></head><body>
-      <h1>ChessStats – {username}</h1>
-      <div class='card'><b>Partie:</b> {total_games} | <b>W/R/P:</b> {w}/{d}/{l} | <b>Win%:</b> {winp}%</div>
-      <div class='card'><h3>Tempo ruchu (0-10 ... 91-100)</h3>{pace_html}</div>
+      <div class='hero'>
+        <h1>ChessStats — {username}</h1>
+        <div>Zakres: {summary["date_from"]} ➜ {summary["date_to"]}</div>
+        <div class='kpi'>
+          <div class='chip'><b>Partie:</b> {summary["total_games"]}</div>
+          <div class='chip'><b>W/R/P:</b> {summary["w"]}/{summary["d"]}/{summary["l"]}</div>
+          <div class='chip'><b>Win%:</b> {summary["winp"]}%</div>
+        </div>
+      </div>
+      <div class='card'><h3>Tryby gry</h3>{mode_html}</div>
+      <div class='card'><h3>Wyniki wg koloru</h3>{color_html}</div>
+      <div class='card'><h3>Najważniejsze debiuty</h3>{opening_html}</div>
+      <div class='card'><h3>Najczęstsze zakończenia partii</h3>{reason_html}</div>
+      <div class='card'><h3>Tempo ruchu (segmenty partii)</h3>{pace_html}</div>
     </body></html>
     """
+
+def build_pdf_report(df, username):
+    summary = build_report_summary(df)
+    buffer = BytesIO()
+    doc = SimpleDocTemplate(
+        buffer,
+        pagesize=A4,
+        leftMargin=24,
+        rightMargin=24,
+        topMargin=24,
+        bottomMargin=24,
+        title=f"ChessStats {username}",
+    )
+    styles = getSampleStyleSheet()
+    story = []
+    story.append(Paragraph(f"<b>ChessStats — {username}</b>", styles["Title"]))
+    story.append(Paragraph(f"Zakres: {summary['date_from']} - {summary['date_to']}", styles["Normal"]))
+    story.append(Spacer(1, 10))
+    kpi_rows = [
+        ["Partie", "W/R/P", "Win%"],
+        [str(summary["total_games"]), f"{summary['w']}/{summary['d']}/{summary['l']}", f"{summary['winp']}%"],
+    ]
+    kpi_table = Table(kpi_rows)
+    kpi_table.setStyle(TableStyle([
+        ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#1f2937")),
+        ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
+        ("GRID", (0, 0), (-1, -1), 0.5, colors.HexColor("#9ca3af")),
+        ("ALIGN", (0, 0), (-1, -1), "CENTER"),
+        ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
+        ("BOTTOMPADDING", (0, 0), (-1, 0), 8),
+    ]))
+    story.append(kpi_table)
+    story.append(Spacer(1, 12))
+
+    def add_df_table(title, frame):
+        story.append(Paragraph(f"<b>{title}</b>", styles["Heading3"]))
+        if frame.empty:
+            story.append(Paragraph("Brak danych", styles["Normal"]))
+            story.append(Spacer(1, 8))
+            return
+        data = [list(frame.columns)] + frame.fillna("").astype(str).values.tolist()
+        table = Table(data, repeatRows=1)
+        table.setStyle(TableStyle([
+            ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#111827")),
+            ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
+            ("GRID", (0, 0), (-1, -1), 0.4, colors.HexColor("#9ca3af")),
+            ("ALIGN", (0, 0), (-1, -1), "CENTER"),
+            ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
+            ("FONTSIZE", (0, 0), (-1, -1), 8.8),
+        ]))
+        story.append(table)
+        story.append(Spacer(1, 10))
+
+    add_df_table("Tryby gry", summary["mode_stats"])
+    add_df_table("Wyniki wg koloru", summary["color_stats"])
+    add_df_table("Najważniejsze debiuty", summary["opening_stats"])
+    add_df_table("Najczęstsze zakończenia partii", summary["reason_stats"])
+    add_df_table("Tempo ruchu (segmenty partii)", summary["pace_df"])
+
+    doc.build(story)
+    buffer.seek(0)
+    return buffer.getvalue()
 
 def get_duration_bin(moves):
     bins = ["0-20", "21-30", "31-40", "41-50", "51-60", "61-70", "71+"]
@@ -892,25 +1024,62 @@ def calc_elo(df, mode):
         if curr > best_curr: best_curr = curr
     return f"{best_peak}", f"{best_curr}", best_curr
 
-@st.cache_data(show_spinner=False, ttl=3600)
-def fetch_data(user, platform="Chess.com"):
+def _stream_get_text(url, headers=None, timeout=API_TIMEOUT, progress_cb=None, label=""):
+    res = requests.get(url, headers=headers or {}, timeout=timeout, stream=True)
+    total = int(res.headers.get("Content-Length", "0") or 0)
+    if progress_cb:
+        progress_cb(0, total, label, True)
+    chunks = []
+    for chunk in res.iter_content(chunk_size=8192):
+        if not chunk:
+            continue
+        chunks.append(chunk)
+        if progress_cb:
+            progress_cb(len(chunk), total, label, False)
+    content = b"".join(chunks).decode("utf-8", errors="replace")
+    return res.status_code, content
+
+def fetch_data_live(user, platform="Chess.com", progress_callback=None):
     cols = ["Konto", "Platforma", "Timestamp", "Godzina", "Dzień", "Dzień_Nr", "Data", "Miesiąc", "Tryb", "Wynik", "ELO", "Elo_Rywala", "Ruchy", "Debiut", "Debiut_Grupa", "Przeciwnik", "Kolor", "Powod", "PGN_Raw", "Link", "MoveTimes"]
     try:
         headers = {"User-Agent": f"AnalizySzachowe-V30-{user}"}
         days_map = {0: 'Pn', 1: 'Wt', 2: 'Śr', 3: 'Czw', 4: 'Pt', 5: 'Sb', 6: 'Nd'}
         all_games = []
         k_id = f"{user} ({'C' if platform == 'Chess.com' else 'L'})"
+        progress_state = {"downloaded": 0, "known_total": 0}
+
+        def push_progress(delta, total, label, is_start):
+            if is_start and total > 0:
+                progress_state["known_total"] += total
+            if not is_start and delta > 0:
+                progress_state["downloaded"] += delta
+            if progress_callback:
+                progress_callback(progress_state["downloaded"], progress_state["known_total"], label)
         
         if platform == "Chess.com":
             p_res = requests.get(f"https://api.chess.com/pub/player/{user}", headers=headers, timeout=API_TIMEOUT)
-            a_res = requests.get(f"https://api.chess.com/pub/player/{user}/games/archives", headers=headers, timeout=API_TIMEOUT)
+            a_code, a_text = _stream_get_text(
+                f"https://api.chess.com/pub/player/{user}/games/archives",
+                headers=headers,
+                timeout=API_TIMEOUT,
+                progress_cb=push_progress,
+                label=f"{platform}: lista archiwów"
+            )
             if p_res.status_code != 200: return None, pd.DataFrame(columns=cols)
-            if a_res.status_code != 200: return None, pd.DataFrame(columns=cols)
-            for url in a_res.json().get("archives", []):
+            if a_code != 200: return None, pd.DataFrame(columns=cols)
+            archives = json.loads(a_text).get("archives", [])
+            for idx, url in enumerate(archives, start=1):
                 try:
-                    m_res = requests.get(url, headers=headers, timeout=API_TIMEOUT)
-                    if m_res.status_code == 200:
-                        for g in m_res.json().get("games", []):
+                    m_code, m_text = _stream_get_text(
+                        url,
+                        headers=headers,
+                        timeout=API_TIMEOUT,
+                        progress_cb=push_progress,
+                        label=f"{platform}: archiwum {idx}/{len(archives)}"
+                    )
+                    if m_code == 200:
+                        month_games = json.loads(m_text).get("games", [])
+                        for g in month_games:
                             if "end_time" in g:
                                 ts = datetime.fromtimestamp(g["end_time"])
                                 is_w = g["white"]["username"].lower() == user.lower()
@@ -933,9 +1102,16 @@ def fetch_data(user, platform="Chess.com"):
         elif platform == "Lichess":
             p_res = requests.get(f"https://lichess.org/api/user/{user}", headers=headers, timeout=API_TIMEOUT)
             if p_res.status_code != 200: return None, pd.DataFrame(columns=cols)
-            # Lichess streams all user games at once — timeout is higher to allow large histories
-            g_res = requests.get(f"https://lichess.org/api/games/user/{user}?opening=true&clocks=true", headers={"Accept": "application/x-ndjson"}, timeout=60)
-            for line in g_res.text.strip().split('\n'):
+            g_code, g_text = _stream_get_text(
+                f"https://lichess.org/api/games/user/{user}?opening=true&clocks=true",
+                headers={"Accept": "application/x-ndjson"},
+                timeout=60,
+                progress_cb=push_progress,
+                label=f"{platform}: gry użytkownika"
+            )
+            if g_code != 200:
+                return None, pd.DataFrame(columns=cols)
+            for line in g_text.strip().split('\n'):
                 if not line: continue
                 try:
                     g = json.loads(line)
@@ -960,6 +1136,33 @@ def fetch_data(user, platform="Chess.com"):
     except Exception:
         return None, pd.DataFrame(columns=cols)
 
+@st.cache_data(show_spinner=False, ttl=3600)
+def fetch_data(user, platform="Chess.com"):
+    return fetch_data_live(user, platform, progress_callback=None)
+
+def run_fetch_with_progress(user, platform):
+    progress_bar = st.progress(0, text=f"Pobieranie {user} ({platform})...")
+    status_box = st.empty()
+    started = datetime.now().timestamp()
+
+    def on_progress(downloaded, known_total, label):
+        elapsed = max(datetime.now().timestamp() - started, 0.1)
+        speed = downloaded / elapsed
+        eta = (known_total - downloaded) / speed if known_total > 0 and downloaded < known_total and speed > 0 else None
+        ratio = int(min(100, max(0, (downloaded / known_total) * 100))) if known_total > 0 else (1 if downloaded > 0 else 0)
+        eta_text = f" | ETA: {int(eta)}s" if eta is not None else ""
+        text = f"{label} | {format_bytes(downloaded)}"
+        if known_total > 0:
+            text += f" / {format_bytes(known_total)}"
+        text += eta_text
+        progress_bar.progress(ratio, text=text)
+        status_box.caption(text)
+
+    out = fetch_data_live(user, platform, progress_callback=on_progress)
+    progress_bar.empty()
+    status_box.empty()
+    return out
+
 # --- SESSION & START ---
 for k in ['data','data2','url', 'user', 'user2', 'plat2']: 
     if k not in st.session_state: st.session_state[k] = None if k in ['data','data2','url'] else ""
@@ -982,7 +1185,7 @@ if st.session_state.data is None:
         if st.button(t("btn_analize"), type="primary", use_container_width=True):
             if nick:
                 with st.spinner(tu("Pobieranie...")):
-                    f = fetch_data(nick, plat)
+                    f = run_fetch_with_progress(nick, plat)
                     if f[0] is not None and not f[1].empty: 
                         st.session_state.data, st.session_state.user, st.session_state.platforms = f, nick, [plat]
                         st.session_state.fetch_args = [(nick, plat)]
@@ -995,7 +1198,7 @@ if st.session_state.data is None:
         if st.button(t("btn_connect"), type="primary", use_container_width=True):
             if n1 and n2:
                 with st.spinner(tu("Łączenie...")):
-                    f1, f2 = fetch_data(n1, p1), fetch_data(n2, p2)
+                    f1, f2 = run_fetch_with_progress(n1, p1), run_fetch_with_progress(n2, p2)
                     if f1[0] is not None and not f1[1].empty and f2[0] is not None and not f2[1].empty:
                         st.session_state.data = (f1[0], pd.concat([f1[1], f2[1]], ignore_index=True))
                         st.session_state.user, st.session_state.platforms = f"{n1}+{n2}", list(set([p1, p2]))
@@ -1012,7 +1215,7 @@ if st.session_state.data is None:
         if st.button(tu("Uruchom porównanie"), type="primary", use_container_width=True):
             if n1 and n2:
                 with st.spinner(tu("Pobieranie i porównywanie...")):
-                    f1, f2 = fetch_data(n1, p1), fetch_data(n2, p2)
+                    f1, f2 = run_fetch_with_progress(n1, p1), run_fetch_with_progress(n2, p2)
                     if f1[0] is not None and not f1[1].empty and f2[0] is not None and not f2[1].empty:
                         st.session_state.data = f1
                         st.session_state.user = n1
@@ -1068,17 +1271,17 @@ else:
                     fetch_data.clear() # czyści cache dla API
                     args = st.session_state.get('fetch_args', [])
                     if len(args) == 1:
-                        f = fetch_data(args[0][0], args[0][1])
+                        f = run_fetch_with_progress(args[0][0], args[0][1])
                         if f[0] is not None and not f[1].empty:
                             st.session_state.data = f
                     elif len(args) == 2:
-                        f1 = fetch_data(args[0][0], args[0][1])
-                        f2 = fetch_data(args[1][0], args[1][1])
+                        f1 = run_fetch_with_progress(args[0][0], args[0][1])
+                        f2 = run_fetch_with_progress(args[1][0], args[1][1])
                         if f1[0] is not None and not f1[1].empty and f2[0] is not None and not f2[1].empty:
                             st.session_state.data = (f1[0], pd.concat([f1[1], f2[1]], ignore_index=True))
                     
                     if st.session_state.data2 is not None and st.session_state.user2 and st.session_state.plat2:
-                        f2_rival = fetch_data(st.session_state.user2, st.session_state.plat2)
+                        f2_rival = run_fetch_with_progress(st.session_state.user2, st.session_state.plat2)
                         if f2_rival[0] is not None and not f2_rival[1].empty:
                             st.session_state.data2 = f2_rival[1]
                 st.rerun()
@@ -1139,11 +1342,11 @@ else:
                 lambda x: json.dumps(x) if isinstance(x, list) else (x if isinstance(x, str) else "[]")
             )
             raw_csv = raw_df.to_csv(index=False).encode("utf-8")
-            report_html = build_html_report(df_loc, username).encode("utf-8")
+            report_pdf = build_pdf_report(df_loc, username)
             with st.popover(t("download_menu"), use_container_width=True):
                 export_choice = st.radio(
                     t("download_choose"),
-                    options=["raw", "html"],
+                    options=["raw", "pdf"],
                     format_func=lambda x: t("download_raw") if x == "raw" else t("download_report"),
                     horizontal=True,
                     key="download_choice"
@@ -1151,9 +1354,9 @@ else:
                 is_raw = export_choice == "raw"
                 st.download_button(
                     t("download_now"),
-                    data=raw_csv if is_raw else report_html,
-                    file_name=f"chessstats_raw_{username}.csv" if is_raw else f"chessstats_report_{username}.html",
-                    mime="text/csv" if is_raw else "text/html",
+                    data=raw_csv if is_raw else report_pdf,
+                    file_name=f"chessstats_raw_{username}.csv" if is_raw else f"chessstats_report_{username}.pdf",
+                    mime="text/csv" if is_raw else "application/pdf",
                     use_container_width=True,
                     key="download_selected_file"
                 )
@@ -1407,29 +1610,27 @@ else:
                 mode_choice = st.radio("Tryb", ["Trening Debiutów", "Zagraj z Botem"], horizontal=True, key="training_mode")
                 learning_choice = "Po kolei"
                 difficulty_choice = "Średni"
+                player_color_choice = "Białe"
                 if mode_choice == "Trening Debiutów":
                     learning_choice = st.radio("Sposób nauki", ["Po kolei", "Losowo"], horizontal=True, key="training_learning")
                 else:
                     difficulty_choice = st.radio("Poziom trudności", ["Łatwy", "Średni", "Trudny"], horizontal=True, key="training_difficulty")
-
-                caro_kann_tree = {
+                    player_color_choice = st.radio("Kolor gracza", ["Białe", "Czarne"], horizontal=True, key="training_player_color")
+                opening_tree = {
                     "name": "Caro-Kann Defense",
                     "variants": [
-                        {
-                            "name": "Advance (Wariant Zamknięty)",
-                            "line": ["e4", "c6", "d4", "d5", "e5", "Bf5", "Nf3", "e6", "Be2", "c5"]
-                        },
-                        {
-                            "name": "Exchange (Wariant Wymienny)",
-                            "line": ["e4", "c6", "d4", "d5", "exd5", "cxd5", "Bd3", "Nc6", "c3", "Nf6"]
-                        },
-                        {
-                            "name": "Classical (Wariant Klasyczny)",
-                            "line": ["e4", "c6", "d4", "d5", "Nc3", "dxe4", "Nxe4", "Bf5", "Ng3", "Bg6"]
-                        }
-                    ]
+                        {"name": "Advance", "line": ["e4", "c6", "d4", "d5", "e5", "Bf5", "Nf3", "e6", "Be2", "c5"]},
+                        {"name": "Exchange", "line": ["e4", "c6", "d4", "d5", "exd5", "cxd5", "Bd3", "Nc6", "c3", "Nf6"]},
+                        {"name": "Classical", "line": ["e4", "c6", "d4", "d5", "Nc3", "dxe4", "Nxe4", "Bf5", "Ng3", "Bg6"]},
+                    ],
                 }
-                render_training_component(mode_choice, learning_choice, difficulty_choice, caro_kann_tree)
+                render_training_component(
+                    mode_choice,
+                    learning_choice,
+                    difficulty_choice,
+                    opening_tree,
+                    "black" if player_color_choice == "Czarne" else "white"
+                )
 
     elif app_m == VIEW_COMPARE:
         c1, c2 = st.columns(2)
@@ -1439,7 +1640,7 @@ else:
         if st.button(t("btn_rival"), type="primary", use_container_width=True):
             if n2:
                 with st.spinner(f"Pobieranie danych dla {n2}..."):
-                    f2 = fetch_data(n2, p2)
+                    f2 = run_fetch_with_progress(n2, p2)
                     if f2[1] is not None and not f2[1].empty: 
                         st.session_state.data2, st.session_state.user2, st.session_state.plat2 = f2[1], n2, p2
                         st.rerun()

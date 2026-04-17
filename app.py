@@ -374,14 +374,25 @@ def render_training_component(mode_name, learning_mode, difficulty, opening_tree
         ];
         const CHESSBOARD_SCRIPT_SOURCES = [
             "https://cdnjs.cloudflare.com/ajax/libs/chessboard.js/1.0.0/chessboard-1.0.0.min.js",
-            "https://cdn.jsdelivr.net/npm/chessboardjs@1.0.0/www/js/chessboard-1.0.0.min.js",
-            "https://unpkg.com/chessboardjs@1.0.0/www/js/chessboard-1.0.0.min.js"
+            "https://cdn.jsdelivr.net/npm/@chrisoakman/chessboardjs@1.0.0/dist/chessboard-1.0.0.min.js",
+            "https://unpkg.com/@chrisoakman/chessboardjs@1.0.0/dist/chessboard-1.0.0.min.js"
         ];
         let variantIndex = 0;
         let currentVariant = null;
         let currentPly = 0;
         let board = null;
         let game = null;
+
+        function findScriptBySrc(src) {
+            const target = new URL(src, window.location.href).href;
+            return Array.from(document.scripts).find(script => {
+                try {
+                    return new URL(script.src, window.location.href).href === target;
+                } catch (_) {
+                    return false;
+                }
+            }) || null;
+        }
 
         function loadScriptWithFallback(sources) {
             return new Promise((resolve, reject) => {
@@ -392,14 +403,43 @@ def render_training_component(mode_name, learning_mode, difficulty, opening_tree
                         return;
                     }
                     const src = sources[idx++];
-                    const existing = document.querySelector(`script[src="${src}"]`);
+                    const existing = findScriptBySrc(src);
                     if (existing) {
                         if (existing.dataset.loaded === "1") {
                             resolve();
                             return;
                         }
-                        existing.addEventListener("load", () => resolve(), { once: true });
-                        existing.addEventListener("error", () => tryNext(), { once: true });
+                        if (existing.dataset.loadError === "1") {
+                            tryNext();
+                            return;
+                        }
+                        if (existing.readyState === "loaded" || existing.readyState === "complete") {
+                            existing.dataset.loaded = "1";
+                            resolve();
+                            return;
+                        }
+                        let settled = false;
+                        const settleSuccess = () => {
+                            if (settled) return;
+                            settled = true;
+                            existing.dataset.loaded = "1";
+                            resolve();
+                        };
+                        const settleError = () => {
+                            if (settled) return;
+                            settled = true;
+                            existing.dataset.loadError = "1";
+                            tryNext();
+                        };
+                        const timeoutId = setTimeout(() => settleError(), 4500);
+                        existing.addEventListener("load", () => {
+                            clearTimeout(timeoutId);
+                            settleSuccess();
+                        }, { once: true });
+                        existing.addEventListener("error", () => {
+                            clearTimeout(timeoutId);
+                            settleError();
+                        }, { once: true });
                         return;
                     }
                     const script = document.createElement("script");
@@ -410,6 +450,7 @@ def render_training_component(mode_name, learning_mode, difficulty, opening_tree
                         resolve();
                     };
                     script.onerror = () => {
+                        script.dataset.loadError = "1";
                         script.remove();
                         tryNext();
                     };

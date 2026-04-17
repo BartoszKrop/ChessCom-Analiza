@@ -285,7 +285,6 @@ def render_training_component(mode_name, learning_mode, difficulty, caro_kann_tr
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/chessboard.js/1.0.0/chessboard-1.0.0.min.css">
     <script src="https://cdnjs.cloudflare.com/ajax/libs/chess.js/0.10.3/chess.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/chessboard.js/1.0.0/chessboard-1.0.0.min.js"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/stockfish.js/10.0.2/stockfish.js"></script>
     <div id="coach-wrap">
         <div id="coach-top">
             <div id="coach-status">Ładowanie modułu...</div>
@@ -354,7 +353,16 @@ def render_training_component(mode_name, learning_mode, difficulty, caro_kann_tr
         const engine = new Worker("https://cdnjs.cloudflare.com/ajax/libs/stockfish.js/10.0.2/stockfish.js");
 
         const normalizeSan = (san) => (san || "").replace(/[+#?!]/g, "").trim();
-        const uciToMove = (uci) => ({ from: uci.slice(0, 2), to: uci.slice(2, 4), promotion: uci[4] || "q" });
+        const buildMove = (from, to, promotionHint = null) => {
+            const move = { from, to };
+            const piece = game.get(from);
+            if (promotionHint) move.promotion = promotionHint;
+            if (!promotionHint && piece && piece.type === "p" && (to.endsWith("8") || to.endsWith("1"))) {
+                move.promotion = "q";
+            }
+            return move;
+        };
+        const uciToMove = (uci) => buildMove(uci.slice(0, 2), uci.slice(2, 4), uci[4] || null);
         const scoreToCp = (scoreObj, turn) => {
             if (!scoreObj) return 0;
             if (scoreObj.type === "mate") {
@@ -411,8 +419,8 @@ def render_training_component(mode_name, learning_mode, difficulty, caro_kann_tr
                 let lastScore = null;
                 const handler = (event) => {
                     const line = (event.data || "").trim();
-                    const cp = line.match(/score cp (-?\\d+)/);
-                    const mate = line.match(/score mate (-?\\d+)/);
+                    const cp = line.match(/score cp (-?[0-9]+)/);
+                    const mate = line.match(/score mate (-?[0-9]+)/);
                     if (cp) lastScore = { type: "cp", value: parseInt(cp[1], 10) };
                     if (mate) lastScore = { type: "mate", value: parseInt(mate[1], 10) };
                     if (line.startsWith("bestmove")) {
@@ -438,6 +446,7 @@ def render_training_component(mode_name, learning_mode, difficulty, caro_kann_tr
         }
 
         async function playBotMove() {
+            if (game.turn() !== "b") return;
             const d = getDifficulty();
             engine.postMessage(`setoption name Skill Level value ${d.skill}`);
             const best = await getBestMove(game.fen(), d.depth);
@@ -447,12 +456,24 @@ def render_training_component(mode_name, learning_mode, difficulty, caro_kann_tr
             setStatus("Bot wykonał ruch. Twój ruch.");
         }
 
-        async function onDrop(source, target) {
+        async function handleBotTurn(beforeFen) {
+            const d = getDifficulty();
+            const movedColor = (beforeFen.split(" ")[1] || "w");
+            const evalBefore = await evaluatePosition(beforeFen, d.evalDepth);
+            const evalAfter = await evaluatePosition(game.fen(), d.evalDepth);
+            const rawDelta = movedColor === "w" ? (evalBefore - evalAfter) : (evalAfter - evalBefore);
+            const delta = Math.max(0, Math.round(rawDelta));
+            const bucket = classifyMove(delta);
+            setMoveScore(`${bucket.text} | Δ ${delta} cp`, bucket.color);
+            if (!game.game_over() && game.turn() === "b") await playBotMove();
+        }
+
+        function onDrop(source, target) {
             if (modeOpening) {
                 if (!currentVariant) return "snapback";
                 const expected = currentVariant.line?.[currentPly];
                 if (!expected || game.turn() !== "w") return "snapback";
-                const move = game.move({ from: source, to: target, promotion: "q" });
+                const move = game.move(buildMove(source, target));
                 if (!move) return "snapback";
                 if (normalizeSan(move.san) !== normalizeSan(expected)) {
                     game.undo();
@@ -464,7 +485,7 @@ def render_training_component(mode_name, learning_mode, difficulty, caro_kann_tr
                 const reply = currentVariant.line?.[currentPly];
                 if (reply) {
                     setTimeout(() => {
-                        game.move(reply, { sloppy: true });
+                        game.move(reply);
                         currentPly += 1;
                         board.position(game.fen());
                         const nextExpected = currentVariant.line?.[currentPly];
@@ -481,17 +502,11 @@ def render_training_component(mode_name, learning_mode, difficulty, caro_kann_tr
             }
 
             if (game.turn() !== "w") return "snapback";
-            const d = getDifficulty();
             const beforeFen = game.fen();
-            const evalBefore = await evaluatePosition(beforeFen, d.evalDepth);
-            const move = game.move({ from: source, to: target, promotion: "q" });
+            const move = game.move(buildMove(source, target));
             if (!move) return "snapback";
             board.position(game.fen());
-            const evalAfter = await evaluatePosition(game.fen(), d.evalDepth);
-            const delta = Math.max(0, Math.round(evalBefore - evalAfter));
-            const bucket = classifyMove(delta);
-            setMoveScore(`${bucket.text} | Δ ${delta} cp`, bucket.color);
-            if (!game.game_over()) await playBotMove();
+            handleBotTurn(beforeFen);
         }
 
         board = Chessboard("board", {
@@ -519,6 +534,7 @@ def render_training_component(mode_name, learning_mode, difficulty, caro_kann_tr
         } else {
             setStatus("Tryb sparingu z botem. Twój ruch białymi.");
         }
+        window.addEventListener("beforeunload", () => engine.terminate());
     </script>
     """
     html = html.replace("__APP_CONFIG__", json.dumps(cfg, ensure_ascii=False))

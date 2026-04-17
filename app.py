@@ -304,8 +304,6 @@ def render_training_component(mode_name, learning_mode, difficulty, opening_tree
     }
     html = """
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/chessboard.js/1.0.0/chessboard-1.0.0.min.css">
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/chess.js/0.10.3/chess.min.js"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/chessboard.js/1.0.0/chessboard-1.0.0.min.js"></script>
     <div id="coach-wrap">
         <div id="coach-top">
             <div id="coach-status">Ładowanie modułu...</div>
@@ -369,11 +367,66 @@ def render_training_component(mode_name, learning_mode, difficulty, opening_tree
         const userTurn = (APP_CONFIG.playerColor === "black") ? "b" : "w";
         const botTurn = userTurn === "w" ? "b" : "w";
         const BOT_RANDOM_SKILL_THRESHOLD = 6;
+        const CHESS_SCRIPT_SOURCES = [
+            "https://cdnjs.cloudflare.com/ajax/libs/chess.js/0.10.3/chess.min.js",
+            "https://cdn.jsdelivr.net/npm/chess.js@0.10.3/chess.min.js",
+            "https://unpkg.com/chess.js@0.10.3/chess.min.js"
+        ];
+        const CHESSBOARD_SCRIPT_SOURCES = [
+            "https://cdnjs.cloudflare.com/ajax/libs/chessboard.js/1.0.0/chessboard-1.0.0.min.js",
+            "https://cdn.jsdelivr.net/npm/chessboardjs@1.0.0/www/js/chessboard-1.0.0.min.js",
+            "https://unpkg.com/chessboardjs@1.0.0/www/js/chessboard-1.0.0.min.js"
+        ];
         let variantIndex = 0;
         let currentVariant = null;
         let currentPly = 0;
         let board = null;
         let game = null;
+
+        function loadScriptWithFallback(sources) {
+            return new Promise((resolve, reject) => {
+                let idx = 0;
+                const tryNext = () => {
+                    if (idx >= sources.length) {
+                        reject(new Error("Brak dostępnych źródeł skryptu."));
+                        return;
+                    }
+                    const src = sources[idx++];
+                    const existing = document.querySelector(`script[src="${src}"]`);
+                    if (existing) {
+                        if (existing.dataset.loaded === "1") {
+                            resolve();
+                            return;
+                        }
+                        existing.addEventListener("load", () => resolve(), { once: true });
+                        existing.addEventListener("error", () => tryNext(), { once: true });
+                        return;
+                    }
+                    const script = document.createElement("script");
+                    script.src = src;
+                    script.async = true;
+                    script.onload = () => {
+                        script.dataset.loaded = "1";
+                        resolve();
+                    };
+                    script.onerror = () => {
+                        script.remove();
+                        tryNext();
+                    };
+                    document.head.appendChild(script);
+                };
+                tryNext();
+            });
+        }
+
+        async function loadBoardDependencies() {
+            if (typeof Chess !== "undefined" && typeof Chessboard !== "undefined") return;
+            if (typeof Chess === "undefined") await loadScriptWithFallback(CHESS_SCRIPT_SOURCES);
+            if (typeof Chessboard === "undefined") await loadScriptWithFallback(CHESSBOARD_SCRIPT_SOURCES);
+            if (typeof Chess === "undefined" || typeof Chessboard === "undefined") {
+                throw new Error("Nie udało się załadować bibliotek szachowych.");
+            }
+        }
 
         function setStatus(text) { statusBox.textContent = text; }
         function setMoveScore(text, color) {
@@ -484,8 +537,10 @@ def render_training_component(mode_name, learning_mode, difficulty, opening_tree
             }
         }
 
-        function initTrainingModule() {
-            if (typeof Chess === "undefined" || typeof Chessboard === "undefined") {
+        async function initTrainingModule() {
+            try {
+                await loadBoardDependencies();
+            } catch (_) {
                 setStatus("Nie udało się załadować modułu planszy. Odśwież stronę i spróbuj ponownie.");
                 nextBtn.disabled = true;
                 return;

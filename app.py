@@ -287,76 +287,6 @@ def format_bytes(size_bytes):
         unit_idx += 1
     return f"{value:.1f} {units[unit_idx]}"
 
-def parse_san_moves_from_pgn(pgn_text, max_plies=12):
-    if not isinstance(pgn_text, str) or not pgn_text.strip():
-        return []
-    txt = re.sub(r'\[[^\]]*\]', ' ', pgn_text)
-    txt = re.sub(r'\{[^}]*\}', ' ', txt)
-    txt = re.sub(r'\([^)]*\)', ' ', txt)
-    tokens = txt.replace('\n', ' ').split()
-    result_tokens = {"1-0", "0-1", "1/2-1/2", "*"}
-    moves = []
-    for tok in tokens:
-        clean = tok.strip()
-        if not clean or clean in result_tokens:
-            continue
-        if re.match(r'^\d+\.+$', clean):
-            continue
-        if '.' in clean and re.match(r'^\d+\.+', clean):
-            clean = clean.split('.')[-1].strip()
-            if not clean:
-                continue
-        clean = re.sub(r'[!?+#]+', '', clean).strip()
-        if not clean or clean in result_tokens:
-            continue
-        moves.append(clean)
-        if len(moves) >= max_plies:
-            break
-    return moves
-
-def build_opening_training_tree(df, max_openings=4, max_lines_per_opening=4, max_plies=12):
-    fallback = {
-        "name": "Caro-Kann Defense",
-        "variants": [
-            {"name": "Advance", "line": ["e4", "c6", "d4", "d5", "e5", "Bf5", "Nf3", "e6", "Be2", "c5"]},
-            {"name": "Exchange", "line": ["e4", "c6", "d4", "d5", "exd5", "cxd5", "Bd3", "Nc6", "c3", "Nf6"]},
-            {"name": "Classical", "line": ["e4", "c6", "d4", "d5", "Nc3", "dxe4", "Nxe4", "Bf5", "Ng3", "Bg6"]},
-        ],
-    }
-    if df is None or df.empty:
-        return fallback
-    req_cols = {"PGN_Raw", "Debiut_Grupa", "Kolor"}
-    if not req_cols.issubset(df.columns):
-        return fallback
-    white_games = df[(df["Kolor"] == "Białe") & df["PGN_Raw"].notna()]
-    if white_games.empty:
-        return fallback
-    grouped_lines = {}
-    for _, row in white_games.iterrows():
-        opening = str(row.get("Debiut_Grupa") or row.get("Debiut") or "Nieznany").strip()
-        moves = parse_san_moves_from_pgn(row.get("PGN_Raw", ""), max_plies=max_plies)
-        if len(moves) < 4:
-            continue
-        opening_map = grouped_lines.setdefault(opening, {})
-        key = tuple(moves[:max_plies])
-        opening_map[key] = opening_map.get(key, 0) + 1
-    if not grouped_lines:
-        return fallback
-    top_openings = sorted(
-        grouped_lines.items(),
-        key=lambda item: sum(item[1].values()),
-        reverse=True
-    )[:max_openings]
-    variants = []
-    for opening_name, lines_map in top_openings:
-        top_lines = sorted(lines_map.items(), key=lambda item: item[1], reverse=True)[:max_lines_per_opening]
-        for idx, (line_moves, freq) in enumerate(top_lines, start=1):
-            variants.append({
-                "name": f"{opening_name} #{idx} ({freq} gier)",
-                "line": list(line_moves)
-            })
-    return {"name": "Najczęstsze debiuty gracza", "variants": variants} if variants else fallback
-
 def render_training_component(mode_name, learning_mode, difficulty, opening_tree, player_color):
     cfg = {
         "mode": mode_name,
@@ -425,7 +355,6 @@ def render_training_component(mode_name, learning_mode, difficulty, opening_tree
     </style>
     <script>
         const APP_CONFIG = __APP_CONFIG__;
-        const game = new Chess();
         const statusBox = document.getElementById("coach-status");
         const scoreBox = document.getElementById("move-score");
         const nextBtn = document.getElementById("next-line");
@@ -443,38 +372,16 @@ def render_training_component(mode_name, learning_mode, difficulty, opening_tree
         let currentVariant = null;
         let currentPly = 0;
         let board = null;
-        const engine = new Worker("https://cdnjs.cloudflare.com/ajax/libs/stockfish.js/10.0.2/stockfish.js");
-
-        const normalizeSan = (san) => (san || "").replace(/[+#?!]/g, "").trim();
-        const buildMove = (from, to, promotionHint = null) => {
-            const move = { from, to };
-            const piece = game.get(from);
-            if (promotionHint) move.promotion = promotionHint;
-            if (!promotionHint && piece && piece.type === "p" && (to.endsWith("8") || to.endsWith("1"))) {
-                move.promotion = "q";
-            }
-            return move;
-        };
-        const uciToMove = (uci) => buildMove(uci.slice(0, 2), uci.slice(2, 4), uci[4] || null);
-        const scoreToCp = (scoreObj, turn) => {
-            if (!scoreObj) return 0;
-            if (scoreObj.type === "mate") {
-                const base = scoreObj.value > 0 ? 10000 : -10000;
-                return turn === "w" ? base : -base;
-            }
-            return turn === "w" ? scoreObj.value : -scoreObj.value;
-        };
+        let game = null;
 
         function setStatus(text) { statusBox.textContent = text; }
         function setMoveScore(text, color) {
             scoreBox.textContent = text || "";
             scoreBox.style.color = color || APP_CONFIG.theme.accent;
         }
-
         function getDifficulty() {
             return difficultyMap[APP_CONFIG.difficulty] || difficultyMap["Średni"];
         }
-
         function chooseVariant() {
             if (!variants.length) return null;
             if (APP_CONFIG.learningMode === "Losowo") {
@@ -484,8 +391,19 @@ def render_training_component(mode_name, learning_mode, difficulty, opening_tree
             variantIndex += 1;
             return selected;
         }
+        const normalizeSan = (san) => (san || "").replace(/[+#?!]/g, "").trim();
+        const buildMove = (from, to, promotionHint = null) => {
+            const move = { from, to };
+            const piece = game ? game.get(from) : null;
+            if (promotionHint) move.promotion = promotionHint;
+            if (!promotionHint && piece && piece.type === "p" && (to.endsWith("8") || to.endsWith("1"))) {
+                move.promotion = "q";
+            }
+            return move;
+        };
 
         function resetOpening() {
+            if (!game || !board) return;
             game.reset();
             currentPly = 0;
             currentVariant = chooseVariant();
@@ -499,69 +417,32 @@ def render_training_component(mode_name, learning_mode, difficulty, opening_tree
             setStatus(`Wariant: ${currentVariant.name} | Oczekiwany ruch: ${expected}`);
         }
 
-        function classifyMove(delta) {
-            if (delta < 25) return { text: "Excellent", color: "#81b64c" };
-            if (delta < 75) return { text: "Good", color: "#5ab4ac" };
-            if (delta < 150) return { text: "Inaccuracy", color: "#d8b365" };
-            if (delta < 300) return { text: "Mistake", color: "#ef553b" };
-            return { text: "Blunder", color: "#fa412d" };
-        }
-
-        function askEngine(positionFen, goCmd) {
-            return new Promise((resolve) => {
-                let lastScore = null;
-                const handler = (event) => {
-                    const line = (event.data || "").trim();
-                    const cp = line.match(/score cp (-?[0-9]+)/);
-                    const mate = line.match(/score mate (-?[0-9]+)/);
-                    if (cp) lastScore = { type: "cp", value: parseInt(cp[1], 10) };
-                    if (mate) lastScore = { type: "mate", value: parseInt(mate[1], 10) };
-                    if (line.startsWith("bestmove")) {
-                        engine.removeEventListener("message", handler);
-                        resolve({ line, score: lastScore });
-                    }
-                };
-                engine.addEventListener("message", handler);
-                engine.postMessage(`position fen ${positionFen}`);
-                engine.postMessage(goCmd);
-            });
-        }
-
-        async function evaluatePosition(fen, depth) {
-            const turn = fen.split(" ")[1] || "w";
-            const out = await askEngine(fen, `go depth ${depth}`);
-            return scoreToCp(out.score, turn);
-        }
-
-        async function getBestMove(fen, depth) {
-            const out = await askEngine(fen, `go depth ${depth}`);
-            return (out.line.split(" ")[1] || "").trim();
-        }
-
-        async function playBotMove() {
-            if (game.turn() !== botTurn) return;
+        function chooseBotMove() {
+            if (!game) return null;
+            const legal = game.moves({ verbose: true }) || [];
+            if (!legal.length) return null;
             const d = getDifficulty();
-            engine.postMessage(`setoption name Skill Level value ${d.skill}`);
-            const best = await getBestMove(game.fen(), d.depth);
-            if (!best || best === "(none)") return;
-            game.move(uciToMove(best));
+            const captures = legal.filter(m => !!m.captured);
+            const checks = legal.filter(m => (m.san || "").includes("+"));
+            if (d.skill <= 6) {
+                return legal[Math.floor(Math.random() * legal.length)];
+            }
+            const pool = captures.length ? captures : (checks.length ? checks : legal);
+            return pool[Math.floor(Math.random() * pool.length)];
+        }
+
+        function playBotMove() {
+            if (!game || !board || game.turn() !== botTurn) return;
+            const chosen = chooseBotMove();
+            if (!chosen) return;
+            game.move(chosen);
             board.position(game.fen());
+            setMoveScore("Bot wykonał ruch", APP_CONFIG.theme.accent);
             setStatus("Bot wykonał ruch. Twój ruch.");
         }
 
-        async function handleBotTurn(beforeFen) {
-            const d = getDifficulty();
-            const movedColor = (beforeFen.split(" ")[1] || "w");
-            const evalBefore = await evaluatePosition(beforeFen, d.evalDepth);
-            const evalAfter = await evaluatePosition(game.fen(), d.evalDepth);
-            const rawDelta = movedColor === "w" ? (evalBefore - evalAfter) : (evalAfter - evalBefore);
-            const delta = Math.max(0, Math.round(rawDelta));
-            const bucket = classifyMove(delta);
-            setMoveScore(`${bucket.text} | Δ ${delta} cp`, bucket.color);
-            if (!game.game_over() && game.turn() === botTurn) await playBotMove();
-        }
-
         function onDrop(source, target) {
+            if (!game || !board) return "snapback";
             if (modeOpening) {
                 if (!currentVariant) return "snapback";
                 const expected = currentVariant.line?.[currentPly];
@@ -595,50 +476,55 @@ def render_training_component(mode_name, learning_mode, difficulty, opening_tree
             }
 
             if (game.turn() !== userTurn) return "snapback";
-            const beforeFen = game.fen();
             const move = game.move(buildMove(source, target));
             if (!move) return "snapback";
             board.position(game.fen());
-            handleBotTurn(beforeFen);
+            if (!game.game_over() && game.turn() === botTurn) {
+                setTimeout(() => playBotMove(), 280);
+            }
         }
 
-        board = Chessboard("board", {
-            draggable: true,
-            position: "start",
-            orientation: userTurn === "w" ? "white" : "black",
-            pieceTheme: "https://cdnjs.cloudflare.com/ajax/libs/chessboard.js/1.0.0/img/chesspieces/wikipedia/{piece}.png",
-            onDrop
-        });
-
-        engine.postMessage("uci");
-        engine.postMessage("isready");
-        nextBtn.onclick = () => {
+        function initTrainingModule() {
+            if (typeof Chess === "undefined" || typeof Chessboard === "undefined") {
+                setStatus("Nie udało się załadować modułu planszy. Odśwież stronę i spróbuj ponownie.");
+                nextBtn.disabled = true;
+                return;
+            }
+            game = new Chess();
+            board = Chessboard("board", {
+                draggable: true,
+                position: "start",
+                orientation: userTurn === "w" ? "white" : "black",
+                pieceTheme: "https://cdnjs.cloudflare.com/ajax/libs/chessboard.js/1.0.0/img/chesspieces/wikipedia/{piece}.png",
+                onDrop
+            });
+            nextBtn.disabled = false;
+            nextBtn.onclick = () => {
+                if (modeOpening) {
+                    resetOpening();
+                } else {
+                    game.reset();
+                    board.position(game.fen());
+                    setMoveScore("", APP_CONFIG.theme.accent);
+                    if (userTurn === "w") {
+                        setStatus("Nowa partia z botem. Twój ruch białymi.");
+                    } else {
+                        setStatus("Nowa partia z botem. Bot rozpoczyna.");
+                        setTimeout(() => playBotMove(), 280);
+                    }
+                }
+            };
             if (modeOpening) {
                 resetOpening();
-            } else {
-                game.reset();
-                board.position(game.fen());
-                setMoveScore("", APP_CONFIG.theme.accent);
-                if (userTurn === "w") {
-                    setStatus("Nowa partia z botem. Twój ruch białymi.");
-                } else {
-                    setStatus("Nowa partia z botem. Bot rozpoczyna.");
-                    setTimeout(() => playBotMove(), 280);
-                }
-            }
-        };
-
-        if (modeOpening) {
-            resetOpening();
-        } else {
-            if (userTurn === "w") {
+            } else if (userTurn === "w") {
                 setStatus("Tryb sparingu z botem. Twój ruch białymi.");
             } else {
                 setStatus("Tryb sparingu z botem. Bot rozpoczyna.");
                 setTimeout(() => playBotMove(), 280);
             }
         }
-        window.addEventListener("beforeunload", () => engine.terminate());
+
+        initTrainingModule();
     </script>
     """
     html = html.replace("__APP_CONFIG__", json.dumps(cfg, ensure_ascii=False))
@@ -1730,7 +1616,14 @@ else:
                 else:
                     difficulty_choice = st.radio("Poziom trudności", ["Łatwy", "Średni", "Trudny"], horizontal=True, key="training_difficulty")
                     player_color_choice = st.radio("Kolor gracza", ["Białe", "Czarne"], horizontal=True, key="training_player_color")
-                opening_tree = build_opening_training_tree(df_loc)
+                opening_tree = {
+                    "name": "Caro-Kann Defense",
+                    "variants": [
+                        {"name": "Advance", "line": ["e4", "c6", "d4", "d5", "e5", "Bf5", "Nf3", "e6", "Be2", "c5"]},
+                        {"name": "Exchange", "line": ["e4", "c6", "d4", "d5", "exd5", "cxd5", "Bd3", "Nc6", "c3", "Nf6"]},
+                        {"name": "Classical", "line": ["e4", "c6", "d4", "d5", "Nc3", "dxe4", "Nxe4", "Bf5", "Ng3", "Bg6"]},
+                    ],
+                }
                 render_training_component(
                     mode_choice,
                     learning_choice,

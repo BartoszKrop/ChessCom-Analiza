@@ -15,11 +15,6 @@ from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, Tabl
 API_TIMEOUT = 10  # seconds for individual API requests
 MAX_MOVE_TIME_SECONDS = 300
 NUM_DECILES = 10
-BOT_DIFFICULTY_SETTINGS = {
-    "Łatwy": {"skill": 4, "depth": 8, "evalDepth": 10},
-    "Średni": {"skill": 12, "depth": 12, "evalDepth": 12},
-    "Trudny": {"skill": 20, "depth": 16, "evalDepth": 13},
-}
 VIEW_MY = "👤 Moja Analiza"
 VIEW_COMPARE = "⚔️ Porównanie Graczy"
 SCOPE_SINGLE = "Jeden profil"
@@ -287,14 +282,10 @@ def format_bytes(size_bytes):
         unit_idx += 1
     return f"{value:.1f} {units[unit_idx]}"
 
-def render_training_component(mode_name, learning_mode, difficulty, opening_tree, player_color):
+def render_training_component(learning_mode, opening_tree):
     cfg = {
-        "mode": mode_name,
         "learningMode": learning_mode,
-        "difficulty": difficulty,
         "tree": opening_tree,
-        "playerColor": player_color,
-        "difficultyMap": BOT_DIFFICULTY_SETTINGS,
         "theme": {
             "bg": bg_color,
             "card": chart_bg,
@@ -310,7 +301,6 @@ def render_training_component(mode_name, learning_mode, difficulty, opening_tree
             <button id="next-line">Następna linia</button>
         </div>
         <div id="board" style="width: 100%; max-width: 660px; margin: 0 auto;"></div>
-        <div id="move-score"></div>
     </div>
     <style>
         body { margin: 0; padding: 0; background: transparent; font-family: Inter, sans-serif; }
@@ -342,31 +332,13 @@ def render_training_component(mode_name, learning_mode, difficulty, opening_tree
             font-weight: 700;
             cursor: pointer;
         }
-        #move-score {
-            margin-top: 12px;
-            min-height: 48px;
-            text-align: center;
-            font-size: 30px;
-            font-weight: 900;
-            letter-spacing: .2px;
-        }
     </style>
     <script>
         const APP_CONFIG = __APP_CONFIG__;
         const statusBox = document.getElementById("coach-status");
-        const scoreBox = document.getElementById("move-score");
         const nextBtn = document.getElementById("next-line");
-        const difficultyMap = APP_CONFIG.difficultyMap || {
-            "Łatwy": { skill: 4, depth: 8, evalDepth: 10 },
-            "Średni": { skill: 12, depth: 12, evalDepth: 12 },
-            "Trudny": { skill: 20, depth: 16, evalDepth: 13 }
-        };
-        const modeOpening = APP_CONFIG.mode === "Trening Debiutów";
         const tree = APP_CONFIG.tree || { variants: [] };
         const variants = tree.variants || [];
-        const userTurn = (APP_CONFIG.playerColor === "black") ? "b" : "w";
-        const botTurn = userTurn === "w" ? "b" : "w";
-        const BOT_RANDOM_SKILL_THRESHOLD = 6;
         const CHESS_SCRIPT_SOURCES = [
             "https://cdnjs.cloudflare.com/ajax/libs/chess.js/0.10.3/chess.min.js",
             "https://cdn.jsdelivr.net/npm/chess.js@0.10.3/chess.min.js",
@@ -377,10 +349,8 @@ def render_training_component(mode_name, learning_mode, difficulty, opening_tree
             "https://cdn.jsdelivr.net/npm/@chrisoakman/chessboardjs@1.0.0/dist/chessboard-1.0.0.min.js",
             "https://unpkg.com/@chrisoakman/chessboardjs@1.0.0/dist/chessboard-1.0.0.min.js"
         ];
-        const MAX_SCRIPT_LOAD_TIMEOUT_MS = 12000;
-        const DEPENDENCY_READY_TIMEOUT_MS = 2200;
-        const BOARD_DEPENDENCY_GRACE_MS = 3500;
-        const MODULE_RETRY_DELAY_MS = 600;
+        const MAX_SCRIPT_LOAD_TIMEOUT_MS = 5000;
+        const DEPENDENCY_READY_TIMEOUT_MS = 1500;
         let variantIndex = 0;
         let currentVariant = null;
         let currentPly = 0;
@@ -494,7 +464,13 @@ def render_training_component(mode_name, learning_mode, difficulty, opening_tree
                     const script = document.createElement("script");
                     script.src = src;
                     script.async = true;
+                    const timeoutId = setTimeout(() => {
+                        script.dataset.loadError = "1";
+                        script.remove();
+                        tryNext();
+                    }, MAX_SCRIPT_LOAD_TIMEOUT_MS);
                     script.onload = () => {
+                        clearTimeout(timeoutId);
                         waitForCondition(isReady, DEPENDENCY_READY_TIMEOUT_MS).then(() => {
                             script.dataset.loaded = "1";
                             resolve();
@@ -505,6 +481,7 @@ def render_training_component(mode_name, learning_mode, difficulty, opening_tree
                         });
                     };
                     script.onerror = () => {
+                        clearTimeout(timeoutId);
                         script.dataset.loadError = "1";
                         script.remove();
                         tryNext();
@@ -523,12 +500,6 @@ def render_training_component(mode_name, learning_mode, difficulty, opening_tree
                 await loadScriptWithFallback(CHESSBOARD_SCRIPT_SOURCES, "chessboard.js", () => typeof Chessboard !== "undefined");
             }
             if (typeof Chess === "undefined" || typeof Chessboard === "undefined") {
-                await waitForCondition(
-                    () => typeof Chess !== "undefined" && typeof Chessboard !== "undefined",
-                    BOARD_DEPENDENCY_GRACE_MS
-                ).catch(() => console.debug("Board dependency grace period elapsed."));
-            }
-            if (typeof Chess === "undefined" || typeof Chessboard === "undefined") {
                 const missing = [];
                 if (typeof Chess === "undefined") missing.push("Chess");
                 if (typeof Chessboard === "undefined") missing.push("Chessboard");
@@ -537,13 +508,6 @@ def render_training_component(mode_name, learning_mode, difficulty, opening_tree
         }
 
         function setStatus(text) { statusBox.textContent = text; }
-        function setMoveScore(text, color) {
-            scoreBox.textContent = text || "";
-            scoreBox.style.color = color || APP_CONFIG.theme.accent;
-        }
-        function getDifficulty() {
-            return difficultyMap[APP_CONFIG.difficulty] || difficultyMap["Średni"];
-        }
         function chooseVariant() {
             if (!variants.length) return null;
             if (APP_CONFIG.learningMode === "Losowo") {
@@ -570,7 +534,6 @@ def render_training_component(mode_name, learning_mode, difficulty, opening_tree
             currentPly = 0;
             currentVariant = chooseVariant();
             board.position(game.fen());
-            setMoveScore("", APP_CONFIG.theme.accent);
             if (!currentVariant) {
                 setStatus("Brak wariantów debiutowych do treningu.");
                 return;
@@ -579,81 +542,43 @@ def render_training_component(mode_name, learning_mode, difficulty, opening_tree
             setStatus(`Wariant: ${currentVariant.name} | Oczekiwany ruch: ${expected}`);
         }
 
-        function chooseBotMove() {
-            if (!game) return null;
-            const legal = game.moves({ verbose: true }) || [];
-            if (!legal.length) return null;
-            const d = getDifficulty();
-            const captures = legal.filter(m => (m.flags || "").includes("c"));
-            if (d.skill <= BOT_RANDOM_SKILL_THRESHOLD) {
-                return legal[Math.floor(Math.random() * legal.length)];
-            }
-            const pool = captures.length ? captures : legal;
-            return pool[Math.floor(Math.random() * pool.length)];
-        }
-
-        function playBotMove() {
-            if (!game || !board || game.turn() !== botTurn) return;
-            const chosen = chooseBotMove();
-            if (!chosen) return;
-            game.move(chosen);
-            board.position(game.fen());
-            setMoveScore("Bot wykonał ruch", APP_CONFIG.theme.accent);
-            setStatus("Bot wykonał ruch. Twój ruch.");
-        }
-
         function onDrop(source, target) {
             if (!game || !board) return "snapback";
-            if (modeOpening) {
-                if (!currentVariant) return "snapback";
-                const expected = currentVariant.line?.[currentPly];
-                if (!expected || game.turn() !== "w") return "snapback";
-                const move = game.move(buildMove(source, target));
-                if (!move) return "snapback";
-                if (normalizeSan(move.san) !== normalizeSan(expected)) {
-                    game.undo();
-                    setStatus(`Wariant: ${currentVariant.name} | Zły ruch dla tego debiutu, spróbuj ponownie.`);
-                    return "snapback";
-                }
-                currentPly += 1;
-                board.position(game.fen());
-                const reply = currentVariant.line?.[currentPly];
-                if (reply) {
-                    setTimeout(() => {
-                        game.move(reply);
-                        currentPly += 1;
-                        board.position(game.fen());
-                        const nextExpected = currentVariant.line?.[currentPly];
-                        if (nextExpected) {
-                            setStatus(`Wariant: ${currentVariant.name} | Oczekiwany ruch: ${nextExpected}`);
-                        } else {
-                            setStatus(`Wariant: ${currentVariant.name} ukończony.`);
-                        }
-                    }, 280);
-                } else {
-                    setStatus(`Wariant: ${currentVariant.name} ukończony.`);
-                }
-                return;
-            }
-
-            if (game.turn() !== userTurn) return "snapback";
+            if (!currentVariant) return "snapback";
+            const expected = currentVariant.line?.[currentPly];
+            if (!expected || game.turn() !== "w") return "snapback";
             const move = game.move(buildMove(source, target));
             if (!move) return "snapback";
-            board.position(game.fen());
-            if (!game.game_over() && game.turn() === botTurn) {
-                setTimeout(() => playBotMove(), 280);
+            if (normalizeSan(move.san) !== normalizeSan(expected)) {
+                game.undo();
+                setStatus(`Wariant: ${currentVariant.name} | Zły ruch dla tego debiutu, spróbuj ponownie.`);
+                return "snapback";
             }
+            currentPly += 1;
+            board.position(game.fen());
+            const reply = currentVariant.line?.[currentPly];
+            if (reply) {
+                setTimeout(() => {
+                    game.move(reply);
+                    currentPly += 1;
+                    board.position(game.fen());
+                    const nextExpected = currentVariant.line?.[currentPly];
+                    if (nextExpected) {
+                        setStatus(`Wariant: ${currentVariant.name} | Oczekiwany ruch: ${nextExpected}`);
+                    } else {
+                        setStatus(`Wariant: ${currentVariant.name} ukończony.`);
+                    }
+                }, 280);
+            } else {
+                setStatus(`Wariant: ${currentVariant.name} ukończony.`);
+            }
+            return;
         }
 
-        async function initTrainingModule(hasRetried = false) {
+        async function initTrainingModule() {
             try {
                 await loadBoardDependencies();
             } catch (error) {
-                if (!hasRetried) {
-                    setStatus("Ponawiam ładowanie modułu planszy...");
-                    setTimeout(() => initTrainingModule(true), MODULE_RETRY_DELAY_MS);
-                    return;
-                }
                 setStatus("Nie udało się załadować modułu planszy. Odśwież stronę i spróbuj ponownie.");
                 nextBtn.disabled = true;
                 return;
@@ -662,34 +587,13 @@ def render_training_component(mode_name, learning_mode, difficulty, opening_tree
             board = Chessboard("board", {
                 draggable: true,
                 position: "start",
-                orientation: userTurn === "w" ? "white" : "black",
+                orientation: "white",
                 pieceTheme: "https://cdnjs.cloudflare.com/ajax/libs/chessboard.js/1.0.0/img/chesspieces/wikipedia/{piece}.png",
                 onDrop
             });
             nextBtn.disabled = false;
-            nextBtn.onclick = () => {
-                if (modeOpening) {
-                    resetOpening();
-                } else {
-                    game.reset();
-                    board.position(game.fen());
-                    setMoveScore("", APP_CONFIG.theme.accent);
-                    if (userTurn === "w") {
-                        setStatus("Nowa partia z botem. Twój ruch białymi.");
-                    } else {
-                        setStatus("Nowa partia z botem. Bot rozpoczyna.");
-                        setTimeout(() => playBotMove(), 280);
-                    }
-                }
-            };
-            if (modeOpening) {
-                resetOpening();
-            } else if (userTurn === "w") {
-                setStatus("Tryb sparingu z botem. Twój ruch białymi.");
-            } else {
-                setStatus("Tryb sparingu z botem. Bot rozpoczyna.");
-                setTimeout(() => playBotMove(), 280);
-            }
+            nextBtn.onclick = () => resetOpening();
+            resetOpening();
         }
 
         initTrainingModule();
@@ -1775,15 +1679,7 @@ else:
                     st.info("Brak partii do analizy dla podanych kryteriów.")
 
             with t_trening:
-                mode_choice = st.radio("Tryb", ["Trening Debiutów", "Zagraj z Botem"], horizontal=True, key="training_mode")
-                learning_choice = "Po kolei"
-                difficulty_choice = "Średni"
-                player_color_choice = "Białe"
-                if mode_choice == "Trening Debiutów":
-                    learning_choice = st.radio("Sposób nauki", ["Po kolei", "Losowo"], horizontal=True, key="training_learning")
-                else:
-                    difficulty_choice = st.radio("Poziom trudności", ["Łatwy", "Średni", "Trudny"], horizontal=True, key="training_difficulty")
-                    player_color_choice = st.radio("Kolor gracza", ["Białe", "Czarne"], horizontal=True, key="training_player_color")
+                learning_choice = st.radio("Sposób nauki", ["Po kolei", "Losowo"], horizontal=True, key="training_learning")
                 opening_tree = {
                     "name": "Caro-Kann Defense",
                     "variants": [
@@ -1793,11 +1689,8 @@ else:
                     ],
                 }
                 render_training_component(
-                    mode_choice,
                     learning_choice,
-                    difficulty_choice,
-                    opening_tree,
-                    "black" if player_color_choice == "Czarne" else "white"
+                    opening_tree
                 )
 
     elif app_m == VIEW_COMPARE:

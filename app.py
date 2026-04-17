@@ -349,8 +349,8 @@ def render_training_component(learning_mode, opening_tree):
             "https://cdn.jsdelivr.net/npm/@chrisoakman/chessboardjs@1.0.0/dist/chessboard-1.0.0.min.js",
             "https://unpkg.com/@chrisoakman/chessboardjs@1.0.0/dist/chessboard-1.0.0.min.js"
         ];
-        const MAX_SCRIPT_LOAD_TIMEOUT_MS = 2000;
-        const DEPENDENCY_READY_TIMEOUT_MS = 1000;
+        const MAX_SCRIPT_LOAD_TIMEOUT_MS = 5000;
+        const DEPENDENCY_READY_TIMEOUT_MS = 1500;
         let variantIndex = 0;
         let currentVariant = null;
         let currentPly = 0;
@@ -464,7 +464,13 @@ def render_training_component(learning_mode, opening_tree):
                     const script = document.createElement("script");
                     script.src = src;
                     script.async = true;
+                    const timeoutId = setTimeout(() => {
+                        script.dataset.loadError = "1";
+                        script.remove();
+                        tryNext();
+                    }, MAX_SCRIPT_LOAD_TIMEOUT_MS);
                     script.onload = () => {
+                        clearTimeout(timeoutId);
                         waitForCondition(isReady, DEPENDENCY_READY_TIMEOUT_MS).then(() => {
                             script.dataset.loaded = "1";
                             resolve();
@@ -475,6 +481,7 @@ def render_training_component(learning_mode, opening_tree):
                         });
                     };
                     script.onerror = () => {
+                        clearTimeout(timeoutId);
                         script.dataset.loadError = "1";
                         script.remove();
                         tryNext();

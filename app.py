@@ -377,7 +377,7 @@ def render_training_component(mode_name, learning_mode, difficulty, opening_tree
             "https://cdn.jsdelivr.net/npm/@chrisoakman/chessboardjs@1.0.0/dist/chessboard-1.0.0.min.js",
             "https://unpkg.com/@chrisoakman/chessboardjs@1.0.0/dist/chessboard-1.0.0.min.js"
         ];
-        const SCRIPT_LOAD_TIMEOUT_MS = 4500;
+        const MAX_SCRIPT_LOAD_TIMEOUT_MS = 4500;
         let variantIndex = 0;
         let currentVariant = null;
         let currentPly = 0;
@@ -389,7 +389,7 @@ def render_training_component(mode_name, learning_mode, difficulty, opening_tree
             return Array.from(document.scripts).find(script => {
                 try {
                     return new URL(script.src, window.location.href).href === target;
-                } catch (_) {
+                } catch (error) {
                     return false;
                 }
             }) || null;
@@ -432,7 +432,7 @@ def render_training_component(mode_name, learning_mode, difficulty, opening_tree
                             existing.dataset.loadError = "1";
                             tryNext();
                         };
-                        const timeoutId = setTimeout(() => settleError(), SCRIPT_LOAD_TIMEOUT_MS);
+                        const timeoutId = setTimeout(() => settleError(), MAX_SCRIPT_LOAD_TIMEOUT_MS);
                         existing.addEventListener("load", () => {
                             clearTimeout(timeoutId);
                             settleSuccess();

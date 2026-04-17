@@ -420,7 +420,6 @@ def render_training_component(mode_name, learning_mode, difficulty, opening_tree
         }
 
         async function loadBoardDependencies() {
-            if (typeof Chess !== "undefined" && typeof Chessboard !== "undefined") return;
             if (typeof Chess === "undefined") await loadScriptWithFallback(CHESS_SCRIPT_SOURCES);
             if (typeof Chessboard === "undefined") await loadScriptWithFallback(CHESSBOARD_SCRIPT_SOURCES);
             if (typeof Chess === "undefined" || typeof Chessboard === "undefined") {
@@ -540,7 +539,7 @@ def render_training_component(mode_name, learning_mode, difficulty, opening_tree
         async function initTrainingModule() {
             try {
                 await loadBoardDependencies();
-            } catch (_) {
+            } catch (error) {
                 setStatus("Nie udało się załadować modułu planszy. Odśwież stronę i spróbuj ponownie.");
                 nextBtn.disabled = true;
                 return;

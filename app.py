@@ -15,6 +15,11 @@ from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, Tabl
 API_TIMEOUT = 10  # seconds for individual API requests
 MAX_MOVE_TIME_SECONDS = 300
 NUM_DECILES = 10
+BOT_DIFFICULTY_SETTINGS = {
+    "Łatwy": {"skill": 4, "depth": 8, "evalDepth": 10},
+    "Średni": {"skill": 12, "depth": 12, "evalDepth": 12},
+    "Trudny": {"skill": 20, "depth": 16, "evalDepth": 13},
+}
 VIEW_MY = "👤 Moja Analiza"
 VIEW_COMPARE = "⚔️ Porównanie Graczy"
 SCOPE_SINGLE = "Jeden profil"
@@ -273,8 +278,8 @@ def t_op(eng_name):
     if l == "en": return eng_name
     return op_translations.get(eng_name, {}).get(l, eng_name)
 
-def format_bytes(size):
-    value = float(max(size or 0, 0))
+def format_bytes(size_bytes):
+    value = float(max(size_bytes or 0, 0))
     units = ["B", "KB", "MB", "GB"]
     unit_idx = 0
     while value >= 1024 and unit_idx < len(units) - 1:
@@ -359,6 +364,7 @@ def render_training_component(mode_name, learning_mode, difficulty, opening_tree
         "difficulty": difficulty,
         "tree": opening_tree,
         "playerColor": player_color,
+        "difficultyMap": BOT_DIFFICULTY_SETTINGS,
         "theme": {
             "bg": bg_color,
             "card": chart_bg,
@@ -423,7 +429,7 @@ def render_training_component(mode_name, learning_mode, difficulty, opening_tree
         const statusBox = document.getElementById("coach-status");
         const scoreBox = document.getElementById("move-score");
         const nextBtn = document.getElementById("next-line");
-        const difficultyMap = {
+        const difficultyMap = APP_CONFIG.difficultyMap || {
             "Łatwy": { skill: 4, depth: 8, evalDepth: 10 },
             "Średni": { skill: 12, depth: 12, evalDepth: 12 },
             "Trudny": { skill: 20, depth: 16, evalDepth: 13 }
@@ -1256,8 +1262,8 @@ def run_fetch_with_progress(user, platform):
     def on_progress(downloaded, known_total, label):
         elapsed = max(datetime.now().timestamp() - started, 0.1)
         speed = downloaded / elapsed
-        eta = (known_total - downloaded) / speed if known_total > downloaded and speed > 1 else None
-        ratio = int(min(100, (downloaded / known_total) * 100)) if known_total > 0 else 0
+        eta = (known_total - downloaded) / speed if known_total > downloaded and speed > 0 else None
+        ratio = int(min(100, max(0, (downloaded / known_total) * 100))) if known_total > 0 else 0
         eta_text = f" | ETA: {int(eta)}s" if eta is not None else ""
         text = f"{label} | {format_bytes(downloaded)}"
         if known_total > 0:

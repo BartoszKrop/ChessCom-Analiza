@@ -377,7 +377,10 @@ def render_training_component(mode_name, learning_mode, difficulty, opening_tree
             "https://cdn.jsdelivr.net/npm/@chrisoakman/chessboardjs@1.0.0/dist/chessboard-1.0.0.min.js",
             "https://unpkg.com/@chrisoakman/chessboardjs@1.0.0/dist/chessboard-1.0.0.min.js"
         ];
-        const MAX_SCRIPT_LOAD_TIMEOUT_MS = 4500;
+        const MAX_SCRIPT_LOAD_TIMEOUT_MS = 12000;
+        const DEPENDENCY_READY_TIMEOUT_MS = 2200;
+        const BOARD_DEPENDENCY_GRACE_MS = 3500;
+        const MODULE_RETRY_DELAY_MS = 600;
         let variantIndex = 0;
         let currentVariant = null;
         let currentPly = 0;
@@ -395,10 +398,50 @@ def render_training_component(mode_name, learning_mode, difficulty, opening_tree
             }) || null;
         }
 
-        function loadScriptWithFallback(sources, label) {
+        function waitForCondition(checkFn, timeoutMs = 3000, intervalMs = 120) {
+            return new Promise((resolve, reject) => {
+                let ready = false;
+                try {
+                    ready = checkFn();
+                } catch (error) {
+                    reject(error);
+                    return;
+                }
+                if (ready) {
+                    resolve();
+                    return;
+                }
+                const started = Date.now();
+                const tick = () => {
+                    let isReady = false;
+                    try {
+                        isReady = checkFn();
+                    } catch (error) {
+                        reject(error);
+                        return;
+                    }
+                    if (isReady) {
+                        resolve();
+                        return;
+                    }
+                    if (Date.now() - started >= timeoutMs) {
+                        reject(new Error(`Timeout after ${timeoutMs}ms while waiting for dependency.`));
+                        return;
+                    }
+                    setTimeout(tick, intervalMs);
+                };
+                setTimeout(tick, intervalMs);
+            });
+        }
+
+        function loadScriptWithFallback(sources, label, isReady = () => false) {
             return new Promise((resolve, reject) => {
                 let idx = 0;
                 const tryNext = () => {
+                    if (isReady()) {
+                        resolve();
+                        return;
+                    }
                     if (idx >= sources.length) {
                         reject(new Error(`Brak dostępnych źródeł skryptu: ${label}.`));
                         return;
@@ -406,6 +449,11 @@ def render_training_component(mode_name, learning_mode, difficulty, opening_tree
                     const src = sources[idx++];
                     const existing = findScriptBySrc(src);
                     if (existing) {
+                        if (isReady()) {
+                            existing.dataset.loaded = "1";
+                            resolve();
+                            return;
+                        }
                         if (existing.dataset.loaded === "1") {
                             resolve();
                             return;
@@ -447,8 +495,14 @@ def render_training_component(mode_name, learning_mode, difficulty, opening_tree
                     script.src = src;
                     script.async = true;
                     script.onload = () => {
-                        script.dataset.loaded = "1";
-                        resolve();
+                        waitForCondition(isReady, DEPENDENCY_READY_TIMEOUT_MS).then(() => {
+                            script.dataset.loaded = "1";
+                            resolve();
+                        }).catch(() => {
+                            script.dataset.loadError = "1";
+                            console.debug(`${label} loaded but not ready in ${DEPENDENCY_READY_TIMEOUT_MS}ms, trying next source.`);
+                            tryNext();
+                        });
                     };
                     script.onerror = () => {
                         script.dataset.loadError = "1";
@@ -462,8 +516,18 @@ def render_training_component(mode_name, learning_mode, difficulty, opening_tree
         }
 
         async function loadBoardDependencies() {
-            if (typeof Chess === "undefined") await loadScriptWithFallback(CHESS_SCRIPT_SOURCES, "chess.js");
-            if (typeof Chessboard === "undefined") await loadScriptWithFallback(CHESSBOARD_SCRIPT_SOURCES, "chessboard.js");
+            if (typeof Chess === "undefined") {
+                await loadScriptWithFallback(CHESS_SCRIPT_SOURCES, "chess.js", () => typeof Chess !== "undefined");
+            }
+            if (typeof Chessboard === "undefined") {
+                await loadScriptWithFallback(CHESSBOARD_SCRIPT_SOURCES, "chessboard.js", () => typeof Chessboard !== "undefined");
+            }
+            if (typeof Chess === "undefined" || typeof Chessboard === "undefined") {
+                await waitForCondition(
+                    () => typeof Chess !== "undefined" && typeof Chessboard !== "undefined",
+                    BOARD_DEPENDENCY_GRACE_MS
+                ).catch(() => console.debug("Board dependency grace period elapsed."));
+            }
             if (typeof Chess === "undefined" || typeof Chessboard === "undefined") {
                 const missing = [];
                 if (typeof Chess === "undefined") missing.push("Chess");
@@ -581,10 +645,15 @@ def render_training_component(mode_name, learning_mode, difficulty, opening_tree
             }
         }
 
-        async function initTrainingModule() {
+        async function initTrainingModule(hasRetried = false) {
             try {
                 await loadBoardDependencies();
             } catch (error) {
+                if (!hasRetried) {
+                    setStatus("Ponawiam ładowanie modułu planszy...");
+                    setTimeout(() => initTrainingModule(true), MODULE_RETRY_DELAY_MS);
+                    return;
+                }
                 setStatus("Nie udało się załadować modułu planszy. Odśwież stronę i spróbuj ponownie.");
                 nextBtn.disabled = true;
                 return;

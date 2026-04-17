@@ -937,7 +937,7 @@ def build_report_summary(df):
     w = int((df["Wynik"] == "Wygrane").sum())
     d = int((df["Wynik"] == "Remisy").sum())
     l = int((df["Wynik"] == "Przegrane").sum())
-    winp = round((w / total_games) * 100, 1) if total_games else 0.0
+    winp = round((w / total_games) * 100, 1) if total_games else 0
     date_from = df["Data"].min() if total_games else "-"
     date_to = df["Data"].max() if total_games else "-"
     mode_stats = (
@@ -1263,7 +1263,7 @@ def run_fetch_with_progress(user, platform):
         elapsed = max(datetime.now().timestamp() - started, 0.1)
         speed = downloaded / elapsed
         eta = (known_total - downloaded) / speed if known_total > 0 and downloaded < known_total and speed > 0 else None
-        ratio = int(min(100, max(0, (downloaded / known_total) * 100))) if known_total > 0 else 0
+        ratio = int(min(100, max(0, (downloaded / known_total) * 100))) if known_total > 0 else (1 if downloaded > 0 else 0)
         eta_text = f" | ETA: {int(eta)}s" if eta is not None else ""
         text = f"{label} | {format_bytes(downloaded)}"
         if known_total > 0:

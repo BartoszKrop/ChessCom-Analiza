@@ -279,7 +279,7 @@ def t_op(eng_name):
     return op_translations.get(eng_name, {}).get(l, eng_name)
 
 def format_bytes(size_bytes):
-    value = float(max(size_bytes or 0, 0))
+    value = float(max(size_bytes if size_bytes is not None else 0, 0))
     units = ["B", "KB", "MB", "GB"]
     unit_idx = 0
     while value >= 1024 and unit_idx < len(units) - 1:
@@ -1075,7 +1075,7 @@ def build_pdf_report(df, username):
             story.append(Paragraph("Brak danych", styles["Normal"]))
             story.append(Spacer(1, 8))
             return
-        data = [list(frame.columns)] + frame.astype(str).values.tolist()
+        data = [list(frame.columns)] + frame.fillna("").astype(str).values.tolist()
         table = Table(data, repeatRows=1)
         table.setStyle(TableStyle([
             ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#111827")),
@@ -1262,7 +1262,7 @@ def run_fetch_with_progress(user, platform):
     def on_progress(downloaded, known_total, label):
         elapsed = max(datetime.now().timestamp() - started, 0.1)
         speed = downloaded / elapsed
-        eta = (known_total - downloaded) / speed if known_total > downloaded and speed > 0 else None
+        eta = (known_total - downloaded) / speed if known_total > 0 and downloaded < known_total and speed > 0 else None
         ratio = int(min(100, max(0, (downloaded / known_total) * 100))) if known_total > 0 else 0
         eta_text = f" | ETA: {int(eta)}s" if eta is not None else ""
         text = f"{label} | {format_bytes(downloaded)}"

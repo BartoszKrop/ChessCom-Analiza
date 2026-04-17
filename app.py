@@ -160,9 +160,6 @@ ui_dict = {
     "move_pace": {"pl": "Tempo ruchu w trakcie partii", "en": "Move pace during game", "de": "Zugtempo im Spielverlauf"},
     "decile": {"pl": "Segment partii", "en": "Game segment", "de": "Spielsegment"},
     "avg_move_seconds": {"pl": "Śr. sekundy / ruch", "en": "Avg seconds / move", "de": "Ø Sekunden / Zug"},
-    "analysis2": {"pl": "🧩 Analiza 2", "en": "🧩 Analysis 2", "de": "🧩 Analyse 2"},
-    "board_engine": {"pl": "Interaktywna tablica + podpowiedzi silnika", "en": "Interactive board + engine hints", "de": "Interaktives Brett + Engine-Hinweise"},
-    "open_analysis": {"pl": "Otwórz analizę", "en": "Open analysis", "de": "Analyse öffnen"},
     "prepare_analysis": {"pl": "Przygotuj analizę (Lichess Engine)", "en": "Prepare analysis (Lichess Engine)", "de": "Analyse vorbereiten (Lichess Engine)"},
     "compare_quick": {"pl": "Porównanie graczy (start)", "en": "Player comparison (start)", "de": "Spielervergleich (Start)"},
     "no_tempo_data": {"pl": "Brak danych zegara do analizy tempa ruchu dla aktualnych partii.", "en": "No clock data available for move-pace analysis in current games.", "de": "Keine Uhrdaten für die Zugtempo-Analyse in den aktuellen Partien verfügbar."}
@@ -270,6 +267,265 @@ def t_op(eng_name):
     l = lang_map.get(st.session_state.op_lang, "pl")
     if l == "en": return eng_name
     return op_translations.get(eng_name, {}).get(l, eng_name)
+
+def render_training_component(mode_name, learning_mode, difficulty, caro_kann_tree):
+    cfg = {
+        "mode": mode_name,
+        "learningMode": learning_mode,
+        "difficulty": difficulty,
+        "tree": caro_kann_tree,
+        "theme": {
+            "bg": bg_color,
+            "card": chart_bg,
+            "text": font_color,
+            "accent": cw
+        }
+    }
+    html = """
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/chessboard.js/1.0.0/chessboard-1.0.0.min.css">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/chess.js/0.10.3/chess.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/chessboard.js/1.0.0/chessboard-1.0.0.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/stockfish.js/10.0.2/stockfish.js"></script>
+    <div id="coach-wrap">
+        <div id="coach-top">
+            <div id="coach-status">Ładowanie modułu...</div>
+            <button id="next-line">Następna linia</button>
+        </div>
+        <div id="board" style="width: 100%; max-width: 660px; margin: 0 auto;"></div>
+        <div id="move-score"></div>
+    </div>
+    <style>
+        body { margin: 0; padding: 0; background: transparent; font-family: Inter, sans-serif; }
+        #coach-wrap {
+            background: __THEME_BG__;
+            color: __THEME_TEXT__;
+            border: 1px solid rgba(127,127,127,.25);
+            border-radius: 12px;
+            padding: 12px;
+        }
+        #coach-top {
+            display: flex;
+            gap: 8px;
+            align-items: center;
+            justify-content: space-between;
+            margin-bottom: 10px;
+        }
+        #coach-status {
+            font-weight: 700;
+            font-size: 16px;
+            color: __THEME_TEXT__;
+        }
+        #next-line {
+            border: 0;
+            border-radius: 8px;
+            padding: 8px 10px;
+            background: __THEME_ACCENT__;
+            color: #fff;
+            font-weight: 700;
+            cursor: pointer;
+        }
+        #move-score {
+            margin-top: 12px;
+            min-height: 48px;
+            text-align: center;
+            font-size: 30px;
+            font-weight: 900;
+            letter-spacing: .2px;
+        }
+    </style>
+    <script>
+        const APP_CONFIG = __APP_CONFIG__;
+        const game = new Chess();
+        const statusBox = document.getElementById("coach-status");
+        const scoreBox = document.getElementById("move-score");
+        const nextBtn = document.getElementById("next-line");
+        const difficultyMap = {
+            "Łatwy": { skill: 4, depth: 8, evalDepth: 10 },
+            "Średni": { skill: 10, depth: 11, evalDepth: 11 },
+            "Trudny": { skill: 18, depth: 14, evalDepth: 12 }
+        };
+        const modeOpening = APP_CONFIG.mode === "Trening Debiutów";
+        const tree = APP_CONFIG.tree || { variants: [] };
+        const variants = tree.variants || [];
+        let variantIndex = 0;
+        let currentVariant = null;
+        let currentPly = 0;
+        let board = null;
+        const engine = new Worker("https://cdnjs.cloudflare.com/ajax/libs/stockfish.js/10.0.2/stockfish.js");
+
+        const normalizeSan = (san) => (san || "").replace(/[+#?!]/g, "").trim();
+        const uciToMove = (uci) => ({ from: uci.slice(0, 2), to: uci.slice(2, 4), promotion: uci[4] || "q" });
+        const scoreToCp = (scoreObj, turn) => {
+            if (!scoreObj) return 0;
+            if (scoreObj.type === "mate") {
+                const base = scoreObj.value > 0 ? 10000 : -10000;
+                return turn === "w" ? base : -base;
+            }
+            return turn === "w" ? scoreObj.value : -scoreObj.value;
+        };
+
+        function setStatus(text) { statusBox.textContent = text; }
+        function setMoveScore(text, color) {
+            scoreBox.textContent = text || "";
+            scoreBox.style.color = color || APP_CONFIG.theme.accent;
+        }
+
+        function getDifficulty() {
+            return difficultyMap[APP_CONFIG.difficulty] || difficultyMap["Średni"];
+        }
+
+        function chooseVariant() {
+            if (!variants.length) return null;
+            if (APP_CONFIG.learningMode === "Losowo") {
+                return variants[Math.floor(Math.random() * variants.length)];
+            }
+            const selected = variants[variantIndex % variants.length];
+            variantIndex += 1;
+            return selected;
+        }
+
+        function resetOpening() {
+            game.reset();
+            currentPly = 0;
+            currentVariant = chooseVariant();
+            board.position(game.fen());
+            setMoveScore("", APP_CONFIG.theme.accent);
+            if (!currentVariant) {
+                setStatus("Brak wariantów debiutowych do treningu.");
+                return;
+            }
+            const expected = currentVariant.line?.[currentPly] || "-";
+            setStatus(`Wariant: ${currentVariant.name} | Oczekiwany ruch: ${expected}`);
+        }
+
+        function classifyMove(delta) {
+            if (delta < 25) return { text: "Excellent", color: "#81b64c" };
+            if (delta < 75) return { text: "Good", color: "#5ab4ac" };
+            if (delta < 150) return { text: "Inaccuracy", color: "#d8b365" };
+            if (delta < 300) return { text: "Mistake", color: "#ef553b" };
+            return { text: "Blunder - tracisz w chuj!", color: "#fa412d" };
+        }
+
+        function askEngine(positionFen, goCmd) {
+            return new Promise((resolve) => {
+                let lastScore = null;
+                const handler = (event) => {
+                    const line = (event.data || "").trim();
+                    const cp = line.match(/score cp (-?\\d+)/);
+                    const mate = line.match(/score mate (-?\\d+)/);
+                    if (cp) lastScore = { type: "cp", value: parseInt(cp[1], 10) };
+                    if (mate) lastScore = { type: "mate", value: parseInt(mate[1], 10) };
+                    if (line.startsWith("bestmove")) {
+                        engine.removeEventListener("message", handler);
+                        resolve({ line, score: lastScore });
+                    }
+                };
+                engine.addEventListener("message", handler);
+                engine.postMessage(`position fen ${positionFen}`);
+                engine.postMessage(goCmd);
+            });
+        }
+
+        async function evaluatePosition(fen, depth) {
+            const turn = fen.split(" ")[1] || "w";
+            const out = await askEngine(fen, `go depth ${depth}`);
+            return scoreToCp(out.score, turn);
+        }
+
+        async function getBestMove(fen, depth) {
+            const out = await askEngine(fen, `go depth ${depth}`);
+            return (out.line.split(" ")[1] || "").trim();
+        }
+
+        async function playBotMove() {
+            const d = getDifficulty();
+            engine.postMessage(`setoption name Skill Level value ${d.skill}`);
+            const best = await getBestMove(game.fen(), d.depth);
+            if (!best || best === "(none)") return;
+            game.move(uciToMove(best));
+            board.position(game.fen());
+            setStatus("Bot wykonał ruch. Twój ruch.");
+        }
+
+        async function onDrop(source, target) {
+            if (modeOpening) {
+                if (!currentVariant) return "snapback";
+                const expected = currentVariant.line?.[currentPly];
+                if (!expected || game.turn() !== "w") return "snapback";
+                const move = game.move({ from: source, to: target, promotion: "q" });
+                if (!move) return "snapback";
+                if (normalizeSan(move.san) !== normalizeSan(expected)) {
+                    game.undo();
+                    setStatus(`Wariant: ${currentVariant.name} | Zły ruch dla tego debiutu, spróbuj ponownie.`);
+                    return "snapback";
+                }
+                currentPly += 1;
+                board.position(game.fen());
+                const reply = currentVariant.line?.[currentPly];
+                if (reply) {
+                    setTimeout(() => {
+                        game.move(reply, { sloppy: true });
+                        currentPly += 1;
+                        board.position(game.fen());
+                        const nextExpected = currentVariant.line?.[currentPly];
+                        if (nextExpected) {
+                            setStatus(`Wariant: ${currentVariant.name} | Oczekiwany ruch: ${nextExpected}`);
+                        } else {
+                            setStatus(`Wariant: ${currentVariant.name} ukończony.`);
+                        }
+                    }, 280);
+                } else {
+                    setStatus(`Wariant: ${currentVariant.name} ukończony.`);
+                }
+                return;
+            }
+
+            if (game.turn() !== "w") return "snapback";
+            const d = getDifficulty();
+            const beforeFen = game.fen();
+            const evalBefore = await evaluatePosition(beforeFen, d.evalDepth);
+            const move = game.move({ from: source, to: target, promotion: "q" });
+            if (!move) return "snapback";
+            board.position(game.fen());
+            const evalAfter = await evaluatePosition(game.fen(), d.evalDepth);
+            const delta = Math.max(0, Math.round(evalBefore - evalAfter));
+            const bucket = classifyMove(delta);
+            setMoveScore(`${bucket.text} | Δ ${delta} cp`, bucket.color);
+            if (!game.game_over()) await playBotMove();
+        }
+
+        board = Chessboard("board", {
+            draggable: true,
+            position: "start",
+            pieceTheme: "https://cdnjs.cloudflare.com/ajax/libs/chessboard.js/1.0.0/img/chesspieces/wikipedia/{piece}.png",
+            onDrop
+        });
+
+        engine.postMessage("uci");
+        engine.postMessage("isready");
+        nextBtn.onclick = () => {
+            if (modeOpening) {
+                resetOpening();
+            } else {
+                game.reset();
+                board.position(game.fen());
+                setMoveScore("", APP_CONFIG.theme.accent);
+                setStatus("Nowa partia z botem. Twój ruch białymi.");
+            }
+        };
+
+        if (modeOpening) {
+            resetOpening();
+        } else {
+            setStatus("Tryb sparingu z botem. Twój ruch białymi.");
+        }
+    </script>
+    """
+    html = html.replace("__APP_CONFIG__", json.dumps(cfg, ensure_ascii=False))
+    html = html.replace("__THEME_BG__", cfg["theme"]["card"])
+    html = html.replace("__THEME_TEXT__", cfg["theme"]["text"])
+    html = html.replace("__THEME_ACCENT__", cfg["theme"]["accent"])
+    components.html(html, height=860, scrolling=False)
 
 # --- CSS (DYNAMICZNY MOTYW) ---
 css_dark = """
@@ -886,7 +1142,7 @@ else:
                     key="download_selected_file"
                 )
 
-            t_stat, t_hist, t_czas, t_deb, t_ana, t_ana2 = st.tabs(["📊 Statystyki", "📅 Historia", "⏳ Czas", "🔬 Debiuty", "🧠 Analiza", t("analysis2")])
+            t_stat, t_hist, t_czas, t_deb, t_ana, t_trening = st.tabs(["📊 Statystyki", "📅 Historia", "⏳ Czas", "🔬 Debiuty", "🧠 Analiza", "🎯 Trening"])
             
             with t_stat:
                 w, d, l = (df_f["Wynik"]=="Wygrane").sum(), (df_f["Wynik"]=="Remisy").sum(), (df_f["Wynik"]=="Przegrane").sum()
@@ -1131,27 +1387,33 @@ else:
                 else:
                     st.info("Brak partii do analizy dla podanych kryteriów.")
 
-            with t_ana2:
-                st.markdown(f"### {t('board_engine')}")
-                ana2_df = df_f.sort_values("Timestamp", ascending=False).copy()
-                ana2_df["label2"] = ana2_df.apply(
-                    lambda x: f"{x['Data']} {x['Timestamp'].strftime('%H:%M')} | {x['Tryb']} vs {x['Przeciwnik']}",
-                    axis=1
-                )
-                if not ana2_df.empty:
-                    sel2 = st.selectbox(tu("Mecz do tablicy:"), ana2_df["label2"], key="ana2_sel")
-                    g2 = ana2_df[ana2_df["label2"] == sel2].iloc[0]
-                    if st.button(t("open_analysis"), type="primary", use_container_width=True, key="ana2_open"):
-                        with st.spinner(tu("Przygotowanie interaktywnej analizy...")):
-                            st.session_state.url = g2["Link"] if g2["Platforma"] == "Lichess" else import_to_lichess(g2["PGN_Raw"])
-                            st.rerun()
-                    if st.session_state.url:
-                        analysis_url = to_lichess_analysis_url(st.session_state.url)
-                        emb = analysis_url.replace("https://lichess.org/", "https://lichess.org/embed/") + "?theme=auto&pieceSet=cburnett"
-                        components.html(f"<iframe src='{emb}' width='100%' height='640' frameborder='0'></iframe>", height=650)
-                        st.caption("Tryb analizy pozwala sprawdzać warianty „co jeśli” oraz podpowiedzi silnika.")
+            with t_trening:
+                mode_choice = st.radio("Tryb", ["Trening Debiutów", "Zagraj z Botem"], horizontal=True, key="training_mode")
+                learning_choice = "Po kolei"
+                difficulty_choice = "Średni"
+                if mode_choice == "Trening Debiutów":
+                    learning_choice = st.radio("Sposób nauki", ["Po kolei", "Losowo"], horizontal=True, key="training_learning")
                 else:
-                    st.info(tu("Brak partii do analizy."))
+                    difficulty_choice = st.radio("Poziom trudności", ["Łatwy", "Średni", "Trudny"], horizontal=True, key="training_difficulty")
+
+                caro_kann_tree = {
+                    "name": "Caro-Kann Defense",
+                    "variants": [
+                        {
+                            "name": "Advance (Wariant Zamknięty)",
+                            "line": ["e4", "c6", "d4", "d5", "e5", "Bf5", "Nf3", "e6", "Be2", "c5"]
+                        },
+                        {
+                            "name": "Exchange (Wariant Wymienny)",
+                            "line": ["e4", "c6", "d4", "d5", "exd5", "cxd5", "Bd3", "Nc6", "c3", "Nf6"]
+                        },
+                        {
+                            "name": "Classical (Wariant Klasyczny)",
+                            "line": ["e4", "c6", "d4", "d5", "Nc3", "dxe4", "Nxe4", "Bf5", "Ng3", "Bg6"]
+                        }
+                    ]
+                }
+                render_training_component(mode_choice, learning_choice, difficulty_choice, caro_kann_tree)
 
     elif app_m == VIEW_COMPARE:
         c1, c2 = st.columns(2)

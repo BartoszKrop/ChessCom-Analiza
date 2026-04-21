@@ -842,6 +842,40 @@ def get_opening_group(opening_name):
         if idx != -1: return fallback[:idx + len(keyword)].title()
     return fallback.title()
 
+def get_result_icon(result):
+    if result == "Wygrane": return "🟢"
+    if result == "Przegrane": return "🔴"
+    return "⚪️"
+
+def get_mode_badge(mode_name):
+    mode = str(mode_name).strip().lower()
+    mode_map = {
+        "blitz": "⚡️ blitz",
+        "rapid": "😴 rapid",
+        "bullet": "💨 bullet"
+    }
+    return mode_map.get(mode, f"♟️ {mode}" if mode else "♟️")
+
+def get_opening_short_label(opening_group, opening_name):
+    text = f"{opening_group or ''} {opening_name or ''}".strip().lower()
+    if not text: return "Inne"
+    short_map = [
+        ("sicilian", "Sicilian"),
+        ("queen", "Queen"),
+        ("pawn", "Pawn"),
+        ("king", "King"),
+        ("indian", "Indian"),
+        ("french", "French"),
+        ("caro", "Caro"),
+        ("english", "English"),
+        ("scandinavian", "Scandi"),
+        ("gambit", "Gambit"),
+    ]
+    for key, value in short_map:
+        if key in text: return value
+    clean = re.sub(r"[^A-Za-zÀ-ž0-9\s-]", "", str(opening_group or opening_name)).strip()
+    return clean.split()[0].title() if clean else "Inne"
+
 def extract_opening(pgn):
     if not pgn: return "Nieznany"
     match = re.search(r'openings/(.*?)"', pgn)
@@ -1696,14 +1730,17 @@ else:
                     ana = ana[ana["Data"] == d_val]
                     
                 if not ana.empty:
-                    def get_res(r):
-                        if r == "Wygrane": return "W"
-                        if r == "Przegrane": return "L"
-                        return "D"
-                    
-                    ana["label"] = ana.apply(lambda x: f"{x['Data']} {x['Timestamp'].strftime('%H:%M')} | {x['Tryb']} vs {x['Przeciwnik']} ({'C' if x['Platforma'] == 'Chess.com' else 'L'}) ({get_res(x['Wynik'])})", axis=1)
-                    sel = st.selectbox(tu("Mecz:"), ana.sort_values("Timestamp", ascending=False)["label"])
-                    g_sel = ana[ana["label"] == sel].iloc[0]
+                    ana = ana.sort_values("Timestamp", ascending=False).reset_index(drop=True)
+                    ana["label"] = ana.apply(
+                        lambda x: (
+                            f"{get_result_icon(x['Wynik'])} {x['Timestamp'].strftime('%Y-%m-%d %H:%M')} | "
+                            f"{x['Przeciwnik']} / {get_mode_badge(x['Tryb'])} / "
+                            f"{get_opening_short_label(x.get('Debiut_Grupa', ''), x.get('Debiut', ''))} +"
+                        ),
+                        axis=1
+                    )
+                    sel_idx = st.selectbox(tu("Mecz:"), options=ana.index, format_func=lambda idx: ana.at[idx, "label"])
+                    g_sel = ana.loc[sel_idx]
                     if st.button(t("prepare_analysis"), type="primary", use_container_width=True):
                         with st.spinner(tu("Przesyłanie PGN do analizy...")):
                             st.session_state.url = g_sel["Link"] if g_sel["Platforma"]=="Lichess" else import_to_lichess(g_sel["PGN_Raw"]); st.rerun()

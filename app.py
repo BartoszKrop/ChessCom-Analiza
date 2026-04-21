@@ -898,11 +898,9 @@ def opening_for_user(opening_name, is_white):
         return "Nieznany"
     if is_white or len(parts) == 1:
         return parts[0]
-    role_keywords = r"\b(defense|defence|counter|countergambit|gambit|system|attack)\b"
-    for part in parts[1:]:
-        if re.search(role_keywords, part, flags=re.IGNORECASE):
-            return part
-    for part in parts:
+    role_keywords = r"\b(defen[sc]e|counter(?:gambit)?|gambit|system|attack)\b"
+    search_order = parts[1:] + [parts[0]]
+    for part in search_order:
         if re.search(role_keywords, part, flags=re.IGNORECASE):
             return part
     return parts[1]

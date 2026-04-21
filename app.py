@@ -850,9 +850,9 @@ def get_result_icon(result):
 def get_mode_badge(mode_name):
     mode = str(mode_name).strip().lower()
     mode_map = {
-        "blitz": "⚡️ blitz",
-        "rapid": "😴 rapid",
-        "bullet": "💨 bullet"
+        "blitz": "⚡️",
+        "rapid": "😴",
+        "bullet": "💨"
     }
     return mode_map.get(mode, f"♟️ {mode}" if mode else "♟️")
 

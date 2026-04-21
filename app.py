@@ -746,6 +746,21 @@ st.markdown(f"""
     .stMetric {{ padding: 12px; }}
     .block-container {{ padding: 1rem; top: 1rem; }}
     div[data-testid="stExpander"] details {{ padding-bottom: 0 !important; margin-bottom: 0 !important; }}
+    div[data-testid="stExpander"] > details {{
+        border: 1px solid {grid_color};
+        border-radius: 12px;
+        background-color: {chart_bg};
+        overflow: hidden;
+    }}
+    div[data-testid="stExpander"] > details > summary {{
+        padding: 0.45rem 0.75rem;
+    }}
+    [data-testid="stPlotlyChart"], [data-testid="stDataFrame"] {{
+        border: 1px solid {grid_color};
+        border-radius: 12px;
+        padding: 0.35rem;
+        background: {chart_bg};
+    }}
     
     [data-testid="stPopover"] > button {{
         background-color: transparent !important;
@@ -753,6 +768,30 @@ st.markdown(f"""
         box-shadow: none !important;
         padding: 0 !important;
         color: inherit !important;
+    }}
+    @media (min-width: 1200px) {{
+        .block-container {{
+            max-width: 1520px;
+            padding: 1.6rem 2.8rem 2.4rem;
+        }}
+        h1 {{ font-size: 2.4rem !important; letter-spacing: 0.2px; }}
+        h2 {{ font-size: 1.7rem !important; }}
+        h3 {{ font-size: 1.35rem !important; }}
+        [data-testid="stMetric"], .stMetric {{
+            padding: 16px 18px !important;
+            border-radius: 12px !important;
+        }}
+        [data-testid="stMetricValue"] {{ font-size: 1.4rem !important; }}
+        [data-testid="stMetricLabel"] {{
+            font-size: 0.82rem !important;
+            letter-spacing: 0.04em;
+        }}
+        div[data-testid="stHorizontalBlock"] {{
+            gap: 1.15rem;
+        }}
+        .stButton>button {{
+            min-height: 44px;
+        }}
     }}
     
     {active_css}

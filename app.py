@@ -878,6 +878,9 @@ def get_opening_short_label(opening_group, opening_name):
 
 def extract_opening(pgn):
     if not pgn: return "Nieznany"
+    opening_tag = re.search(r'\[Opening "(.*?)"\]', pgn)
+    if opening_tag:
+        return opening_tag.group(1).strip()
     match = re.search(r'openings/(.*?)"', pgn)
     if not match: return "Inny"
     slug = match.group(1)
@@ -886,6 +889,21 @@ def extract_opening(pgn):
     result = slug.replace('-', ' ').title()
     # Fix title() incorrectly capitalizing the 's in possessives (King'S → King's)
     return re.sub(r"(?<=[A-Za-z])'S\b", "'s", result)
+
+def opening_for_user(opening_name, is_white):
+    if not opening_name:
+        return "Nieznany"
+    parts = [p.strip() for p in str(opening_name).split(":") if p.strip()]
+    if not parts:
+        return "Nieznany"
+    if is_white or len(parts) == 1:
+        return parts[0]
+    role_keywords = r"\b(defen[sc]e|counter(?:gambit)?|gambit|system|attack)\b"
+    search_order = parts[1:] + [parts[0]]
+    for part in search_order:
+        if re.search(role_keywords, part, flags=re.IGNORECASE):
+            return part
+    return parts[1]
 
 def extract_moves_count(pgn):
     if not pgn: return 0
@@ -1231,7 +1249,7 @@ def fetch_data_live(user, platform="Chess.com", progress_callback=None):
                                 my_r, opp_r = g["white" if is_w else "black"]["result"], g["black" if is_w else "white"]["result"]
                                 out = "Wygrane" if my_r == "win" else ("Remisy" if my_r in ["agreed", "repetition", "stalemate", "insufficient", "50move", "timevsinsufficient"] else "Przegrane")
                                 pgn = g.get("pgn", "")
-                                deb = extract_opening(pgn)
+                                deb = opening_for_user(extract_opening(pgn), is_w)
                                 all_games.append({
                                     "Konto": k_id, "Platforma": platform, "Timestamp": ts, "Godzina": ts.hour, "Dzień": days_map[ts.weekday()], "Dzień_Nr": ts.weekday(),
                                     "Data": ts.date(), "Miesiąc": ts.strftime("%Y-%m"), "Tryb": g.get("time_class", "Inne").capitalize(), "Wynik": out, 
@@ -1265,7 +1283,7 @@ def fetch_data_live(user, platform="Chess.com", progress_callback=None):
                     opp_col = "black" if my_col == "white" else "white"
                     out = "Wygrane" if g.get("winner") == my_col else ("Przegrane" if g.get("winner") == opp_col else "Remisy")
                     m_l = g.get("moves", "").split()
-                    deb = g.get("opening", {}).get("name", "Nieznany").split(':')[0]
+                    deb = opening_for_user(g.get("opening", {}).get("name", "Nieznany"), my_col == "white")
                     all_games.append({
                         "Konto": k_id, "Platforma": platform, "Timestamp": ts, "Godzina": ts.hour, "Dzień": days_map[ts.weekday()], "Dzień_Nr": ts.weekday(),
                         "Data": ts.date(), "Miesiąc": ts.strftime("%Y-%m"), "Tryb": g.get("speed", "Inne").capitalize(), "Wynik": out, 

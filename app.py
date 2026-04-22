@@ -5,6 +5,7 @@ import plotly.express as px
 from datetime import datetime, date
 import re
 import json
+from urllib.parse import quote
 from io import BytesIO
 import streamlit.components.v1 as components
 from reportlab.lib import colors
@@ -769,6 +770,19 @@ st.markdown(f"""
         padding: 0 !important;
         color: inherit !important;
     }}
+    .stTabs [data-baseweb="tab-list"] {{
+        box-shadow: none !important;
+        filter: none !important;
+        -webkit-mask-image: none !important;
+        mask-image: none !important;
+    }}
+    .stTabs [data-baseweb="tab-list"]::before,
+    .stTabs [data-baseweb="tab-list"]::after {{
+        display: none !important;
+        content: none !important;
+        box-shadow: none !important;
+        background: none !important;
+    }}
     @media (min-width: 1200px) {{
         .block-container {{
             max-width: 1520px;
@@ -875,6 +889,17 @@ def get_opening_short_label(opening_group, opening_name):
         if key in text: return value
     clean = re.sub(r"[^A-Za-zÀ-ž0-9\s-]", "", str(opening_group or opening_name)).strip()
     return clean.split()[0].title() if clean else "Inne"
+
+def build_opening_guide_url(opening_name):
+    clean = re.sub(r"[^A-Za-zÀ-ž0-9\s-]", " ", str(opening_name or "")).strip()
+    if not clean:
+        return "https://lichess.org/opening"
+    slug = "-".join(clean.split()).lower()
+    return f"https://lichess.org/opening/{quote(slug, safe='-')}"
+
+def build_opening_description_url(opening_name):
+    query = quote(f"{str(opening_name or '').strip()} chess opening")
+    return f"https://en.wikipedia.org/wiki/Special:Search?search={query}"
 
 def extract_opening(pgn):
     if not pgn: return "Nieznany"
@@ -1500,31 +1525,7 @@ else:
         if s_m != tu("Wszystkie"): df_f = df_f[df_f["Tryb"] == s_m].copy()
 
         if not df_f.empty:
-            raw_df = df_f.copy()
-            raw_df["MoveTimes"] = raw_df["MoveTimes"].apply(
-                lambda x: json.dumps(x) if isinstance(x, list) else (x if isinstance(x, str) else "[]")
-            )
-            raw_csv = raw_df.to_csv(index=False).encode("utf-8")
-            report_pdf = build_pdf_report(df_loc, username)
-            with st.popover(t("download_menu"), use_container_width=True):
-                export_choice = st.radio(
-                    t("download_choose"),
-                    options=["raw", "pdf"],
-                    format_func=lambda x: t("download_raw") if x == "raw" else t("download_report"),
-                    horizontal=True,
-                    key="download_choice"
-                )
-                is_raw = export_choice == "raw"
-                st.download_button(
-                    t("download_now"),
-                    data=raw_csv if is_raw else report_pdf,
-                    file_name=f"chessstats_raw_{username}.csv" if is_raw else f"chessstats_report_{username}.pdf",
-                    mime="text/csv" if is_raw else "application/pdf",
-                    use_container_width=True,
-                    key="download_selected_file"
-                )
-
-            t_stat, t_hist, t_czas, t_deb, t_ana, t_trening = st.tabs(["📊 Statystyki", "📅 Historia", "⏳ Czas", "🔬 Debiuty", "🧠 Analiza", "🎯 Trening"])
+            t_stat, t_hist, t_czas, t_deb, t_ana = st.tabs(["📊 Statystyki", "📅 Historia", "⏳ Czas", "🔬 Debiuty", "🧠 Analiza"])
             
             with t_stat:
                 w, d, l = (df_f["Wynik"]=="Wygrane").sum(), (df_f["Wynik"]=="Remisy").sum(), (df_f["Wynik"]=="Przegrane").sum()
@@ -1567,20 +1568,22 @@ else:
                 if not df_f_pie[df_f_pie["Wynik"]=="Wygrane"].empty:
                     with c1:
                         st.markdown(f"### {t('win_reason')}")
-                        fig_pie_w = px.pie(df_f_pie[df_f_pie["Wynik"]=="Wygrane"], names="Powod_T", hole=0.4, color_discrete_sequence=[cw, "#5ab4ac", "#d8b365", "#01665e"])
+                        fig_pie_w = px.pie(df_f_pie[df_f_pie["Wynik"]=="Wygrane"], names="Powod_T", hole=0.4, color_discrete_sequence=["#16a34a", "#22c55e", "#38bdf8", "#2563eb"])
                         fig_pie_w = style_chart(fig_pie_w)
                         st.plotly_chart(fig_pie_w, use_container_width=True)
                 
                 if not df_f_pie[df_f_pie["Wynik"]=="Przegrane"].empty:
                     with c2:
                         st.markdown(f"### {t('loss_reason')}")
-                        fig_pie_l = px.pie(df_f_pie[df_f_pie["Wynik"]=="Przegrane"], names="Powod_T", hole=0.4, color_discrete_sequence=[cl, "#c51b7d", "#e9a3c9", "#4d9221"])
+                        fig_pie_l = px.pie(df_f_pie[df_f_pie["Wynik"]=="Przegrane"], names="Powod_T", hole=0.4, color_discrete_sequence=["#dc2626", "#f97316", "#ec4899", "#fb7185"])
                         fig_pie_l = style_chart(fig_pie_l)
                         st.plotly_chart(fig_pie_l, use_container_width=True)
 
             with t_hist:
                 st.markdown("### Aktywność i wyniki dzienne")
                 act_df = df_f.groupby(["Data", "Wynik"]).size().reset_index(name="Partie")
+                act_df["Wynik"] = pd.Categorical(act_df["Wynik"], categories=["Przegrane", "Remisy", "Wygrane"], ordered=True)
+                act_df = act_df.sort_values(["Data", "Wynik"])
                 fig_act = px.bar(act_df, x="Data", y="Partie", color="Wynik", 
                                  color_discrete_map={"Wygrane": cw, "Remisy": cd, "Przegrane": cl},
                                  category_orders={"Wynik": ["Przegrane", "Remisy", "Wygrane"]})
@@ -1666,6 +1669,7 @@ else:
                     st.plotly_chart(fig_str, use_container_width=True)
 
             with t_deb:
+                st.caption('Kliknij link w kolumnie "Przewodnik" (Lichess) lub "Opis" (Wikipedia), aby przejść do strony debiutów i wariantów.')
                 c_w1, c_b1 = st.columns(2)
                 df_w = df_f[df_f["Kolor"] == "Białe"]
                 df_b = df_f[df_f["Kolor"] == "Czarne"]
@@ -1673,31 +1677,34 @@ else:
                 with c_w1:
                     st.markdown(f"<h5 style='text-align: center; color: {font_color};'>⚪ {t('color_white')}</h5>", unsafe_allow_html=True)
                     if not df_w.empty:
-                        tot_w = len(df_w)
                         op_g_w = df_w.groupby("Debiut_Grupa").agg(Gry=('Wynik', 'count'), WinRate=('Wynik', lambda x: int(round((x == 'Wygrane').sum()/len(x)*100,0)))).reset_index()
-                        op_g_w["% Całości"] = (op_g_w["Gry"] / tot_w * 100).round(1)
-                        op_g_w = op_g_w[["Debiut_Grupa", "Gry", "% Całości", "WinRate"]]
+                        op_g_w["Przewodnik"] = op_g_w["Debiut_Grupa"].apply(build_opening_guide_url)
+                        op_g_w["Opis"] = op_g_w["Debiut_Grupa"].apply(build_opening_description_url)
+                        op_g_w = op_g_w[["Debiut_Grupa", "Gry", "WinRate", "Przewodnik", "Opis"]]
                         
                         st.dataframe(
                             op_g_w.sort_values("Gry", ascending=False).head(15), 
                             use_container_width=True, hide_index=True,
                             column_config={
                                 "Gry": st.column_config.NumberColumn("Gry"),
-                                "% Całości": st.column_config.NumberColumn("% Całości", format="%.1f%%"),
-                                "WinRate": st.column_config.NumberColumn("WinRate (%)", format="%d%%")
+                                "WinRate": st.column_config.NumberColumn("WinRate (%)", format="%d%%"),
+                                "Przewodnik": st.column_config.LinkColumn("Przewodnik", display_text="Otwórz"),
+                                "Opis": st.column_config.LinkColumn("Opis", display_text="Opis")
                             }
                         )
                         with st.expander(f"Szczegółowe Warianty - ⚪ {t('color_white')}"):
                             op_w = df_w.groupby("Debiut").agg(Gry=('Wynik', 'count'), WinRate=('Wynik', lambda x: int(round((x == 'Wygrane').sum()/len(x)*100,0)))).reset_index()
-                            op_w["% Całości"] = (op_w["Gry"] / tot_w * 100).round(1)
-                            op_w = op_w[["Debiut", "Gry", "% Całości", "WinRate"]]
+                            op_w["Przewodnik"] = op_w["Debiut"].apply(build_opening_guide_url)
+                            op_w["Opis"] = op_w["Debiut"].apply(build_opening_description_url)
+                            op_w = op_w[["Debiut", "Gry", "WinRate", "Przewodnik", "Opis"]]
                             st.dataframe(
                                 op_w.sort_values("Gry", ascending=False).head(20), 
                                 use_container_width=True, hide_index=True,
                                 column_config={
                                     "Gry": st.column_config.NumberColumn("Gry"),
-                                    "% Całości": st.column_config.NumberColumn("% Całości", format="%.1f%%"),
-                                    "WinRate": st.column_config.NumberColumn("WinRate (%)", format="%d%%")
+                                    "WinRate": st.column_config.NumberColumn("WinRate (%)", format="%d%%"),
+                                    "Przewodnik": st.column_config.LinkColumn("Przewodnik", display_text="Otwórz"),
+                                    "Opis": st.column_config.LinkColumn("Opis", display_text="Opis")
                                 }
                             )
                     else: st.info("Brak partii")
@@ -1705,31 +1712,34 @@ else:
                 with c_b1:
                     st.markdown(f"<h5 style='text-align: center; color: {font_color};'>⚫ {t('color_black')}</h5>", unsafe_allow_html=True)
                     if not df_b.empty:
-                        tot_b = len(df_b)
                         op_g_b = df_b.groupby("Debiut_Grupa").agg(Gry=('Wynik', 'count'), WinRate=('Wynik', lambda x: int(round((x == 'Wygrane').sum()/len(x)*100,0)))).reset_index()
-                        op_g_b["% Całości"] = (op_g_b["Gry"] / tot_b * 100).round(1)
-                        op_g_b = op_g_b[["Debiut_Grupa", "Gry", "% Całości", "WinRate"]]
+                        op_g_b["Przewodnik"] = op_g_b["Debiut_Grupa"].apply(build_opening_guide_url)
+                        op_g_b["Opis"] = op_g_b["Debiut_Grupa"].apply(build_opening_description_url)
+                        op_g_b = op_g_b[["Debiut_Grupa", "Gry", "WinRate", "Przewodnik", "Opis"]]
                         
                         st.dataframe(
                             op_g_b.sort_values("Gry", ascending=False).head(15), 
                             use_container_width=True, hide_index=True,
                             column_config={
                                 "Gry": st.column_config.NumberColumn("Gry"),
-                                "% Całości": st.column_config.NumberColumn("% Całości", format="%.1f%%"),
-                                "WinRate": st.column_config.NumberColumn("WinRate (%)", format="%d%%")
+                                "WinRate": st.column_config.NumberColumn("WinRate (%)", format="%d%%"),
+                                "Przewodnik": st.column_config.LinkColumn("Przewodnik", display_text="Otwórz"),
+                                "Opis": st.column_config.LinkColumn("Opis", display_text="Opis")
                             }
                         )
                         with st.expander(f"Szczegółowe Warianty - ⚫ {t('color_black')}"):
                             op_b = df_b.groupby("Debiut").agg(Gry=('Wynik', 'count'), WinRate=('Wynik', lambda x: int(round((x == 'Wygrane').sum()/len(x)*100,0)))).reset_index()
-                            op_b["% Całości"] = (op_b["Gry"] / tot_b * 100).round(1)
-                            op_b = op_b[["Debiut", "Gry", "% Całości", "WinRate"]]
+                            op_b["Przewodnik"] = op_b["Debiut"].apply(build_opening_guide_url)
+                            op_b["Opis"] = op_b["Debiut"].apply(build_opening_description_url)
+                            op_b = op_b[["Debiut", "Gry", "WinRate", "Przewodnik", "Opis"]]
                             st.dataframe(
                                 op_b.sort_values("Gry", ascending=False).head(20), 
                                 use_container_width=True, hide_index=True,
                                 column_config={
                                     "Gry": st.column_config.NumberColumn("Gry"),
-                                    "% Całości": st.column_config.NumberColumn("% Całości", format="%.1f%%"),
-                                    "WinRate": st.column_config.NumberColumn("WinRate (%)", format="%d%%")
+                                    "WinRate": st.column_config.NumberColumn("WinRate (%)", format="%d%%"),
+                                    "Przewodnik": st.column_config.LinkColumn("Przewodnik", display_text="Otwórz"),
+                                    "Opis": st.column_config.LinkColumn("Opis", display_text="Opis")
                                 }
                             )
                     else: st.info("Brak partii")
@@ -1771,21 +1781,6 @@ else:
                         st.markdown(btn_html, unsafe_allow_html=True)
                 else:
                     st.info("Brak partii do analizy dla podanych kryteriów.")
-
-            with t_trening:
-                learning_choice = st.radio("Sposób nauki", ["Po kolei", "Losowo"], horizontal=True, key="training_learning")
-                opening_tree = {
-                    "name": "Caro-Kann Defense",
-                    "variants": [
-                        {"name": "Advance", "line": ["e4", "c6", "d4", "d5", "e5", "Bf5", "Nf3", "e6", "Be2", "c5"]},
-                        {"name": "Exchange", "line": ["e4", "c6", "d4", "d5", "exd5", "cxd5", "Bd3", "Nc6", "c3", "Nf6"]},
-                        {"name": "Classical", "line": ["e4", "c6", "d4", "d5", "Nc3", "dxe4", "Nxe4", "Bf5", "Ng3", "Bg6"]},
-                    ],
-                }
-                render_training_component(
-                    learning_choice,
-                    opening_tree
-                )
 
     elif app_m == VIEW_COMPARE:
         c1, c2 = st.columns(2)

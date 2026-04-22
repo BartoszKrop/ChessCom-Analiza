@@ -900,12 +900,16 @@ def build_opening_guide_url(opening_name):
 
 def make_opening_link(name):
     label = str(name or "").strip() or "Nieznany"
-    url = escape(build_opening_guide_url(label), quote=True)
+    # build_opening_guide_url returns a URL-encoded string; html.escape handles
+    # any HTML special characters (e.g. &) so the URL is safe inside an attribute.
+    url = escape(build_opening_guide_url(label))
     text = escape(label)
     return f'<a href="{url}" target="_blank">{text}</a>'
 
 def render_openings_table(df, limit):
     out = df.sort_values("Gry", ascending=False).head(limit).copy()
+    # escape=False is required to render the anchor tags in the first column;
+    # all other object-type columns must be escaped here to prevent XSS.
     for col in out.columns[1:]:
         if pd.api.types.is_object_dtype(out[col]):
             out[col] = out[col].apply(lambda x: escape(str(x)))

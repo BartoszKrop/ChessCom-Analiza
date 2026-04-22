@@ -894,8 +894,8 @@ def build_opening_guide_url(opening_name):
     clean = re.sub(r"[^A-Za-zÀ-ž0-9\s-]", " ", str(opening_name or "")).strip()
     if not clean:
         return "https://lichess.org/opening"
-    slug = "-".join([token for token in clean.split() if token])
-    return f"https://lichess.org/opening/{slug}"
+    slug = "-".join(clean.split()).lower()
+    return f"https://lichess.org/opening/{quote(slug, safe='-')}"
 
 def build_opening_description_url(opening_name):
     query = quote(f"{str(opening_name or '').strip()} chess opening")
@@ -1669,7 +1669,7 @@ else:
                     st.plotly_chart(fig_str, use_container_width=True)
 
             with t_deb:
-                st.caption('Kliknij link w kolumnie "Przewodnik" (Lichess) lub "Opis" (Wikipedia), aby przejść do strony debiutu i wariantów.')
+                st.caption('Kliknij link w kolumnie "Przewodnik" (Lichess) lub "Opis" (Wikipedia), aby przejść do strony debiutów i wariantów.')
                 c_w1, c_b1 = st.columns(2)
                 df_w = df_f[df_f["Kolor"] == "Białe"]
                 df_b = df_f[df_f["Kolor"] == "Czarne"]

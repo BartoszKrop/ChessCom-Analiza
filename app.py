@@ -897,9 +897,9 @@ def build_opening_guide_url(opening_name):
     slug = "-".join(clean.split()).lower()
     return f"https://lichess.org/opening/{quote(slug, safe='-')}"
 
-def build_opening_description_url(opening_name):
-    query = quote(f"{str(opening_name or '').strip()} chess opening")
-    return f"https://en.wikipedia.org/wiki/Special:Search?search={query}"
+def make_opening_link(name):
+    label = str(name or "").strip() or "Nieznany"
+    return f"<a href='{build_opening_guide_url(label)}' target='_blank'>{label}</a>"
 
 def extract_opening(pgn):
     if not pgn: return "Nieznany"
@@ -1669,7 +1669,6 @@ else:
                     st.plotly_chart(fig_str, use_container_width=True)
 
             with t_deb:
-                st.caption('Kliknij link w kolumnie "Przewodnik" (Lichess) lub "Opis" (Wikipedia), aby przejść do strony debiutów i wariantów.')
                 c_w1, c_b1 = st.columns(2)
                 df_w = df_f[df_f["Kolor"] == "Białe"]
                 df_b = df_f[df_f["Kolor"] == "Czarne"]
@@ -1678,70 +1677,28 @@ else:
                     st.markdown(f"<h5 style='text-align: center; color: {font_color};'>⚪ {t('color_white')}</h5>", unsafe_allow_html=True)
                     if not df_w.empty:
                         op_g_w = df_w.groupby("Debiut_Grupa").agg(Gry=('Wynik', 'count'), WinRate=('Wynik', lambda x: int(round((x == 'Wygrane').sum()/len(x)*100,0)))).reset_index()
-                        op_g_w["Przewodnik"] = op_g_w["Debiut_Grupa"].apply(build_opening_guide_url)
-                        op_g_w["Opis"] = op_g_w["Debiut_Grupa"].apply(build_opening_description_url)
-                        op_g_w = op_g_w[["Debiut_Grupa", "Gry", "WinRate", "Przewodnik", "Opis"]]
-                        
-                        st.dataframe(
-                            op_g_w.sort_values("Gry", ascending=False).head(15), 
-                            use_container_width=True, hide_index=True,
-                            column_config={
-                                "Gry": st.column_config.NumberColumn("Gry"),
-                                "WinRate": st.column_config.NumberColumn("WinRate (%)", format="%d%%"),
-                                "Przewodnik": st.column_config.LinkColumn("Przewodnik", display_text="Otwórz"),
-                                "Opis": st.column_config.LinkColumn("Opis", display_text="Opis")
-                            }
-                        )
+                        op_g_w = op_g_w[["Debiut_Grupa", "Gry", "WinRate"]]
+                        op_g_w["Debiut_Grupa"] = op_g_w["Debiut_Grupa"].apply(make_opening_link)
+                        st.markdown(op_g_w.sort_values("Gry", ascending=False).head(15).to_html(index=False, escape=False), unsafe_allow_html=True)
                         with st.expander(f"Szczegółowe Warianty - ⚪ {t('color_white')}"):
                             op_w = df_w.groupby("Debiut").agg(Gry=('Wynik', 'count'), WinRate=('Wynik', lambda x: int(round((x == 'Wygrane').sum()/len(x)*100,0)))).reset_index()
-                            op_w["Przewodnik"] = op_w["Debiut"].apply(build_opening_guide_url)
-                            op_w["Opis"] = op_w["Debiut"].apply(build_opening_description_url)
-                            op_w = op_w[["Debiut", "Gry", "WinRate", "Przewodnik", "Opis"]]
-                            st.dataframe(
-                                op_w.sort_values("Gry", ascending=False).head(20), 
-                                use_container_width=True, hide_index=True,
-                                column_config={
-                                    "Gry": st.column_config.NumberColumn("Gry"),
-                                    "WinRate": st.column_config.NumberColumn("WinRate (%)", format="%d%%"),
-                                    "Przewodnik": st.column_config.LinkColumn("Przewodnik", display_text="Otwórz"),
-                                    "Opis": st.column_config.LinkColumn("Opis", display_text="Opis")
-                                }
-                            )
+                            op_w = op_w[["Debiut", "Gry", "WinRate"]]
+                            op_w["Debiut"] = op_w["Debiut"].apply(make_opening_link)
+                            st.markdown(op_w.sort_values("Gry", ascending=False).head(20).to_html(index=False, escape=False), unsafe_allow_html=True)
                     else: st.info("Brak partii")
                         
                 with c_b1:
                     st.markdown(f"<h5 style='text-align: center; color: {font_color};'>⚫ {t('color_black')}</h5>", unsafe_allow_html=True)
                     if not df_b.empty:
                         op_g_b = df_b.groupby("Debiut_Grupa").agg(Gry=('Wynik', 'count'), WinRate=('Wynik', lambda x: int(round((x == 'Wygrane').sum()/len(x)*100,0)))).reset_index()
-                        op_g_b["Przewodnik"] = op_g_b["Debiut_Grupa"].apply(build_opening_guide_url)
-                        op_g_b["Opis"] = op_g_b["Debiut_Grupa"].apply(build_opening_description_url)
-                        op_g_b = op_g_b[["Debiut_Grupa", "Gry", "WinRate", "Przewodnik", "Opis"]]
-                        
-                        st.dataframe(
-                            op_g_b.sort_values("Gry", ascending=False).head(15), 
-                            use_container_width=True, hide_index=True,
-                            column_config={
-                                "Gry": st.column_config.NumberColumn("Gry"),
-                                "WinRate": st.column_config.NumberColumn("WinRate (%)", format="%d%%"),
-                                "Przewodnik": st.column_config.LinkColumn("Przewodnik", display_text="Otwórz"),
-                                "Opis": st.column_config.LinkColumn("Opis", display_text="Opis")
-                            }
-                        )
+                        op_g_b = op_g_b[["Debiut_Grupa", "Gry", "WinRate"]]
+                        op_g_b["Debiut_Grupa"] = op_g_b["Debiut_Grupa"].apply(make_opening_link)
+                        st.markdown(op_g_b.sort_values("Gry", ascending=False).head(15).to_html(index=False, escape=False), unsafe_allow_html=True)
                         with st.expander(f"Szczegółowe Warianty - ⚫ {t('color_black')}"):
                             op_b = df_b.groupby("Debiut").agg(Gry=('Wynik', 'count'), WinRate=('Wynik', lambda x: int(round((x == 'Wygrane').sum()/len(x)*100,0)))).reset_index()
-                            op_b["Przewodnik"] = op_b["Debiut"].apply(build_opening_guide_url)
-                            op_b["Opis"] = op_b["Debiut"].apply(build_opening_description_url)
-                            op_b = op_b[["Debiut", "Gry", "WinRate", "Przewodnik", "Opis"]]
-                            st.dataframe(
-                                op_b.sort_values("Gry", ascending=False).head(20), 
-                                use_container_width=True, hide_index=True,
-                                column_config={
-                                    "Gry": st.column_config.NumberColumn("Gry"),
-                                    "WinRate": st.column_config.NumberColumn("WinRate (%)", format="%d%%"),
-                                    "Przewodnik": st.column_config.LinkColumn("Przewodnik", display_text="Otwórz"),
-                                    "Opis": st.column_config.LinkColumn("Opis", display_text="Opis")
-                                }
-                            )
+                            op_b = op_b[["Debiut", "Gry", "WinRate"]]
+                            op_b["Debiut"] = op_b["Debiut"].apply(make_opening_link)
+                            st.markdown(op_b.sort_values("Gry", ascending=False).head(20).to_html(index=False, escape=False), unsafe_allow_html=True)
                     else: st.info("Brak partii")
 
             with t_ana:

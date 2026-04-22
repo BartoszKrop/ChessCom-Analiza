@@ -900,9 +900,15 @@ def build_opening_guide_url(opening_name):
 
 def make_opening_link(name):
     label = str(name or "").strip() or "Nieznany"
-    url = escape(build_opening_guide_url(label), quote=True)
+    url = build_opening_guide_url(label)
     text = escape(label)
     return f'<a href="{url}" target="_blank">{text}</a>'
+
+def render_openings_table(df, limit):
+    st.markdown(
+        df.sort_values("Gry", ascending=False).head(limit).to_html(index=False, escape=False),
+        unsafe_allow_html=True
+    )
 
 def extract_opening(pgn):
     if not pgn: return "Nieznany"
@@ -1682,12 +1688,12 @@ else:
                         op_g_w = df_w.groupby("Debiut_Grupa").agg(Gry=('Wynik', 'count'), WinRate=('Wynik', lambda x: int(round((x == 'Wygrane').sum()/len(x)*100,0)))).reset_index()
                         op_g_w = op_g_w[["Debiut_Grupa", "Gry", "WinRate"]]
                         op_g_w["Debiut_Grupa"] = op_g_w["Debiut_Grupa"].apply(make_opening_link)
-                        st.markdown(op_g_w.sort_values("Gry", ascending=False).head(15).to_html(index=False, escape=False), unsafe_allow_html=True)
+                        render_openings_table(op_g_w, 15)
                         with st.expander(f"Szczegółowe Warianty - ⚪ {t('color_white')}"):
                             op_w = df_w.groupby("Debiut").agg(Gry=('Wynik', 'count'), WinRate=('Wynik', lambda x: int(round((x == 'Wygrane').sum()/len(x)*100,0)))).reset_index()
                             op_w = op_w[["Debiut", "Gry", "WinRate"]]
                             op_w["Debiut"] = op_w["Debiut"].apply(make_opening_link)
-                            st.markdown(op_w.sort_values("Gry", ascending=False).head(20).to_html(index=False, escape=False), unsafe_allow_html=True)
+                            render_openings_table(op_w, 20)
                     else: st.info("Brak partii")
                         
                 with c_b1:
@@ -1696,12 +1702,12 @@ else:
                         op_g_b = df_b.groupby("Debiut_Grupa").agg(Gry=('Wynik', 'count'), WinRate=('Wynik', lambda x: int(round((x == 'Wygrane').sum()/len(x)*100,0)))).reset_index()
                         op_g_b = op_g_b[["Debiut_Grupa", "Gry", "WinRate"]]
                         op_g_b["Debiut_Grupa"] = op_g_b["Debiut_Grupa"].apply(make_opening_link)
-                        st.markdown(op_g_b.sort_values("Gry", ascending=False).head(15).to_html(index=False, escape=False), unsafe_allow_html=True)
+                        render_openings_table(op_g_b, 15)
                         with st.expander(f"Szczegółowe Warianty - ⚫ {t('color_black')}"):
                             op_b = df_b.groupby("Debiut").agg(Gry=('Wynik', 'count'), WinRate=('Wynik', lambda x: int(round((x == 'Wygrane').sum()/len(x)*100,0)))).reset_index()
                             op_b = op_b[["Debiut", "Gry", "WinRate"]]
                             op_b["Debiut"] = op_b["Debiut"].apply(make_opening_link)
-                            st.markdown(op_b.sort_values("Gry", ascending=False).head(20).to_html(index=False, escape=False), unsafe_allow_html=True)
+                            render_openings_table(op_b, 20)
                     else: st.info("Brak partii")
 
             with t_ana:

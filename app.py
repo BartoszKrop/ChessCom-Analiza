@@ -5,6 +5,7 @@ import plotly.express as px
 from datetime import datetime, date
 import re
 import json
+from html import escape
 from urllib.parse import quote
 from io import BytesIO
 import streamlit.components.v1 as components
@@ -899,7 +900,9 @@ def build_opening_guide_url(opening_name):
 
 def make_opening_link(name):
     label = str(name or "").strip() or "Nieznany"
-    return f"<a href='{build_opening_guide_url(label)}' target='_blank'>{label}</a>"
+    url = escape(build_opening_guide_url(label), quote=True)
+    text = escape(label)
+    return f'<a href="{url}" target="_blank">{text}</a>'
 
 def extract_opening(pgn):
     if not pgn: return "Nieznany"

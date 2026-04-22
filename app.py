@@ -900,13 +900,17 @@ def build_opening_guide_url(opening_name):
 
 def make_opening_link(name):
     label = str(name or "").strip() or "Nieznany"
-    url = build_opening_guide_url(label)
+    url = escape(build_opening_guide_url(label), quote=True)
     text = escape(label)
     return f'<a href="{url}" target="_blank">{text}</a>'
 
 def render_openings_table(df, limit):
+    out = df.sort_values("Gry", ascending=False).head(limit).copy()
+    for col in out.columns[1:]:
+        if pd.api.types.is_object_dtype(out[col]):
+            out[col] = out[col].apply(lambda x: escape(str(x)))
     st.markdown(
-        df.sort_values("Gry", ascending=False).head(limit).to_html(index=False, escape=False),
+        out.to_html(index=False, escape=False),
         unsafe_allow_html=True
     )
 

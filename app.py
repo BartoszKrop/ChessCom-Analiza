@@ -8,6 +8,8 @@ import json
 from html import escape
 from urllib.parse import quote
 from io import BytesIO
+import pickle
+from pathlib import Path
 import streamlit.components.v1 as components
 from reportlab.lib import colors
 from reportlab.lib.pagesizes import A4
@@ -22,6 +24,47 @@ VIEW_COMPARE = "⚔️ Porównanie Graczy"
 SCOPE_SINGLE = "Jeden profil"
 SCOPE_MERGE = "Połącz profile (C+L)"
 SCOPE_COMPARE = "Porównanie graczy (start)"
+
+CACHE_FILE = Path(__file__).parent / ".chessstats_cache.pkl"
+
+def save_local_cache():
+    """Persist current session data to a local pickle file."""
+    try:
+        data = st.session_state.get("data")
+        cache = {
+            "profile": data[0] if data else None,
+            "df": data[1] if data else None,
+            "user": st.session_state.get("user", ""),
+            "platforms": st.session_state.get("platforms", []),
+            "fetch_args": st.session_state.get("fetch_args", []),
+            "data2": st.session_state.get("data2"),
+            "user2": st.session_state.get("user2", ""),
+            "plat2": st.session_state.get("plat2", ""),
+            "default_view": st.session_state.get("default_view", VIEW_MY),
+            "cached_at": datetime.now(),
+        }
+        with open(CACHE_FILE, "wb") as fh:
+            pickle.dump(cache, fh)
+    except Exception:
+        pass
+
+def load_local_cache():
+    """Load previously saved session data from the local pickle file."""
+    try:
+        if not CACHE_FILE.exists():
+            return None
+        with open(CACHE_FILE, "rb") as fh:
+            return pickle.load(fh)
+    except Exception:
+        return None
+
+def clear_local_cache():
+    """Delete the local cache file."""
+    try:
+        if CACHE_FILE.exists():
+            CACHE_FILE.unlink()
+    except Exception:
+        pass
 
 # --- KONFIGURACJA STRONY (MUSI BYĆ PIERWSZA) ---
 st.set_page_config(page_title="ChessStats", page_icon="♟️", layout="wide")
@@ -169,7 +212,10 @@ ui_dict = {
     "avg_move_seconds": {"pl": "Śr. sekundy / ruch", "en": "Avg seconds / move", "de": "Ø Sekunden / Zug"},
     "prepare_analysis": {"pl": "Przygotuj analizę (Lichess Engine)", "en": "Prepare analysis (Lichess Engine)", "de": "Analyse vorbereiten (Lichess Engine)"},
     "compare_quick": {"pl": "Porównanie graczy (start)", "en": "Player comparison (start)", "de": "Spielervergleich (Start)"},
-    "no_tempo_data": {"pl": "Brak danych zegara do analizy tempa ruchu dla aktualnych partii.", "en": "No clock data available for move-pace analysis in current games.", "de": "Keine Uhrdaten für die Zugtempo-Analyse in den aktuellen Partien verfügbar."}
+    "no_tempo_data": {"pl": "Brak danych zegara do analizy tempa ruchu dla aktualnych partii.", "en": "No clock data available for move-pace analysis in current games.", "de": "Keine Uhrdaten für die Zugtempo-Analyse in den aktuellen Partien verfügbar."},
+    "btn_load_cache": {"pl": "Wczytaj zapisane dane", "en": "Load saved data", "de": "Gespeicherte Daten laden"},
+    "cache_hint": {"pl": "Ostatnio zapisano: {ts}", "en": "Last saved: {ts}", "de": "Zuletzt gespeichert: {ts}"},
+    "btn_new_player": {"pl": "Nowy gracz / inne konto", "en": "New player / other account", "de": "Neuer Spieler / anderes Konto"},
 }
 
 reason_dict = {
@@ -908,14 +954,16 @@ def make_opening_link(name):
 
 def render_openings_table(df, limit):
     out = df.sort_values("Gry", ascending=False).head(limit).copy()
-    # escape=False is required to render the anchor tags in the first column;
-    # all other object-type columns must be escaped here to prevent XSS.
-    for col in out.columns[1:]:
-        if pd.api.types.is_object_dtype(out[col]):
-            out[col] = out[col].apply(lambda x: escape(str(x)))
-    st.markdown(
-        out.to_html(index=False, escape=False),
-        unsafe_allow_html=True
+    first_col = out.columns[0]
+    # Add a URL column so links are still accessible via st.dataframe's LinkColumn
+    out["🔗"] = out[first_col].apply(lambda x: build_opening_guide_url(str(x)))
+    st.dataframe(
+        out,
+        use_container_width=True,
+        hide_index=True,
+        column_config={
+            "🔗": st.column_config.LinkColumn("🔗", display_text="Lichess", width="small"),
+        },
     )
 
 def extract_opening(pgn):
@@ -1381,6 +1429,29 @@ if st.session_state.data is None:
         st.selectbox(tu("♟️ Język Debiutów"), ["Polski", "English", "Deutsch"], key="op_lang")
         st.radio(tu("🎨 Motyw"), ["Chess.com", "Neon Retro", "Morski", "Ciemny", "Jasny"], key="theme", horizontal=True)
 
+    # --- LOCAL CACHE BANNER ---
+    _cache = load_local_cache()
+    if _cache and _cache.get("user") and _cache.get("df") is not None and not _cache["df"].empty:
+        _ts = _cache.get("cached_at")
+        _ts_str = _ts.strftime("%d.%m.%Y %H:%M") if isinstance(_ts, datetime) else str(_ts)
+        st.info(
+            f"♟️ **{_cache['user']}** — {t('cache_hint').format(ts=_ts_str)}",
+            icon="💾",
+        )
+        _cb1, _cb2 = st.columns(2)
+        if _cb1.button(t("btn_load_cache"), type="primary", use_container_width=True):
+            st.session_state.data = (_cache["profile"], _cache["df"])
+            st.session_state.user = _cache["user"]
+            st.session_state.platforms = _cache.get("platforms", [])
+            st.session_state.fetch_args = _cache.get("fetch_args", [])
+            st.session_state.data2 = _cache.get("data2")
+            st.session_state.user2 = _cache.get("user2", "")
+            st.session_state.plat2 = _cache.get("plat2", "")
+            st.session_state.default_view = _cache.get("default_view", VIEW_MY)
+            st.rerun()
+        _cb2.button(t("btn_new_player"), use_container_width=True)
+        st.divider()
+
     scope_options = [SCOPE_SINGLE, SCOPE_MERGE, SCOPE_COMPARE]
     log_m = st.radio(tu("Zasięg:"), scope_options, horizontal=True, format_func=tu)
     if log_m == SCOPE_SINGLE:
@@ -1394,6 +1465,7 @@ if st.session_state.data is None:
                     if f[0] is not None and not f[1].empty: 
                         st.session_state.data, st.session_state.user, st.session_state.platforms = f, nick, [plat]
                         st.session_state.fetch_args = [(nick, plat)]
+                        save_local_cache()
                         st.rerun()
                     else: st.error("Nie znaleziono partii dla tego gracza.")
     elif log_m == SCOPE_MERGE:
@@ -1409,6 +1481,7 @@ if st.session_state.data is None:
                         st.session_state.user, st.session_state.platforms = f"{n1}+{n2}", list(set([p1, p2]))
                         st.session_state.fetch_args = [(n1, p1), (n2, p2)]
                         st.session_state.default_view = VIEW_MY
+                        save_local_cache()
                         st.rerun()
                     else: st.error("Błąd pobierania danych. Upewnij się, że oba konta posiadają historię gier.")
     else:
@@ -1430,6 +1503,7 @@ if st.session_state.data is None:
                         st.session_state.user2 = n2
                         st.session_state.plat2 = p2
                         st.session_state.default_view = VIEW_COMPARE
+                        save_local_cache()
                         st.rerun()
                     else:
                         st.error("Nie udało się pobrać danych dla obu graczy.")
@@ -1489,10 +1563,12 @@ else:
                         f2_rival = run_fetch_with_progress(st.session_state.user2, st.session_state.plat2)
                         if f2_rival[0] is not None and not f2_rival[1].empty:
                             st.session_state.data2 = f2_rival[1]
+                    save_local_cache()
                 st.rerun()
                 
         with c_btn2:
             if st.button(t("btn_change"), type="primary", use_container_width=True):
+                clear_local_cache()
                 for k in ['data','data2','url','user','user2','plat2']: st.session_state[k] = None if k in ['data','data2','url'] else ""
                 st.session_state.platforms = []
                 st.session_state.fetch_args = []
@@ -1695,12 +1771,10 @@ else:
                     if not df_w.empty:
                         op_g_w = df_w.groupby("Debiut_Grupa").agg(Gry=('Wynik', 'count'), WinRate=('Wynik', lambda x: int(round((x == 'Wygrane').sum()/len(x)*100,0)))).reset_index()
                         op_g_w = op_g_w[["Debiut_Grupa", "Gry", "WinRate"]]
-                        op_g_w["Debiut_Grupa"] = op_g_w["Debiut_Grupa"].apply(make_opening_link)
                         render_openings_table(op_g_w, 15)
                         with st.expander(f"Szczegółowe Warianty - ⚪ {t('color_white')}"):
                             op_w = df_w.groupby("Debiut").agg(Gry=('Wynik', 'count'), WinRate=('Wynik', lambda x: int(round((x == 'Wygrane').sum()/len(x)*100,0)))).reset_index()
                             op_w = op_w[["Debiut", "Gry", "WinRate"]]
-                            op_w["Debiut"] = op_w["Debiut"].apply(make_opening_link)
                             render_openings_table(op_w, 20)
                     else: st.info("Brak partii")
                         
@@ -1709,12 +1783,10 @@ else:
                     if not df_b.empty:
                         op_g_b = df_b.groupby("Debiut_Grupa").agg(Gry=('Wynik', 'count'), WinRate=('Wynik', lambda x: int(round((x == 'Wygrane').sum()/len(x)*100,0)))).reset_index()
                         op_g_b = op_g_b[["Debiut_Grupa", "Gry", "WinRate"]]
-                        op_g_b["Debiut_Grupa"] = op_g_b["Debiut_Grupa"].apply(make_opening_link)
                         render_openings_table(op_g_b, 15)
                         with st.expander(f"Szczegółowe Warianty - ⚫ {t('color_black')}"):
                             op_b = df_b.groupby("Debiut").agg(Gry=('Wynik', 'count'), WinRate=('Wynik', lambda x: int(round((x == 'Wygrane').sum()/len(x)*100,0)))).reset_index()
                             op_b = op_b[["Debiut", "Gry", "WinRate"]]
-                            op_b["Debiut"] = op_b["Debiut"].apply(make_opening_link)
                             render_openings_table(op_b, 20)
                     else: st.info("Brak partii")
 

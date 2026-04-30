@@ -26,6 +26,8 @@ SCOPE_MERGE = "Połącz profile (C+L)"
 SCOPE_COMPARE = "Porównanie graczy (start)"
 
 CACHE_FILE = Path(__file__).parent / ".chessstats_cache.pkl"
+# The cache file is written and read exclusively by this app on the same local
+# machine, so pickle is safe here. It is never loaded from untrusted sources.
 
 def save_local_cache():
     """Persist current session data to a local pickle file."""
@@ -45,8 +47,8 @@ def save_local_cache():
         }
         with open(CACHE_FILE, "wb") as fh:
             pickle.dump(cache, fh)
-    except Exception:
-        pass
+    except Exception as exc:
+        print(f"[ChessStats] save_local_cache failed: {exc}")
 
 def load_local_cache():
     """Load previously saved session data from the local pickle file."""
@@ -55,7 +57,8 @@ def load_local_cache():
             return None
         with open(CACHE_FILE, "rb") as fh:
             return pickle.load(fh)
-    except Exception:
+    except Exception as exc:
+        print(f"[ChessStats] load_local_cache failed: {exc}")
         return None
 
 def clear_local_cache():
@@ -63,8 +66,8 @@ def clear_local_cache():
     try:
         if CACHE_FILE.exists():
             CACHE_FILE.unlink()
-    except Exception:
-        pass
+    except Exception as exc:
+        print(f"[ChessStats] clear_local_cache failed: {exc}")
 
 # --- KONFIGURACJA STRONY (MUSI BYĆ PIERWSZA) ---
 st.set_page_config(page_title="ChessStats", page_icon="♟️", layout="wide")
@@ -1449,7 +1452,9 @@ if st.session_state.data is None:
             st.session_state.plat2 = _cache.get("plat2", "")
             st.session_state.default_view = _cache.get("default_view", VIEW_MY)
             st.rerun()
-        _cb2.button(t("btn_new_player"), use_container_width=True)
+        if _cb2.button(t("btn_new_player"), use_container_width=True):
+            clear_local_cache()
+            st.rerun()
         st.divider()
 
     scope_options = [SCOPE_SINGLE, SCOPE_MERGE, SCOPE_COMPARE]

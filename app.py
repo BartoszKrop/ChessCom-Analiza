@@ -957,17 +957,7 @@ def make_opening_link(name):
 
 def render_openings_table(df, limit):
     out = df.sort_values("Gry", ascending=False).head(limit).copy()
-    first_col = out.columns[0]
-    # Add a URL column so links are still accessible via st.dataframe's LinkColumn
-    out["🔗"] = out[first_col].apply(lambda x: build_opening_guide_url(str(x)))
-    st.dataframe(
-        out,
-        use_container_width=True,
-        hide_index=True,
-        column_config={
-            "🔗": st.column_config.LinkColumn("🔗", display_text="Lichess", width="small"),
-        },
-    )
+    st.dataframe(out, use_container_width=True, hide_index=True)
 
 def extract_opening(pgn):
     if not pgn: return "Nieznany"

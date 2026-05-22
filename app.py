@@ -908,14 +908,36 @@ def make_opening_link(name):
 
 def render_openings_table(df, limit):
     out = df.sort_values("Gry", ascending=False).head(limit).copy()
-    # escape=False is required to render the anchor tags in the first column;
-    # all other object-type columns must be escaped here to prevent XSS.
-    for col in out.columns[1:]:
-        if pd.api.types.is_object_dtype(out[col]):
-            out[col] = out[col].apply(lambda x: escape(str(x)))
-    st.markdown(
-        out.to_html(index=False, escape=False),
-        unsafe_allow_html=True
+    
+    # Extract opening names from HTML links if present
+    opening_col = out.columns[0]
+    if out[opening_col].dtype == 'object':
+        # Check if any cell contains HTML
+        has_html = out[opening_col].astype(str).str.contains('<a href').any()
+        if has_html:
+            # Extract text from HTML links for clean display
+            out[opening_col] = out[opening_col].apply(
+                lambda x: re.sub(r'<[^>]+>', '', str(x)) if '<a href' in str(x) else x
+            )
+    
+    # Build column configuration for better formatting
+    col_config = {}
+    for col in out.columns:
+        if col == out.columns[0]:
+            col_config[col] = st.column_config.TextColumn(label=col, width="medium")
+        elif col == "Gry":
+            col_config[col] = st.column_config.NumberColumn(label="Gry", format="%d", width="small")
+        elif "WinRate" in col or "%" in col:
+            col_config[col] = st.column_config.NumberColumn(label=col, format="%d%%", width="small")
+        elif "Partie" in col or col in ["Partie [", "Razem"]:
+            col_config[col] = st.column_config.NumberColumn(label=col, format="%d", width="small")
+    
+    # Display as interactive dataframe with sorting and filtering
+    st.dataframe(
+        out,
+        use_container_width=True,
+        hide_index=True,
+        column_config=col_config if col_config else None
     )
 
 def extract_opening(pgn):
@@ -1831,11 +1853,45 @@ else:
                 w2 = int(round((df2_c["Wynik"]=="Wygrane").sum()/g2*100,0)) if g2 > 0 else 0
                 d1 = int(round((df1_c["Wynik"]=="Remisy").sum()/g1*100,0)) if g1 > 0 else 0
                 d2 = int(round((df2_c["Wynik"]=="Remisy").sum()/g2*100,0)) if g2 > 0 else 0
+                l1 = int(round((df1_c["Wynik"]=="Przegrane").sum()/g1*100,0)) if g1 > 0 else 0
+                l2 = int(round((df2_c["Wynik"]=="Przegrane").sum()/g2*100,0)) if g2 > 0 else 0
 
-                k1, k2, k3 = st.columns(3)
+                # Main metrics comparison
+                st.markdown(f"<h4 style='color: {font_color};'>Podstawowe Statystyki</h4>", unsafe_allow_html=True)
+                k1, k2, k3, k4 = st.columns(4)
                 k1.metric("Rozegrane Partie", f"{g1} / {g2}")
                 k2.metric("Win Rate (%)", f"{w1}% / {w2}%", w1 - w2)
                 k3.metric("Draw Rate (%)", f"{d1}% / {d2}%", d1 - d2)
+                k4.metric("Loss Rate (%)", f"{l1}% / {l2}%", l2 - l1)
+                
+                # ELO Comparison
+                st.divider()
+                st.markdown(f"<h4 style='color: {font_color};'>Porównanie ELO</h4>", unsafe_allow_html=True)
+                
+                # Current and Peak ELO by mode
+                elo_modes = sorted(list(set(df_loc["Tryb"].unique()) | set(df2["Tryb"].unique())))
+                elo_cols = st.columns(len(elo_modes) if elo_modes else 1)
+                
+                for idx, mode in enumerate(elo_modes):
+                    df1_mode = df1_c[df1_c["Tryb"] == mode]
+                    df2_mode = df2_c[df2_c["Tryb"] == mode]
+                    
+                    current_elo1 = df1_mode["ELO"].iloc[-1] if not df1_mode.empty else "N/A"
+                    current_elo2 = df2_mode["ELO"].iloc[-1] if not df2_mode.empty else "N/A"
+                    peak_elo1 = df1_mode["ELO"].max() if not df1_mode.empty else 0
+                    peak_elo2 = df2_mode["ELO"].max() if not df2_mode.empty else 0
+                    
+                    with elo_cols[idx]:
+                        st.markdown(f"<p style='text-align: center; font-weight: bold; color: {font_color};'>{mode}</p>", unsafe_allow_html=True)
+                        
+                        elo_info = f"<div style='background-color: {chart_bg}; padding: 10px; border-radius: 5px; border-left: 3px solid {cw};'>"
+                        elo_info += f"<div style='font-size: 0.85rem; color: {font_color};'><b>Obecne:</b></div>"
+                        elo_info += f"<div style='font-size: 0.9rem; color: {cp1}; margin-bottom: 8px;'><b>{current_elo1}</b> / <b>{current_elo2}</b></div>"
+                        elo_info += f"<div style='font-size: 0.85rem; color: {font_color};'><b>Peak:</b></div>"
+                        elo_info += f"<div style='font-size: 0.9rem; color: {cp2};'><b>{peak_elo1}</b> / <b>{peak_elo2}</b></div>"
+                        elo_info += "</div>"
+                        
+                        st.markdown(elo_info, unsafe_allow_html=True)
 
                 st.divider()
                 st.markdown(f"<h4 style='color: {font_color};'>Sposób zakończenia partii</h4>", unsafe_allow_html=True)

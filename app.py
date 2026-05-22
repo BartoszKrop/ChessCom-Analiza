@@ -920,16 +920,24 @@ def render_openings_table(df, limit):
                 lambda x: re.sub(r'<[^>]+>', '', str(x)) if '<a href' in str(x) else x
             )
     
+    # Build column configuration for better formatting
+    col_config = {}
+    for col in out.columns:
+        if col == out.columns[0]:
+            col_config[col] = st.column_config.TextColumn(label=col, width="medium")
+        elif col == "Gry":
+            col_config[col] = st.column_config.NumberColumn(label="Gry", format="%d", width="small")
+        elif "WinRate" in col or "%" in col:
+            col_config[col] = st.column_config.NumberColumn(label=col, format="%d%%", width="small")
+        elif "Partie" in col or col in ["Partie [", "Razem"]:
+            col_config[col] = st.column_config.NumberColumn(label=col, format="%d", width="small")
+    
     # Display as interactive dataframe with sorting and filtering
     st.dataframe(
         out,
         use_container_width=True,
         hide_index=True,
-        column_config={
-            out.columns[0]: st.column_config.TextColumn(label=out.columns[0]),
-            "Gry": st.column_config.NumberColumn(label="Gry", format="%d"),
-            "WinRate": st.column_config.NumberColumn(label="Win%", format="%d%%"),
-        } if "WinRate" in out.columns else None
+        column_config=col_config if col_config else None
     )
 
 def extract_opening(pgn):

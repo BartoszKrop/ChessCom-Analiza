@@ -1845,16 +1845,20 @@ else:
                 w2 = int(round((df2_c["Wynik"]=="Wygrane").sum()/g2*100,0)) if g2 > 0 else 0
                 d1 = int(round((df1_c["Wynik"]=="Remisy").sum()/g1*100,0)) if g1 > 0 else 0
                 d2 = int(round((df2_c["Wynik"]=="Remisy").sum()/g2*100,0)) if g2 > 0 else 0
+                l1 = int(round((df1_c["Wynik"]=="Przegrane").sum()/g1*100,0)) if g1 > 0 else 0
+                l2 = int(round((df2_c["Wynik"]=="Przegrane").sum()/g2*100,0)) if g2 > 0 else 0
 
-                k1, k2, k3 = st.columns(3)
+                # Main metrics comparison
+                st.markdown(f"<h4 style='color: {font_color};'>Podstawowe Statystyki</h4>", unsafe_allow_html=True)
+                k1, k2, k3, k4 = st.columns(4)
                 k1.metric("Rozegrane Partie", f"{g1} / {g2}")
                 k2.metric("Win Rate (%)", f"{w1}% / {w2}%", w1 - w2)
                 k3.metric("Draw Rate (%)", f"{d1}% / {d2}%", d1 - d2)
+                k4.metric("Loss Rate (%)", f"{l1}% / {l2}%", l2 - l1)
                 
                 # ELO Comparison
                 st.divider()
                 st.markdown(f"<h4 style='color: {font_color};'>Porównanie ELO</h4>", unsafe_allow_html=True)
-                st.divider()
                 
                 # Current and Peak ELO by mode
                 elo_modes = sorted(list(set(df_loc["Tryb"].unique()) | set(df2["Tryb"].unique())))
@@ -1874,9 +1878,9 @@ else:
                         
                         elo_info = f"<div style='background-color: {chart_bg}; padding: 10px; border-radius: 5px; border-left: 3px solid {cw};'>"
                         elo_info += f"<div style='font-size: 0.85rem; color: {font_color};'><b>Obecne:</b></div>"
-                        elo_info += f"<div style='font-size: 0.9rem; color: {cp1}; margin-bottom: 8px;'>{current_elo1} / {current_elo2}</div>"
+                        elo_info += f"<div style='font-size: 0.9rem; color: {cp1}; margin-bottom: 8px;'><b>{current_elo1}</b> / <b>{current_elo2}</b></div>"
                         elo_info += f"<div style='font-size: 0.85rem; color: {font_color};'><b>Peak:</b></div>"
-                        elo_info += f"<div style='font-size: 0.9rem; color: {cp2};'>{peak_elo1} / {peak_elo2}</div>"
+                        elo_info += f"<div style='font-size: 0.9rem; color: {cp2};'><b>{peak_elo1}</b> / <b>{peak_elo2}</b></div>"
                         elo_info += "</div>"
                         
                         st.markdown(elo_info, unsafe_allow_html=True)

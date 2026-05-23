@@ -2132,23 +2132,23 @@ else:
                     
                    return m[["Debiut", f"{u1} - Gry", f"{u1} - Win%", f"{u2} - Gry", f"{u2} - Win%"]].head(20)
 
-                c_w_op, c_b_op = st.columns(2)
+               c_w_op, c_b_op = st.columns(2)
                 
-                with c_w_op:
-                    st.markdown(f"<h5 style='text-align: center; color: {font_color};'>⚪ {t('color_white')}</h5>", unsafe_allow_html=True)
-                    df_comp_w = create_player_opening_comparison("Białe")
-                    if not df_comp_w.empty:
-                        st.dataframe(df_comp_w, use_container_width=True, hide_index=True)
-                    else:
-                        st.info("Brak partii")
+               with c_w_op:
+                   st.markdown(f"<h5 style='text-align: center; color: {font_color};'>⚪ {t('color_white')}</h5>", unsafe_allow_html=True)
+                   df_comp_w = create_player_opening_comparison("Białe")
+                   if not df_comp_w.empty:
+                       st.dataframe(df_comp_w, use_container_width=True, hide_index=True)
+                   else:
+                       st.info("Brak partii")
                     
-                with c_b_op:
-                    st.markdown(f"<h5 style='text-align: center; color: {font_color};'>⚫ {t('color_black')}</h5>", unsafe_allow_html=True)
-                    df_comp_b = create_player_opening_comparison("Czarne")
-                    if not df_comp_b.empty:
-                        st.dataframe(df_comp_b, use_container_width=True, hide_index=True)
-                    else:
-                        st.info("Brak partii")
+               with c_b_op:
+                   st.markdown(f"<h5 style='text-align: center; color: {font_color};'>⚫ {t('color_black')}</h5>", unsafe_allow_html=True)
+                   df_comp_b = create_player_opening_comparison("Czarne")
+                   if not df_comp_b.empty:
+                       st.dataframe(df_comp_b, use_container_width=True, hide_index=True)
+                   else:
+                       st.info("Brak partii")
 
             if len(tabs) > 4:
                 with tabs[4]:

@@ -2189,6 +2189,37 @@ else:
                         
                         st.write("**Historia spotkań:**")
                         st.dataframe(h2[["Data", "Tryb", "Kolor", "Wynik", "Ruchy", "Debiut"]].sort_values("Data", ascending=False), use_container_width=True, hide_index=True)
+                        
+                        st.divider()
+                        st.write("**Analiza partii na Lichess:**")
+                        
+                        h2_sorted = h2.sort_values("Data", ascending=False).reset_index(drop=True)
+                        match_labels = [f"{row['Data']} - {row['Tryb']} - {row['Kolor']} - {row['Wynik']} ({row['Ruchy']} ruchów)" for _, row in h2_sorted.iterrows()]
+                        
+                        sel_idx = st.selectbox(
+                            tu("Wybierz partię do analizy na Lichess:"),
+                            range(len(h2_sorted)),
+                            format_func=lambda i: match_labels[i],
+                            key="h2h_match_select"
+                        )
+                        
+                        if st.button(tu("Wyślij do analizy na Lichess"), type="primary", use_container_width=True, key="h2h_lichess_btn"):
+                            if sel_idx is not None:
+                                with st.spinner(tu("Przesyłanie PGN do analizy...")):
+                                    selected_match = h2_sorted.iloc[sel_idx]
+                                    if selected_match["Platforma"] == "Lichess":
+                                        analysis_url = to_lichess_analysis_url(selected_match["Link"])
+                                    else:
+                                        analysis_url = import_to_lichess(selected_match["PGN_Raw"])
+                                    
+                                    if analysis_url:
+                                        st.session_state.h2h_analysis_url = analysis_url
+                                        st.success(f"✅ Partia wysłana do Lichess!")
+                                    else:
+                                        st.error("❌ Nie udało się wysłać partii do Lichess. Spróbuj ponownie.")
+                        
+                        if "h2h_analysis_url" in st.session_state and st.session_state.h2h_analysis_url:
+                            st.markdown(f"[🔗 Otwórz analizę na Lichess]({st.session_state.h2h_analysis_url})", unsafe_allow_html=True)
                     else: 
                         st.info(f"Brak zarejestrowanych bezpośrednich partii pomiędzy **{u1}** a **{u2}** (przy obecnych filtrach).")
     

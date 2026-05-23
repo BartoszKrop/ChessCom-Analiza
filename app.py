@@ -1901,11 +1901,17 @@ else:
 
                 # Main metrics comparison
                 st.markdown(f"<h4 style='color: {font_color};'>Podstawowe Statystyki</h4>", unsafe_allow_html=True)
-                k1, k2, k3, k4 = st.columns(4)
+                
+                # Calculate total game time for both players
+                total_time1 = calculate_total_time_spent(df1_c)
+                total_time2 = calculate_total_time_spent(df2_c)
+                
+                k1, k2, k3, k4, k5 = st.columns(5)
                 k1.metric("Rozegrane Partie", f"{g1} / {g2}")
                 k2.metric("Win Rate (%)", f"{w1}% / {w2}%", w1 - w2)
                 k3.metric("Draw Rate (%)", f"{d1}% / {d2}%", d1 - d2)
                 k4.metric("Loss Rate (%)", f"{l1}% / {l2}%", l2 - l1)
+                k5.metric("Łączny Czas Gry", f"{total_time1}h / {total_time2}h")
                 
                 # ELO Comparison
                 st.divider()
@@ -1937,6 +1943,43 @@ else:
                         st.markdown(elo_info, unsafe_allow_html=True)
 
                 st.divider()
+                st.markdown("### Zmiana ELO w Czasie")
+                
+                # Add ELO progression charts for each of the 3 main modes
+                main_modes = ["Rapid", "Blitz", "Bullet"]
+                available_modes = [m for m in main_modes if m in elo_modes]
+                
+                if available_modes:
+                    elo_chart_cols = st.columns(len(available_modes))
+                    
+                    for col_idx, mode in enumerate(available_modes):
+                        df1_mode = df1_c[df1_c["Tryb"] == mode].sort_values("Timestamp")
+                        df2_mode = df2_c[df2_c["Tryb"] == mode].sort_values("Timestamp")
+                        
+                        # Combine data for comparison
+                        elo_data = []
+                        if not df1_mode.empty:
+                            df1_elo = df1_mode[["Timestamp", "ELO"]].copy()
+                            df1_elo["Gracz"] = u1
+                            elo_data.append(df1_elo)
+                        if not df2_mode.empty:
+                            df2_elo = df2_mode[["Timestamp", "ELO"]].copy()
+                            df2_elo["Gracz"] = u2
+                            elo_data.append(df2_elo)
+                        
+                        if elo_data:
+                            elo_combined = pd.concat(elo_data, ignore_index=True)
+                            
+                            with elo_chart_cols[col_idx]:
+                                st.markdown(f"<p style='text-align: center; font-weight: bold; color: {font_color};'>{mode}</p>", unsafe_allow_html=True)
+                                fig_elo_comp = px.line(elo_combined, x="Timestamp", y="ELO", color="Gracz", 
+                                                      color_discrete_sequence=[cp1, cp2], markers=True)
+                                fig_elo_comp.update_xaxes(title_text="")
+                                fig_elo_comp.update_yaxes(title_text="ELO")
+                                fig_elo_comp = style_chart(fig_elo_comp)
+                                st.plotly_chart(fig_elo_comp, use_container_width=True)
+
+                st.divider()
                 
                 df1_r = df1_c.copy()
                 df2_r = df2_c.copy()
@@ -1950,22 +1993,26 @@ else:
                     df_win = df_r_comb[df_r_comb["Wynik"] == "Wygrane"].groupby(["Powod_T", "Gracz"]).size().reset_index(name="Ilość")
                     if not df_win.empty:
                         df_win['Razem'] = df_win.groupby('Gracz')['Ilość'].transform('sum')
-                        df_win['Tekst'] = df_win['Ilość'].astype(str) + " (" + (df_win['Ilość']/df_win['Razem']*100).round(1).astype(str) + "%)"
+                        df_win['Procent'] = (df_win['Ilość']/df_win['Razem']*100).round(1)
+                        df_win['Tekst'] = df_win['Ilość'].astype(str) + " (" + df_win['Procent'].astype(str) + "%)"
                         with c_r1:
                             st.markdown("### Jak wygrywają?")
-                            fig_r_w = px.bar(df_win, x="Powod_T", y="Ilość", color="Gracz", barmode="group", color_discrete_sequence=[cp1, cp2], text="Tekst")
+                            fig_r_w = px.bar(df_win, x="Powod_T", y="Procent", color="Gracz", barmode="group", color_discrete_sequence=[cp1, cp2], text="Tekst")
                             fig_r_w.update_traces(textposition='outside')
+                            fig_r_w.update_yaxes(title_text="Procent (%)")
                             fig_r_w = style_chart(fig_r_w)
                             st.plotly_chart(fig_r_w, use_container_width=True)
 
                     df_loss = df_r_comb[df_r_comb["Wynik"] == "Przegrane"].groupby(["Powod_T", "Gracz"]).size().reset_index(name="Ilość")
                     if not df_loss.empty:
                         df_loss['Razem'] = df_loss.groupby('Gracz')['Ilość'].transform('sum')
-                        df_loss['Tekst'] = df_loss['Ilość'].astype(str) + " (" + (df_loss['Ilość']/df_loss['Razem']*100).round(1).astype(str) + "%)"
+                        df_loss['Procent'] = (df_loss['Ilość']/df_loss['Razem']*100).round(1)
+                        df_loss['Tekst'] = df_loss['Ilość'].astype(str) + " (" + df_loss['Procent'].astype(str) + "%)"
                         with c_r2:
                             st.markdown("### Jak przegrywają?")
-                            fig_r_l = px.bar(df_loss, x="Powod_T", y="Ilość", color="Gracz", barmode="group", color_discrete_sequence=[cp1, cp2], text="Tekst")
+                            fig_r_l = px.bar(df_loss, x="Powod_T", y="Procent", color="Gracz", barmode="group", color_discrete_sequence=[cp1, cp2], text="Tekst")
                             fig_r_l.update_traces(textposition='outside')
+                            fig_r_l.update_yaxes(title_text="Procent (%)")
                             fig_r_l = style_chart(fig_r_l)
                             st.plotly_chart(fig_r_l, use_container_width=True)
 
@@ -2055,38 +2102,35 @@ else:
                         st.info(t("no_tempo_data"))
 
             with tabs[3]:
-                st.markdown("### 🛡️ Debiuty - Porównanie Graczy")
+               st.markdown("### 🛡️ Debiuty - Porównanie Graczy")
                 
-                def create_player_opening_comparison(color_name):
-                    df1_sub = df1_c[df1_c["Kolor"] == color_name]
-                    df2_sub = df2_c[df2_c["Kolor"] == color_name]
+               def create_player_opening_comparison(color_name):
+                   df1_sub = df1_c[df1_c["Kolor"] == color_name]
+                   df2_sub = df2_c[df2_c["Kolor"] == color_name]
                     
-                    g1_op = df1_sub.groupby("Debiut_Grupa").agg(
-                        Gry=('Wynik', 'count'),
-                        WinRate=('Wynik', lambda x: int(round((x == 'Wygrane').sum()/len(x)*100,0)))
-                    ).reset_index()
-                    g1_op.columns = [f"{u1} - Debiut", f"{u1} - Gry", f"{u1} - Win%"]
+                   g1_op = df1_sub.groupby("Debiut_Grupa").agg(
+                       Gry=('Wynik', 'count'),
+                       WinRate=('Wynik', lambda x: int(round((x == 'Wygrane').sum()/len(x)*100,0)))
+                   ).reset_index()
+                   g1_op.columns = ["Debiut", f"{u1} - Gry", f"{u1} - Win%"]
                     
-                    g2_op = df2_sub.groupby("Debiut_Grupa").agg(
-                        Gry=('Wynik', 'count'),
-                        WinRate=('Wynik', lambda x: int(round((x == 'Wygrane').sum()/len(x)*100,0)))
-                    ).reset_index()
-                    g2_op.columns = [f"{u2} - Debiut", f"{u2} - Gry", f"{u2} - Win%"]
+                   g2_op = df2_sub.groupby("Debiut_Grupa").agg(
+                       Gry=('Wynik', 'count'),
+                       WinRate=('Wynik', lambda x: int(round((x == 'Wygrane').sum()/len(x)*100,0)))
+                   ).reset_index()
+                   g2_op.columns = ["Debiut", f"{u2} - Gry", f"{u2} - Win%"]
                     
-                    m = pd.merge(g1_op, g2_op, left_on=f"{u1} - Debiut", right_on=f"{u2} - Debiut", how="outer").fillna(0)
+                   # Merge on Debiut column and only fill numeric columns with 0
+                   m = pd.merge(g1_op, g2_op, on="Debiut", how="outer")
+                   m[[f"{u1} - Gry", f"{u1} - Win%", f"{u2} - Gry", f"{u2} - Win%"]] = m[[f"{u1} - Gry", f"{u1} - Win%", f"{u2} - Gry", f"{u2} - Win%"]].fillna(0)
+                   m[[f"{u1} - Gry", f"{u2} - Gry"]] = m[[f"{u1} - Gry", f"{u2} - Gry"]].astype(int)
+                   m[[f"{u1} - Win%", f"{u2} - Win%"]] = m[[f"{u1} - Win%", f"{u2} - Win%"]].astype(int)
                     
-                    # Simplify column names for display
-                    display_cols = []
-                    if f"{u1} - Debiut" in m.columns and m[f"{u1} - Debiut"].notna().any():
-                        debiut_col = f"{u1} - Debiut"
-                    elif f"{u2} - Debiut" in m.columns and m[f"{u2} - Debiut"].notna().any():
-                        debiut_col = f"{u2} - Debiut"
-                    else:
-                        debiut_col = f"{u1} - Debiut"
+                   # Sort by combined games count descending
+                   m['Total_Gry'] = m[f"{u1} - Gry"] + m[f"{u2} - Gry"]
+                   m = m.sort_values('Total_Gry', ascending=False).drop('Total_Gry', axis=1)
                     
-                    m[debiut_col] = m[debiut_col].fillna(m.get(f"{u2} - Debiut", m[debiut_col]))
-                    
-                    return m[[debiut_col, f"{u1} - Gry", f"{u1} - Win%", f"{u2} - Gry", f"{u2} - Win%"]].head(20)
+                   return m[["Debiut", f"{u1} - Gry", f"{u1} - Win%", f"{u2} - Gry", f"{u2} - Win%"]].head(20)
 
                 c_w_op, c_b_op = st.columns(2)
                 

@@ -19,6 +19,7 @@ MAX_MOVE_TIME_SECONDS = 300
 NUM_DECILES = 10
 VIEW_MY = "👤 Moja Analiza"
 VIEW_COMPARE = "⚔️ Porównanie Graczy"
+VIEW_TEST = "🧪 Testowe opcje"
 SCOPE_SINGLE = "Jeden profil"
 SCOPE_MERGE = "Połącz profile (C+L)"
 SCOPE_COMPARE = "Porównanie graczy (start)"
@@ -255,6 +256,7 @@ ui_phrases = {
     "Brak partii do analizy.": {"en": "No games for analysis.", "de": "Keine Partien zur Analyse."},
     "⚔️ Porównanie Graczy": {"en": "⚔️ Player Comparison", "de": "⚔️ Spielervergleich"},
     "👤 Moja Analiza": {"en": "👤 My Analysis", "de": "👤 Meine Analyse"},
+    "🧪 Testowe opcje": {"en": "🧪 Test Options", "de": "🧪 Testoptionen"},
 }
 
 def t(key, default=""):
@@ -1221,6 +1223,35 @@ def get_duration_bin(moves):
     elif moves <= 70: return bins[5]
     else: return bins[6]
 
+def calculate_total_time_spent(df):
+    """Estimate total time spent playing in hours"""
+    if df.empty:
+        return 0
+     
+    # Estimate game duration based on time control and moves
+    total_minutes = 0
+    for _, row in df.iterrows():
+        mode = row.get("Tryb", "")
+        moves = row.get("Ruchy", 0)
+         
+        # Estimate time per game based on mode (conservative estimates)
+        if mode == "Bullet":
+            # Bullet: ~1-3 min typical
+            avg_game_time = 2
+        elif mode == "Blitz":
+            # Blitz: ~3-5 min typical
+            avg_game_time = 4
+        elif mode == "Rapid":
+            # Rapid: ~10-20 min typical
+            avg_game_time = 15
+        else:
+            # Default: estimate from moves (roughly 30 sec per move per player)
+            avg_game_time = moves * 0.5 / 60
+         
+        total_minutes += avg_game_time
+     
+    return round(total_minutes / 60, 1)  # Convert to hours
+
 def import_to_lichess(pgn_text):
     try:
         res = requests.post("https://lichess.org/api/import", data={'pgn': pgn_text}, headers={"Accept": "application/json"}, timeout=10)
@@ -1481,7 +1512,7 @@ else:
         st.markdown(f"<h2 style='margin-bottom: 15px;'>{username}</h2>", unsafe_allow_html=True)
     
     with st.expander(tu("⚙️ Ustawienia")):
-        app_options = [VIEW_MY, VIEW_COMPARE]
+        app_options = [VIEW_MY, VIEW_COMPARE, VIEW_TEST]
         default_view = st.session_state.get("default_view", VIEW_MY)
         default_idx = app_options.index(default_view) if default_view in app_options else 0
         app_m = st.radio(tu("Widok:"), app_options, label_visibility="collapsed", horizontal=True, index=default_idx, format_func=tu)
@@ -1522,6 +1553,10 @@ else:
                 st.rerun()
 
     if app_m == VIEW_MY:
+        # Filter to only show Rapid, Bullet, and Blitz modes
+        valid_modes = ["Rapid", "Blitz", "Bullet"]
+        df_loc = df_loc[df_loc["Tryb"].isin(valid_modes)].copy()
+         
         m1, m2, m3 = st.columns(3)
         p_r, c_r, _ = calc_elo(df_loc, "Rapid")
         p_b, c_b, _ = calc_elo(df_loc, "Blitz")
@@ -1533,7 +1568,8 @@ else:
         with st.expander(tu("🔍 Filtry")):
             f1, f2 = st.columns(2)
             d_r = f1.date_input(tu("Zakres dat:"), value=(df_loc["Data"].min(), df_loc["Data"].max()))
-            s_m = f2.selectbox(tu("Tryb:"), [tu("Wszystkie")] + sorted(df_loc["Tryb"].unique().tolist()))
+            available_modes = sorted([m for m in df_loc["Tryb"].unique() if m in valid_modes])
+            s_m = f2.selectbox(tu("Tryb:"), [tu("Wszystkie")] + available_modes)
             
             st.markdown("<span style='font-size:0.9rem; font-weight:bold;'>Kolor</span>", unsafe_allow_html=True)
             c_w_btn, c_b_btn, _ = st.columns([1, 1, 4])
@@ -1568,10 +1604,12 @@ else:
             
             with t_stat:
                 w, d, l = (df_f["Wynik"]=="Wygrane").sum(), (df_f["Wynik"]=="Remisy").sum(), (df_f["Wynik"]=="Przegrane").sum()
-                k1, k2, k3 = st.columns(3)
+                total_time = calculate_total_time_spent(df_f)
+                k1, k2, k3, k4 = st.columns(4)
                 k1.metric("Partie", len(df_f))
                 k2.metric("W/R/P", f"{w}/{d}/{l}")
                 k3.metric("Win%", f"{int(round(w/len(df_f)*100,0))}%")
+                k4.metric("Czas gry", f"{total_time}h")
                 
                 mod_w = df_f[df_f["Kolor"] == "Białe"]["Debiut_Grupa"].mode()
                 fav_w = mod_w.iloc[0] if not mod_w.empty else "Brak"
@@ -1798,19 +1836,24 @@ else:
             if "MoveTimes" not in df2.columns:
                 df2["MoveTimes"] = [[] for _ in range(len(df2))]
             df2["Debiut_Grupa"] = df2["Debiut_Grupa"].apply(t_op)
-            
+             
+            # Filter to only show Rapid, Bullet, and Blitz modes
+            valid_modes = ["Rapid", "Blitz", "Bullet"]
+            df_loc_c = df_loc[df_loc["Tryb"].isin(valid_modes)].copy()
+            df2 = df2[df2["Tryb"].isin(valid_modes)].copy()
+             
             u1, u2, p2_p = username, st.session_state.user2, st.session_state.plat2
-            
+             
             with st.expander("🔍 Filtry porównania", expanded=False):
                 fx1, fx2 = st.columns(2)
-                v_min = [d for d in [df_loc["Data"].min(), df2["Data"].min()] if pd.notnull(d)]
-                v_max = [d for d in [df_loc["Data"].max(), df2["Data"].max()] if pd.notnull(d)]
+                v_min = [d for d in [df_loc_c["Data"].min(), df2["Data"].min()] if pd.notnull(d)]
+                v_max = [d for d in [df_loc_c["Data"].max(), df2["Data"].max()] if pd.notnull(d)]
                 min_date = min(v_min) if v_min else datetime.today().date()
                 max_date = max(v_max) if v_max else datetime.today().date()
-                
+                 
                 dr_c = fx1.date_input("Zakres dat:", value=(min_date, max_date), key="c_dr")
-                wspolne_tryby = list(set(df_loc["Tryb"].unique()) | set(df2["Tryb"].unique()))
-                sm_c = fx2.selectbox("Tryb:", ["Wszystkie"] + sorted(wspolne_tryby), key="c_sm")
+                wspolne_tryby = sorted(list(set(df_loc_c["Tryb"].unique()) | set(df2["Tryb"].unique())))
+                sm_c = fx2.selectbox("Tryb:", ["Wszystkie"] + wspolne_tryby, key="c_sm")
                 
                 c_w_por, c_b_por, _ = st.columns([1, 1, 4])
                 if c_w_por.button("⚪ Białe", type="primary" if st.session_state.cw_por else "secondary", use_container_width=True, key="por_w"):
@@ -1826,8 +1869,8 @@ else:
                 
                 sh_c = st.slider("Godziny:", 0, 23, (0, 23), key="c_sh")
 
-            df1_c, df2_c = df_loc.copy(), df2.copy()
-            
+            df1_c, df2_c = df_loc_c.copy(), df2.copy()
+             
             if isinstance(dr_c, (list, tuple)):
                 if len(dr_c) == 2:
                     df1_c = df1_c[(df1_c["Data"] >= dr_c[0]) & (df1_c["Data"] <= dr_c[1])]
@@ -1835,10 +1878,10 @@ else:
                 elif len(dr_c) == 1:
                     df1_c = df1_c[df1_c["Data"] == dr_c[0]]
                     df2_c = df2_c[df2_c["Data"] == dr_c[0]]
-                
+             
             df1_c = df1_c[df1_c["Kolor"].isin(sc_c) & (df1_c["Godzina"] >= sh_c[0]) & (df1_c["Godzina"] <= sh_c[1])].copy()
             df2_c = df2_c[df2_c["Kolor"].isin(sc_c) & (df2_c["Godzina"] >= sh_c[0]) & (df2_c["Godzina"] <= sh_c[1])].copy()
-            
+             
             if sm_c != "Wszystkie":
                 df1_c = df1_c[df1_c["Tryb"] == sm_c].copy()
                 df2_c = df2_c[df2_c["Tryb"] == sm_c].copy()
@@ -1869,7 +1912,7 @@ else:
                 st.markdown(f"<h4 style='color: {font_color};'>Porównanie ELO</h4>", unsafe_allow_html=True)
                 
                 # Current and Peak ELO by mode
-                elo_modes = sorted(list(set(df_loc["Tryb"].unique()) | set(df2["Tryb"].unique())))
+                elo_modes = sorted(list(set(df_loc_c["Tryb"].unique()) | set(df2["Tryb"].unique())))
                 elo_cols = st.columns(len(elo_modes) if elo_modes else 1)
                 
                 for idx, mode in enumerate(elo_modes):
@@ -1893,8 +1936,6 @@ else:
                         
                         st.markdown(elo_info, unsafe_allow_html=True)
 
-                st.divider()
-                st.markdown(f"<h4 style='color: {font_color};'>Sposób zakończenia partii</h4>", unsafe_allow_html=True)
                 st.divider()
                 
                 df1_r = df1_c.copy()
@@ -1940,28 +1981,6 @@ else:
                     fig_act_c = px.bar(act_comb, x="Data", y="Partie", color="Gracz", barmode="group", color_discrete_sequence=[cp1, cp2])
                     fig_act_c = style_chart(fig_act_c)
                     st.plotly_chart(fig_act_c, use_container_width=True)
-                    
-                    st.markdown(f"<h4 style='color: {font_color}; margin-top:20px;'>Zmiana ELO w czasie</h4>", unsafe_allow_html=True)
-                    st.divider()
-                    
-                    df1_elo = df1_c.copy()
-                    df2_elo = df2_c.copy()
-                    df1_elo["Gracz"] = u1
-                    df2_elo["Gracz"] = u2
-                    df_elo_comb = pd.concat([df1_elo, df2_elo]).sort_values("Timestamp")
-                    
-                    mode_counts_c = df_elo_comb["Tryb"].value_counts()
-                    modes_to_plot_c = [m for m in ["Rapid", "Blitz", "Bullet"] if m in mode_counts_c.index]
-                    modes_sorted_c = sorted(modes_to_plot_c, key=lambda x: mode_counts_c[x], reverse=True)
-                    
-                    for m in modes_sorted_c:
-                        mdf = df_elo_comb[df_elo_comb["Tryb"] == m]
-                        if not mdf.empty:
-                            st.markdown(f"### Ranking {m}")
-                            fig_elo_c = px.line(mdf, x="Timestamp", y="ELO", color="Gracz", color_discrete_sequence=[cp1, cp2])
-                            fig_elo_c.update_layout(xaxis_title=None)
-                            fig_elo_c = style_chart(fig_elo_c)
-                            st.plotly_chart(fig_elo_c, use_container_width=True)
 
             with tabs[2]:
                 if not df1_c.empty and not df2_c.empty:
@@ -2036,59 +2055,56 @@ else:
                         st.info(t("no_tempo_data"))
 
             with tabs[3]:
-                st.write("### 🛡️ Najpopularniejsze Debiuty (Wspólne)")
+                st.markdown("### 🛡️ Debiuty - Porównanie Graczy")
                 
-                def merge_openings(color_name):
+                def create_player_opening_comparison(color_name):
                     df1_sub = df1_c[df1_c["Kolor"] == color_name]
                     df2_sub = df2_c[df2_c["Kolor"] == color_name]
                     
                     g1_op = df1_sub.groupby("Debiut_Grupa").agg(
-                        **{
-                            f"Partie [{u1}]": ("Wynik", "count"),
-                            f"WinRate [{u1}]": ("Wynik", lambda x: round((x == "Wygrane").sum() / len(x) * 100, 1))
-                        }
+                        Gry=('Wynik', 'count'),
+                        WinRate=('Wynik', lambda x: int(round((x == 'Wygrane').sum()/len(x)*100,0)))
                     ).reset_index()
+                    g1_op.columns = [f"{u1} - Debiut", f"{u1} - Gry", f"{u1} - Win%"]
+                    
                     g2_op = df2_sub.groupby("Debiut_Grupa").agg(
-                        **{
-                            f"Partie [{u2}]": ("Wynik", "count"),
-                            f"WinRate [{u2}]": ("Wynik", lambda x: round((x == "Wygrane").sum() / len(x) * 100, 1))
-                        }
+                        Gry=('Wynik', 'count'),
+                        WinRate=('Wynik', lambda x: int(round((x == 'Wygrane').sum()/len(x)*100,0)))
                     ).reset_index()
+                    g2_op.columns = [f"{u2} - Debiut", f"{u2} - Gry", f"{u2} - Win%"]
                     
-                    m = pd.merge(g1_op, g2_op, on="Debiut_Grupa", how="outer").fillna(0)
-                    m[f"Partie [{u1}]"] = m[f"Partie [{u1}]"].astype(int)
-                    m[f"Partie [{u2}]"] = m[f"Partie [{u2}]"].astype(int)
+                    m = pd.merge(g1_op, g2_op, left_on=f"{u1} - Debiut", right_on=f"{u2} - Debiut", how="outer").fillna(0)
                     
-                    m["Razem"] = m[f"Partie [{u1}]"] + m[f"Partie [{u2}]"]
-                    m = m.sort_values("Razem", ascending=False).reset_index(drop=True)
+                    # Simplify column names for display
+                    display_cols = []
+                    if f"{u1} - Debiut" in m.columns and m[f"{u1} - Debiut"].notna().any():
+                        debiut_col = f"{u1} - Debiut"
+                    elif f"{u2} - Debiut" in m.columns and m[f"{u2} - Debiut"].notna().any():
+                        debiut_col = f"{u2} - Debiut"
+                    else:
+                        debiut_col = f"{u1} - Debiut"
                     
-                    tot1, tot2 = len(df1_sub), len(df2_sub)
+                    m[debiut_col] = m[debiut_col].fillna(m.get(f"{u2} - Debiut", m[debiut_col]))
                     
-                    m[f"% Całości [{u1}]"] = ((m[f"Partie [{u1}]"] / tot1 * 100).round(1) if tot1 else 0.0)
-                    m[f"% Całości [{u2}]"] = ((m[f"Partie [{u2}]"] / tot2 * 100).round(1) if tot2 else 0.0)
-                    
-                    m = m[
-                        [
-                            "Debiut_Grupa",
-                            f"Partie [{u1}]",
-                            f"% Całości [{u1}]",
-                            f"WinRate [{u1}]",
-                            f"Partie [{u2}]",
-                            f"% Całości [{u2}]",
-                            f"WinRate [{u2}]"
-                        ]
-                    ]
-                    
-                    return m
+                    return m[[debiut_col, f"{u1} - Gry", f"{u1} - Win%", f"{u2} - Gry", f"{u2} - Win%"]].head(20)
 
                 c_w_op, c_b_op = st.columns(2)
+                
                 with c_w_op:
                     st.markdown(f"<h5 style='text-align: center; color: {font_color};'>⚪ {t('color_white')}</h5>", unsafe_allow_html=True)
-                    st.dataframe(merge_openings("Białe").head(20), use_container_width=True, hide_index=True)
+                    df_comp_w = create_player_opening_comparison("Białe")
+                    if not df_comp_w.empty:
+                        st.dataframe(df_comp_w, use_container_width=True, hide_index=True)
+                    else:
+                        st.info("Brak partii")
                     
                 with c_b_op:
                     st.markdown(f"<h5 style='text-align: center; color: {font_color};'>⚫ {t('color_black')}</h5>", unsafe_allow_html=True)
-                    st.dataframe(merge_openings("Czarne").head(20), use_container_width=True, hide_index=True)
+                    df_comp_b = create_player_opening_comparison("Czarne")
+                    if not df_comp_b.empty:
+                        st.dataframe(df_comp_b, use_container_width=True, hide_index=True)
+                    else:
+                        st.info("Brak partii")
 
             if len(tabs) > 4:
                 with tabs[4]:
@@ -2131,3 +2147,65 @@ else:
                         st.dataframe(h2[["Data", "Tryb", "Kolor", "Wynik", "Ruchy", "Debiut"]].sort_values("Data", ascending=False), use_container_width=True, hide_index=True)
                     else: 
                         st.info(f"Brak zarejestrowanych bezpośrednich partii pomiędzy **{u1}** a **{u2}** (przy obecnych filtrach).")
+    
+
+
+    elif app_m == VIEW_TEST:
+        st.markdown("<h2 style='margin-bottom: 20px;'>🧪 Testowe opcje</h2>", unsafe_allow_html=True)
+        st.info("📌 Ta sekcja zawiera eksperymentalne funkcje i propozycje innowacji do aplikacji.")
+        
+        with st.expander("✨ Proponowane innowacje", expanded=True):
+            st.markdown("""
+### Sugerowane nowe funkcje:
+
+1. **Analiza czasu gry** - Wyświetlanie średniego czasu rozegrania partii oraz rozkład czasów gry
+2. **Statystyki streakowe** - Rozszerzone analizy serii zwycięstw/porażek z ich wpływem na obecne wyniki
+3. **Heatmapa aktywności** - Wizualizacja górza/zimna dla każdej godziny dnia i dnia tygodnia
+4. **Ranking otwarć** - Najczęściej granych otwarć z win-rate dla każdego
+5. **Przewaga kolorów** - Szczegółowa analiza wydajności białych vs czarnych
+6. **Przeciwnicy** - Top 10 częstych rywali z historią h2h
+7. **Metryka dokładności** - Estymacja dokładności gry na podstawie popełnionych błędów
+8. **Tempo gry** - Analiza tempa rozgrywania w różnych fazach gry (otwarcie, środek, końcówka)
+9. **Poradnik treningowy** - Sugestie na podstawie słabych obszarów (otwarcia, środek gry)
+10. **Eksport raportów** - Generowanie PDF/Excel z wszystkimi statystykami
+""")
+        
+        with st.expander("🔧 Ustawienia eksperymentalne"):
+            st.markdown("#### W przyszłości będą tutaj dostępne:")
+            col1, col2 = st.columns(2)
+            
+            with col1:
+                st.markdown("- **Zaawansowane filtry** - Bardziej precyzyjne filtrowanie danych")
+                st.markdown("- **Własne tematy** - Możliwość tworzenia niestandardowych motywów")
+                st.markdown("- **API integracji** - Połączenie z innymi narzędziami do szachów")
+            
+            with col2:
+                st.markdown("- **Predykcje ELO** - Prognozowanie ruchu ELO na podstawie trendu")
+                st.markdown("- **Porównanie z AI** - Analiza partii z porównaniem do ruchów AI")
+                st.markdown("- **Drużynowe statystyki** - Jeśli grasz w drużynach turniejowych")
+        
+        with st.expander("📊 Statystyki aplikacji"):
+            if username and st.session_state.data is not None:
+                profile_info, games_data = st.session_state.data
+                df_all = games_data.copy() if isinstance(games_data, pd.DataFrame) and not games_data.empty else pd.DataFrame()
+                
+                if not df_all.empty:
+                    total_games = len(df_all)
+                    total_time_all = calculate_total_time_spent(df_all)
+                    avg_rating = df_all["ELO"].mean() if not df_all["ELO"].empty else 0
+                    
+                    col1, col2, col3 = st.columns(3)
+                    col1.metric("📈 Razem partii (wszystkie tryby)", total_games)
+                    col2.metric("⏱️ Razem czasu gry", f"{total_time_all}h")
+                    col3.metric("🎯 Średni rating", f"{int(avg_rating)}")
+                    
+                    st.divider()
+                    st.markdown("#### Rozkład po trybach:")
+                    
+                    mode_stats = df_all.groupby("Tryb").agg({
+                        "Wynik": "count",
+                        "ELO": ["mean", "max"]
+                    }).round(0)
+                    
+                    mode_stats.columns = ["Partie", "Średni ELO", "Peak ELO"]
+                    st.dataframe(mode_stats.sort_values("Partie", ascending=False), use_container_width=True)

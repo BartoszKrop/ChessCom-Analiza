@@ -1836,6 +1836,10 @@ else:
                     df1_c = df1_c[df1_c["Data"] == dr_c[0]]
                     df2_c = df2_c[df2_c["Data"] == dr_c[0]]
                 
+            # Exclude daily games (Bullet) in comparison mode
+            df1_c = df1_c[df1_c["Tryb"] != "Bullet"].copy()
+            df2_c = df2_c[df2_c["Tryb"] != "Bullet"].copy()
+            
             df1_c = df1_c[df1_c["Kolor"].isin(sc_c) & (df1_c["Godzina"] >= sh_c[0]) & (df1_c["Godzina"] <= sh_c[1])].copy()
             df2_c = df2_c[df2_c["Kolor"].isin(sc_c) & (df2_c["Godzina"] >= sh_c[0]) & (df2_c["Godzina"] <= sh_c[1])].copy()
             
@@ -1894,8 +1898,6 @@ else:
                         st.markdown(elo_info, unsafe_allow_html=True)
 
                 st.divider()
-                st.markdown(f"<h4 style='color: {font_color};'>Sposób zakończenia partii</h4>", unsafe_allow_html=True)
-                st.divider()
                 
                 df1_r = df1_c.copy()
                 df2_r = df2_c.copy()
@@ -1940,28 +1942,6 @@ else:
                     fig_act_c = px.bar(act_comb, x="Data", y="Partie", color="Gracz", barmode="group", color_discrete_sequence=[cp1, cp2])
                     fig_act_c = style_chart(fig_act_c)
                     st.plotly_chart(fig_act_c, use_container_width=True)
-                    
-                    st.markdown(f"<h4 style='color: {font_color}; margin-top:20px;'>Zmiana ELO w czasie</h4>", unsafe_allow_html=True)
-                    st.divider()
-                    
-                    df1_elo = df1_c.copy()
-                    df2_elo = df2_c.copy()
-                    df1_elo["Gracz"] = u1
-                    df2_elo["Gracz"] = u2
-                    df_elo_comb = pd.concat([df1_elo, df2_elo]).sort_values("Timestamp")
-                    
-                    mode_counts_c = df_elo_comb["Tryb"].value_counts()
-                    modes_to_plot_c = [m for m in ["Rapid", "Blitz", "Bullet"] if m in mode_counts_c.index]
-                    modes_sorted_c = sorted(modes_to_plot_c, key=lambda x: mode_counts_c[x], reverse=True)
-                    
-                    for m in modes_sorted_c:
-                        mdf = df_elo_comb[df_elo_comb["Tryb"] == m]
-                        if not mdf.empty:
-                            st.markdown(f"### Ranking {m}")
-                            fig_elo_c = px.line(mdf, x="Timestamp", y="ELO", color="Gracz", color_discrete_sequence=[cp1, cp2])
-                            fig_elo_c.update_layout(xaxis_title=None)
-                            fig_elo_c = style_chart(fig_elo_c)
-                            st.plotly_chart(fig_elo_c, use_container_width=True)
 
             with tabs[2]:
                 if not df1_c.empty and not df2_c.empty:
@@ -2036,59 +2016,56 @@ else:
                         st.info(t("no_tempo_data"))
 
             with tabs[3]:
-                st.write("### 🛡️ Najpopularniejsze Debiuty (Wspólne)")
+                st.markdown("### 🛡️ Debiuty - Porównanie Graczy")
                 
-                def merge_openings(color_name):
+                def create_player_opening_comparison(color_name):
                     df1_sub = df1_c[df1_c["Kolor"] == color_name]
                     df2_sub = df2_c[df2_c["Kolor"] == color_name]
                     
                     g1_op = df1_sub.groupby("Debiut_Grupa").agg(
-                        **{
-                            f"Partie [{u1}]": ("Wynik", "count"),
-                            f"WinRate [{u1}]": ("Wynik", lambda x: round((x == "Wygrane").sum() / len(x) * 100, 1))
-                        }
+                        Gry=('Wynik', 'count'),
+                        WinRate=('Wynik', lambda x: int(round((x == 'Wygrane').sum()/len(x)*100,0)))
                     ).reset_index()
+                    g1_op.columns = [f"{u1} - Debiut", f"{u1} - Gry", f"{u1} - Win%"]
+                    
                     g2_op = df2_sub.groupby("Debiut_Grupa").agg(
-                        **{
-                            f"Partie [{u2}]": ("Wynik", "count"),
-                            f"WinRate [{u2}]": ("Wynik", lambda x: round((x == "Wygrane").sum() / len(x) * 100, 1))
-                        }
+                        Gry=('Wynik', 'count'),
+                        WinRate=('Wynik', lambda x: int(round((x == 'Wygrane').sum()/len(x)*100,0)))
                     ).reset_index()
+                    g2_op.columns = [f"{u2} - Debiut", f"{u2} - Gry", f"{u2} - Win%"]
                     
-                    m = pd.merge(g1_op, g2_op, on="Debiut_Grupa", how="outer").fillna(0)
-                    m[f"Partie [{u1}]"] = m[f"Partie [{u1}]"].astype(int)
-                    m[f"Partie [{u2}]"] = m[f"Partie [{u2}]"].astype(int)
+                    m = pd.merge(g1_op, g2_op, left_on=f"{u1} - Debiut", right_on=f"{u2} - Debiut", how="outer").fillna(0)
                     
-                    m["Razem"] = m[f"Partie [{u1}]"] + m[f"Partie [{u2}]"]
-                    m = m.sort_values("Razem", ascending=False).reset_index(drop=True)
+                    # Simplify column names for display
+                    display_cols = []
+                    if f"{u1} - Debiut" in m.columns and m[f"{u1} - Debiut"].notna().any():
+                        debiut_col = f"{u1} - Debiut"
+                    elif f"{u2} - Debiut" in m.columns and m[f"{u2} - Debiut"].notna().any():
+                        debiut_col = f"{u2} - Debiut"
+                    else:
+                        debiut_col = f"{u1} - Debiut"
                     
-                    tot1, tot2 = len(df1_sub), len(df2_sub)
+                    m[debiut_col] = m[debiut_col].fillna(m.get(f"{u2} - Debiut", m[debiut_col]))
                     
-                    m[f"% Całości [{u1}]"] = ((m[f"Partie [{u1}]"] / tot1 * 100).round(1) if tot1 else 0.0)
-                    m[f"% Całości [{u2}]"] = ((m[f"Partie [{u2}]"] / tot2 * 100).round(1) if tot2 else 0.0)
-                    
-                    m = m[
-                        [
-                            "Debiut_Grupa",
-                            f"Partie [{u1}]",
-                            f"% Całości [{u1}]",
-                            f"WinRate [{u1}]",
-                            f"Partie [{u2}]",
-                            f"% Całości [{u2}]",
-                            f"WinRate [{u2}]"
-                        ]
-                    ]
-                    
-                    return m
+                    return m[[debiut_col, f"{u1} - Gry", f"{u1} - Win%", f"{u2} - Gry", f"{u2} - Win%"]].head(20)
 
                 c_w_op, c_b_op = st.columns(2)
+                
                 with c_w_op:
                     st.markdown(f"<h5 style='text-align: center; color: {font_color};'>⚪ {t('color_white')}</h5>", unsafe_allow_html=True)
-                    st.dataframe(merge_openings("Białe").head(20), use_container_width=True, hide_index=True)
+                    df_comp_w = create_player_opening_comparison("Białe")
+                    if not df_comp_w.empty:
+                        st.dataframe(df_comp_w, use_container_width=True, hide_index=True)
+                    else:
+                        st.info("Brak partii")
                     
                 with c_b_op:
                     st.markdown(f"<h5 style='text-align: center; color: {font_color};'>⚫ {t('color_black')}</h5>", unsafe_allow_html=True)
-                    st.dataframe(merge_openings("Czarne").head(20), use_container_width=True, hide_index=True)
+                    df_comp_b = create_player_opening_comparison("Czarne")
+                    if not df_comp_b.empty:
+                        st.dataframe(df_comp_b, use_container_width=True, hide_index=True)
+                    else:
+                        st.info("Brak partii")
 
             if len(tabs) > 4:
                 with tabs[4]:

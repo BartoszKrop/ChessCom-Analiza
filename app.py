@@ -19,8 +19,6 @@ MAX_MOVE_TIME_SECONDS = 300
 NUM_DECILES = 10
 VIEW_MY = "👤 Moja Analiza"
 VIEW_COMPARE = "⚔️ Porównanie Graczy"
-VIEW_MODES = "🎮 Tryby Gry"
-VIEW_TEST = "🧪 Testowe opcje"
 SCOPE_SINGLE = "Jeden profil"
 SCOPE_MERGE = "Połącz profile (C+L)"
 SCOPE_COMPARE = "Porównanie graczy (start)"
@@ -257,7 +255,6 @@ ui_phrases = {
     "Brak partii do analizy.": {"en": "No games for analysis.", "de": "Keine Partien zur Analyse."},
     "⚔️ Porównanie Graczy": {"en": "⚔️ Player Comparison", "de": "⚔️ Spielervergleich"},
     "👤 Moja Analiza": {"en": "👤 My Analysis", "de": "👤 Meine Analyse"},
-    "🧪 Testowe opcje": {"en": "🧪 Test Options", "de": "🧪 Testoptionen"},
 }
 
 def t(key, default=""):
@@ -1115,10 +1112,46 @@ def build_mode_color_stats(df):
         })
     return pd.DataFrame(rows)
 
+
 def build_mode_movepace_table(df, mode):
     """Build move pace table for a specific game mode"""
     mode_df = df[df["Tryb"] == mode]
     return build_move_pace_table(mode_df)
+
+def build_mode_movetime_trend(df):
+    """Build move time trend by mode and month"""
+    if df.empty or "Data" not in df.columns:
+        return pd.DataFrame()
+    
+    # Create year-month column
+    df_copy = df.copy()
+    df_copy["YearMonth"] = pd.to_datetime(df_copy["Data"]).dt.to_period("M")
+    
+    # Calculate average move time per second for each mode and month
+    trend_data = []
+    for mode in df_copy["Tryb"].unique():
+        mode_df = df_copy[df_copy["Tryb"] == mode]
+        for year_month in sorted(mode_df["YearMonth"].unique()):
+            month_data = mode_df[mode_df["YearMonth"] == year_month]
+            
+            # Calculate average move time from MoveTimes column
+            total_time = 0
+            total_moves = 0
+            for _, row in month_data.iterrows():
+                move_times = row.get("MoveTimes", [])
+                if isinstance(move_times, list) and move_times:
+                    total_time += sum(move_times)
+                    total_moves += len(move_times)
+            
+            if total_moves > 0:
+                avg_time_per_move = total_time / total_moves
+                trend_data.append({
+                    "YearMonth": str(year_month),
+                    "Tryb": mode,
+                    "AvgTimePerMove": round(avg_time_per_move, 2)
+                })
+    
+    return pd.DataFrame(trend_data) if trend_data else pd.DataFrame()
 
 def build_report_summary(df):
     total_games = len(df)
@@ -1617,7 +1650,7 @@ else:
         st.markdown(f"<h2 style='margin-bottom: 15px;'>{username}</h2>", unsafe_allow_html=True)
     
     with st.expander(tu("⚙️ Ustawienia")):
-        app_options = [VIEW_MY, VIEW_MODES, VIEW_COMPARE, VIEW_TEST]
+        app_options = [VIEW_MY, VIEW_COMPARE]
         default_view = st.session_state.get("default_view", VIEW_MY)
         default_idx = app_options.index(default_view) if default_view in app_options else 0
         app_m = st.radio(tu("Widok:"), app_options, label_visibility="collapsed", horizontal=True, index=default_idx, format_func=tu)
@@ -1705,7 +1738,7 @@ else:
         if s_m != tu("Wszystkie"): df_f = df_f[df_f["Tryb"] == s_m].copy()
 
         if not df_f.empty:
-            t_stat, t_hist, t_czas, t_deb, t_ana = st.tabs(["📊 Statystyki", "📅 Historia", "⏳ Czas", "🔬 Debiuty", "🧠 Analiza"])
+            t_stat, t_hist, t_czas, t_deb, t_ana, t_modes = st.tabs(["📊 Statystyki", "📅 Historia", "⏳ Czas", "🔬 Debiuty", "🧠 Analiza", "🎮 Tryby Gry"])
             
             with t_stat:
                 w, d, l = (df_f["Wynik"]=="Wygrane").sum(), (df_f["Wynik"]=="Remisy").sum(), (df_f["Wynik"]=="Przegrane").sum()
@@ -1921,100 +1954,114 @@ else:
                 else:
                     st.info("Brak partii do analizy dla podanych kryteriów.")
 
-    elif app_m == VIEW_MODES:
-        st.markdown("<h2 style='margin-bottom: 20px;'>🎮 Porównanie Trybów Gry</h2>", unsafe_allow_html=True)
-        
-        if st.session_state.data is None:
-            st.warning("Załaduj najpierw dane użytkownika w sekcji 'Moja Analiza'")
-        else:
-            df_modes = st.session_state.data.copy()
-            if "MoveTimes" not in df_modes.columns:
-                df_modes["MoveTimes"] = [[] for _ in range(len(df_modes))]
-            
-            valid_modes = df_modes["Tryb"].unique()
-            if not len(valid_modes):
-                st.error("Brak danych do analizy trybów gry")
-            else:
-                # Tab 1: Overview comparison
-                with st.expander("📊 Porównanie Trybów", expanded=True):
-                    modes_comparison = build_game_modes_comparison(df_modes)
-                    st.dataframe(modes_comparison, use_container_width=True, hide_index=True)
-                
-                # Tab 2: Time-of-day heatmap by mode
-                with st.expander("🕐 Aktywność po Godzinach (po Trybie)", expanded=False):
-                    selected_mode_heat = st.selectbox("Wybierz tryb:", sorted(valid_modes), key="mode_heat")
-                    mode_hour_data = df_modes[df_modes["Tryb"] == selected_mode_heat].groupby("Godzina").size().reset_index(name="Partie")
+            with t_modes:
+                """Game modes comparison tab"""
+                if df_f.empty or df_f["Tryb"].nunique() == 0:
+                    st.info("Brak danych do analizy trybów gry")
+                else:
+                    df_modes = df_f.copy()
+                    if "MoveTimes" not in df_modes.columns:
+                        df_modes["MoveTimes"] = [[] for _ in range(len(df_modes))]
                     
-                    if not mode_hour_data.empty:
-                        fig_heat = px.bar(
-                            mode_hour_data, x="Godzina", y="Partie",
-                            title=f"Gry w trybie {selected_mode_heat} po godzinach",
-                            color="Partie", color_continuous_scale=c_scale,
-                            labels={"Godzina": "Godzina", "Partie": "Liczba gier"}
-                        )
-                        fig_heat = style_chart(fig_heat)
-                        st.plotly_chart(fig_heat, use_container_width=True)
-                
-                # Tab 3: Move pace by mode
-                with st.expander("⚡ Tempo Ruchu po Trybie", expanded=False):
-                    selected_mode_pace = st.selectbox("Wybierz tryb:", sorted(valid_modes), key="mode_pace")
+                    valid_modes = df_modes["Tryb"].unique()
                     
-                    pace_df = build_mode_movepace_table(df_modes, selected_mode_pace)
-                    pace_plot = pace_df.dropna(subset=["AvgSec"])
+                    # Section 1: Overview comparison
+                    with st.expander("📊 Porównanie Trybów", expanded=True):
+                        modes_comparison = build_game_modes_comparison(df_modes)
+                        st.dataframe(modes_comparison, use_container_width=True, hide_index=True)
                     
-                    if not pace_plot.empty:
-                        fig_pace_mode = px.line(
-                            pace_plot, x="Segment", y="AvgSec", markers=True,
-                            title=f"Tempo ruchu w trybie {selected_mode_pace}",
-                            labels={"Segment": "Decyl gry", "AvgSec": "Średni czas ruchu (s)"}
-                        )
-                        fig_pace_mode = style_chart(fig_pace_mode)
-                        st.plotly_chart(fig_pace_mode, use_container_width=True)
-                    else:
-                        st.info(f"Brak danych tempa dla trybu {selected_mode_pace}")
-                
-                # Tab 4: Color preference by mode
-                with st.expander("🎨 Przewaga Kolorów po Trybie", expanded=False):
-                    color_stats = build_mode_color_stats(df_modes)
-                    st.dataframe(color_stats, use_container_width=True, hide_index=True)
-                
-                # Tab 5: Opening statistics by mode
-                with st.expander("♟️ Otwarcia po Trybie", expanded=False):
-                    selected_mode_op = st.selectbox("Wybierz tryb:", sorted(valid_modes), key="mode_op")
+                    # Section 2: Move time trend over months
+                    with st.expander("📈 Trend Czasu na Ruch po Miesiącach", expanded=False):
+                        trend_df = build_mode_movetime_trend(df_modes)
+                        if not trend_df.empty:
+                            fig_trend = px.bar(
+                                trend_df, x="YearMonth", y="AvgTimePerMove", color="Tryb",
+                                title="Średni czas na ruch w każdym trybie po miesiącach",
+                                labels={"YearMonth": "Miesiąc", "AvgTimePerMove": "Średni czas (s)", "Tryb": "Tryb"},
+                                barmode="group",
+                                color_discrete_sequence=px.colors.qualitative.Plotly
+                            )
+                            fig_trend = style_chart(fig_trend)
+                            fig_trend.update_xaxes(tickangle=-45)
+                            st.plotly_chart(fig_trend, use_container_width=True)
+                        else:
+                            st.info("Brak danych o czasach ruchów")
                     
-                    openings_stats = build_mode_opening_stats(df_modes)
-                    if selected_mode_op in openings_stats and not openings_stats[selected_mode_op].empty:
-                        op_df = pd.DataFrame({
-                            "Otwarcie": openings_stats[selected_mode_op].index,
-                            "Partie": openings_stats[selected_mode_op].values
-                        })
+                    # Section 3: Time-of-day heatmap by mode
+                    with st.expander("🕐 Aktywność po Godzinach (po Trybie)", expanded=False):
+                        selected_mode_heat = st.selectbox("Wybierz tryb:", sorted(valid_modes), key="mode_heat")
+                        mode_hour_data = df_modes[df_modes["Tryb"] == selected_mode_heat].groupby("Godzina").size().reset_index(name="Partie")
                         
-                        fig_op = px.bar(
-                            op_df, x="Partie", y="Otwarcie",
-                            orientation="h",
-                            title=f"Top otwarcia w trybie {selected_mode_op}",
-                            color="Partie", color_continuous_scale=c_scale
-                        )
-                        fig_op.update_yaxes(autorange="reversed")
-                        fig_op = style_chart(fig_op)
-                        st.plotly_chart(fig_op, use_container_width=True)
-                    else:
-                        st.info(f"Brak danych otwarć dla trybu {selected_mode_op}")
-                
-                # Tab 6: Rating distribution by mode
-                with st.expander("🏆 Rozkład Ratingów po Trybie", expanded=False):
-                    selected_mode_rating = st.selectbox("Wybierz tryb:", sorted(valid_modes), key="mode_rating")
+                        if not mode_hour_data.empty:
+                            fig_heat = px.bar(
+                                mode_hour_data, x="Godzina", y="Partie",
+                                title=f"Gry w trybie {selected_mode_heat} po godzinach",
+                                color="Partie", color_continuous_scale=c_scale,
+                                labels={"Godzina": "Godzina", "Partie": "Liczba gier"}
+                            )
+                            fig_heat = style_chart(fig_heat)
+                            st.plotly_chart(fig_heat, use_container_width=True)
                     
-                    mode_rating_df = df_modes[df_modes["Tryb"] == selected_mode_rating]
-                    if not mode_rating_df.empty:
-                        fig_rating = px.histogram(
-                            mode_rating_df, x="ELO", nbins=20,
-                            title=f"Rozkład ratingów w trybie {selected_mode_rating}",
-                            labels={"ELO": "Rating", "count": "Liczba gier"},
-                            color_discrete_sequence=[cw]
-                        )
-                        fig_rating = style_chart(fig_rating)
-                        st.plotly_chart(fig_rating, use_container_width=True)
+                    # Section 4: Move pace by mode
+                    with st.expander("⚡ Tempo Ruchu po Trybie", expanded=False):
+                        selected_mode_pace = st.selectbox("Wybierz tryb:", sorted(valid_modes), key="mode_pace")
+                        
+                        pace_df = build_mode_movepace_table(df_modes, selected_mode_pace)
+                        pace_plot = pace_df.dropna(subset=["AvgSec"])
+                        
+                        if not pace_plot.empty:
+                            fig_pace_mode = px.line(
+                                pace_plot, x="Segment", y="AvgSec", markers=True,
+                                title=f"Tempo ruchu w trybie {selected_mode_pace}",
+                                labels={"Segment": "Decyl gry", "AvgSec": "Średni czas ruchu (s)"}
+                            )
+                            fig_pace_mode = style_chart(fig_pace_mode)
+                            st.plotly_chart(fig_pace_mode, use_container_width=True)
+                        else:
+                            st.info(f"Brak danych tempa dla trybu {selected_mode_pace}")
+                    
+                    # Section 5: Color preference by mode
+                    with st.expander("🎨 Przewaga Kolorów po Trybie", expanded=False):
+                        color_stats = build_mode_color_stats(df_modes)
+                        st.dataframe(color_stats, use_container_width=True, hide_index=True)
+                    
+                    # Section 6: Opening statistics by mode
+                    with st.expander("♟️ Otwarcia po Trybie", expanded=False):
+                        selected_mode_op = st.selectbox("Wybierz tryb:", sorted(valid_modes), key="mode_op")
+                        
+                        openings_stats = build_mode_opening_stats(df_modes)
+                        if selected_mode_op in openings_stats and not openings_stats[selected_mode_op].empty:
+                            op_df = pd.DataFrame({
+                                "Otwarcie": openings_stats[selected_mode_op].index,
+                                "Partie": openings_stats[selected_mode_op].values
+                            })
+                            
+                            fig_op = px.bar(
+                                op_df, x="Partie", y="Otwarcie",
+                                orientation="h",
+                                title=f"Top otwarcia w trybie {selected_mode_op}",
+                                color="Partie", color_continuous_scale=c_scale
+                            )
+                            fig_op.update_yaxes(autorange="reversed")
+                            fig_op = style_chart(fig_op)
+                            st.plotly_chart(fig_op, use_container_width=True)
+                        else:
+                            st.info(f"Brak danych otwarć dla trybu {selected_mode_op}")
+                    
+                    # Section 7: Rating distribution by mode
+                    with st.expander("🏆 Rozkład Ratingów po Trybie", expanded=False):
+                        selected_mode_rating = st.selectbox("Wybierz tryb:", sorted(valid_modes), key="mode_rating")
+                        
+                        mode_rating_df = df_modes[df_modes["Tryb"] == selected_mode_rating]
+                        if not mode_rating_df.empty:
+                            fig_rating = px.histogram(
+                                mode_rating_df, x="ELO", nbins=20,
+                                title=f"Rozkład ratingów w trybie {selected_mode_rating}",
+                                labels={"ELO": "Rating", "count": "Liczba gier"},
+                                color_discrete_sequence=[cw]
+                            )
+                            fig_rating = style_chart(fig_rating)
+                            st.plotly_chart(fig_rating, use_container_width=True)
 
     elif app_m == VIEW_COMPARE:
         c1, c2 = st.columns(2)
@@ -2394,206 +2441,3 @@ else:
     
 
 
-    elif app_m == VIEW_TEST:
-        st.markdown("<h2 style='margin-bottom: 20px;'>🧪 Testowe opcje</h2>", unsafe_allow_html=True)
-        st.info("📌 Ta sekcja zawiera eksperymentalne funkcje i propozycje integracji API.")
-        
-        with st.expander("📈 Już zaimplementowane funkcje", expanded=True):
-            st.markdown("""
-### ✅ Dostępne analizy:
-
-1. **Porównanie Trybów Gry** - Dostępne w sekcji "🎮 Tryby Gry"
-   - Porównanie win-rate, ELO, liczby partii między Bullet, Blitz i Rapid
-   - Analiza tempa ruchu (move time) dla każdego trybu
-   - Preferowane otwarcia po trybie gry
-   - Przewaga kolorów (białe vs czarne) po trybie
-   - Rozkład ratingów przeciwników
-
-2. **Analiza czasu gry** - Dostępna w sekcji "👤 Moja Analiza"
-   - Aktualna implementacja: sumuje rzeczywiste czasy ruchów (z danych API)
-   - Tempo gry (move pace) w różnych fazach partii (otwarcie, środek, końcówka)
-   - Aktywność po godzinach dnia
-
-3. **Statystyki podstawowe** - Dostępne w głównym widoku
-   - Ranking ELO po trybach
-   - Analiza debiutów
-   - Wyniki dzienne i miesięczne
-   - Wpływ serii na wyniki (streak analysis)
-""")
-        
-        with st.expander("🔌 Propozycje Integracji API", expanded=True):
-            st.markdown("""
-### 1️⃣ Tournaments API (Chess.com)
-
-**Endpoint:** `https://api.chess.com/pub/player/{username}/tournaments`
-
-**Co możesz uzyskać:**
-- Historię turniejów w których grałeś
-- Wyniki turnieju (miejsce, liczba zwycięstw/remisów/porażek)
-- Zmianę ratingu z turnieju
-- Nazwy turniejów i daty
-
-**Przykład implementacji:**
-```python
-def fetch_tournaments(username):
-    try:
-        response = requests.get(
-            f"https://api.chess.com/pub/player/{username}/tournaments",
-            timeout=10
-        )
-        if response.status_code != 200:
-            print(f"Error: {response.status_code}")
-            return []
-        
-        tournaments = response.json().get("tournaments", [])
-        results = []
-        
-        for tournament_url in tournaments:
-            try:
-                tournament_data = requests.get(tournament_url, timeout=10).json()
-                results.append(tournament_data)
-            except Exception as e:
-                print(f"Error fetching tournament: {e}")
-                continue
-        
-        return results
-    except Exception as e:
-        print(f"Error: {e}")
-        return []
-```
-
-**Możliwe analizy:**
-- Średnia pozycja na turnieju po typie
-- Trend wyników turniejowych
-- Porównanie wydajności na turniejach online vs offline
-- Heatmapa turniejów (kiedy grasz turnieje)
-
----
-
-### 2️⃣ Stockfish Analysis Integration
-
-**Opcja A: Via Lichess API (Rekomendowana)**
-```python
-def analyze_game_with_lichess(game_id):
-    try:
-        response = requests.get(
-            f"https://lichess.org/api/game/{game_id}?with=analysis",
-            headers={"Accept": "application/json"},
-            timeout=10
-        )
-        if response.status_code != 200:
-            print(f"Error: {response.status_code}")
-            return None
-        
-        analysis = response.json().get("analysis", [])
-        return analysis
-    except Exception as e:
-        print(f"Error analyzing game: {e}")
-        return None
-```
-
-**Opcja B: Local Stockfish (dla szczegółowej analizy)**
-```python
-import chess
-import chess.engine
-
-def analyze_pgn_local(pgn_string):
-    try:
-        # Parse moves from PGN string
-        game = chess.pgn.read_game(io.StringIO(pgn_string))
-        if not game:
-            return None
-        
-        results = []
-        board = chess.Board()
-        
-        for move in game.mainline_moves():
-            try:
-                with chess.engine.SimpleEngine.popen_uci("stockfish") as engine:
-                    info = engine.analyse(board, chess.engine.Limit(time=0.1))
-                    results.append({
-                        "move": move.uci(),
-                        "eval": info.get("score")
-                    })
-            except Exception as e:
-                print(f"Error analyzing move {move}: {e}")
-                continue
-            
-            board.push(move)
-        
-        return results
-    except Exception as e:
-        print(f"Error: {e}")
-        return None
-```
-
-**Możliwe analizy:**
-- Accuracy score (% trafnie wykonanych ruchów)
-- Centipawn loss per game
-- Najczęstsze błędy (typy: blunder, mistake, inaccuracy)
-- Poprawa dokładności w czasie
-- Porównanie dokładności między trybami
-- Które otwarcia grasz najdokładniej
-
----
-
-### 3️⃣ Inne potencjalne integracje
-
-**Chess.com Puzzle API:**
-```python
-# Puzzle rating vs real rating comparison
-response = requests.get(f"https://api.chess.com/pub/player/{username}/puzzle-rush")
-```
-
-**Opening Database (Lichess):**
-```python
-# Teoria otwarć z win-rate z bazy
-response = requests.get("https://lichess.org/api/opening/A00")
-```
-
-**Player Rating History:**
-```python
-# Trend ratingów w wybranych przedziałach czasowych
-response = requests.get(f"https://api.chess.com/pub/player/{username}/stats")
-```
-""")
-        
-        with st.expander("🔧 Ustawienia eksperymentalne"):
-            st.markdown("#### Będą dostępne w przyszłości:")
-            col1, col2 = st.columns(2)
-            
-            with col1:
-                st.markdown("- **Zaawansowane filtry** - Bardziej precyzyjne filtrowanie danych")
-                st.markdown("- **Export PDF/Excel** - Generowanie raportów")
-                st.markdown("- **Integracja Tournaments** - Analiza wyników turniejowych")
-            
-            with col2:
-                st.markdown("- **Stockfish Analysis** - Porównanie z silnikiem szachowym")
-                st.markdown("- **Predykcje ELO** - Prognozowanie trendu ratingów")
-                st.markdown("- **Drużynowe statystyki** - Jeśli grasz w drużynach")
-        
-        with st.expander("📊 Statystyki aplikacji"):
-            if username and st.session_state.data is not None:
-                profile_info, games_data = st.session_state.data
-                df_all = games_data.copy() if isinstance(games_data, pd.DataFrame) and not games_data.empty else pd.DataFrame()
-                
-                if not df_all.empty:
-                    total_games = len(df_all)
-                    total_time_all = calculate_total_time_spent(df_all)
-                    avg_rating = df_all["ELO"].mean() if not df_all["ELO"].empty else 0
-                    
-                    col1, col2, col3 = st.columns(3)
-                    col1.metric("📈 Razem partii (wszystkie tryby)", total_games)
-                    col2.metric("⏱️ Razem czasu gry", f"{total_time_all}h")
-                    col3.metric("🎯 Średni rating", f"{int(avg_rating)}")
-                    
-                    st.divider()
-                    st.markdown("#### Rozkład po trybach:")
-                    
-                    mode_stats = df_all.groupby("Tryb").agg({
-                        "Wynik": "count",
-                        "ELO": ["mean", "max"]
-                    }).round(0)
-                    
-                    mode_stats.columns = ["Partie", "Średni ELO", "Peak ELO"]
-                    st.dataframe(mode_stats.sort_values("Partie", ascending=False), use_container_width=True)

@@ -255,7 +255,6 @@ ui_phrases = {
     "Brak partii do analizy.": {"en": "No games for analysis.", "de": "Keine Partien zur Analyse."},
     "⚔️ Porównanie Graczy": {"en": "⚔️ Player Comparison", "de": "⚔️ Spielervergleich"},
     "👤 Moja Analiza": {"en": "👤 My Analysis", "de": "👤 Meine Analyse"},
-    "🧪 Testowe opcje": {"en": "🧪 Test Options", "de": "🧪 Testoptionen"},
 }
 
 def t(key, default=""):

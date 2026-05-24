@@ -1115,10 +1115,12 @@ def build_mode_color_stats(df):
         })
     return pd.DataFrame(rows)
 
-def build_mode_movepack_table(df, mode):
+def build_mode_movepace_table(df, mode):
     """Build move pace table for a specific game mode"""
     mode_df = df[df["Tryb"] == mode]
     return build_move_pace_table(mode_df)
+
+def build_report_summary(df):
     total_games = len(df)
     w = int((df["Wynik"] == "Wygrane").sum())
     d = int((df["Wynik"] == "Remisy").sum())
@@ -1295,7 +1297,14 @@ def get_duration_bin(moves):
     else: return bins[6]
 
 def calculate_total_time_spent_from_moves(df):
-    """Calculate total time spent playing from actual move times (in seconds)"""
+    """Calculate total time spent playing from actual move times.
+    
+    Sums all move times from the MoveTimes column for each game and converts to hours.
+    Returns 0 if DataFrame is empty or no valid move times are found across all games.
+    
+    Returns:
+        float: Total time spent in hours, rounded to 1 decimal place. Returns 0 if no move data available.
+    """
     if df.empty:
         return 0
     
@@ -1308,7 +1317,14 @@ def calculate_total_time_spent_from_moves(df):
     return round(total_seconds / 3600, 1)  # Convert to hours
 
 def calculate_total_time_spent(df):
-    """Calculate total time spent playing - uses actual move times if available, fallback to estimates"""
+    """Calculate total time spent playing in hours.
+    
+    Uses actual move times from game data when available. Falls back to conservative
+    estimates based on game mode and number of moves if detailed move times are unavailable.
+    
+    Returns:
+        float: Total time spent in hours, using actual move times or estimates
+    """
     if df.empty:
         return 0
     
@@ -1916,7 +1932,7 @@ else:
                 df_modes["MoveTimes"] = [[] for _ in range(len(df_modes))]
             
             valid_modes = df_modes["Tryb"].unique()
-            if len(valid_modes) < 1:
+            if not len(valid_modes):
                 st.error("Brak danych do analizy trybów gry")
             else:
                 # Tab 1: Overview comparison
@@ -1926,12 +1942,7 @@ else:
                 
                 # Tab 2: Time-of-day heatmap by mode
                 with st.expander("🕐 Aktywność po Godzinach (po Trybie)", expanded=False):
-                    col1, col2 = st.columns([3, 1])
-                    with col2:
-                        selected_mode_heat = st.selectbox("Wybierz tryb:", sorted(valid_modes), key="mode_heat")
-                    with col1:
-                        pass
-                    
+                    selected_mode_heat = st.selectbox("Wybierz tryb:", sorted(valid_modes), key="mode_heat")
                     mode_hour_data = df_modes[df_modes["Tryb"] == selected_mode_heat].groupby("Godzina").size().reset_index(name="Partie")
                     
                     if not mode_hour_data.empty:
@@ -1946,13 +1957,9 @@ else:
                 
                 # Tab 3: Move pace by mode
                 with st.expander("⚡ Tempo Ruchu po Trybie", expanded=False):
-                    col1, col2 = st.columns([3, 1])
-                    with col2:
-                        selected_mode_pace = st.selectbox("Wybierz tryb:", sorted(valid_modes), key="mode_pace")
-                    with col1:
-                        pass
+                    selected_mode_pace = st.selectbox("Wybierz tryb:", sorted(valid_modes), key="mode_pace")
                     
-                    pace_df = build_mode_movepack_table(df_modes, selected_mode_pace)
+                    pace_df = build_mode_movepace_table(df_modes, selected_mode_pace)
                     pace_plot = pace_df.dropna(subset=["AvgSec"])
                     
                     if not pace_plot.empty:
@@ -1973,11 +1980,7 @@ else:
                 
                 # Tab 5: Opening statistics by mode
                 with st.expander("♟️ Otwarcia po Trybie", expanded=False):
-                    col1, col2 = st.columns([3, 1])
-                    with col2:
-                        selected_mode_op = st.selectbox("Wybierz tryb:", sorted(valid_modes), key="mode_op")
-                    with col1:
-                        pass
+                    selected_mode_op = st.selectbox("Wybierz tryb:", sorted(valid_modes), key="mode_op")
                     
                     openings_stats = build_mode_opening_stats(df_modes)
                     if selected_mode_op in openings_stats and not openings_stats[selected_mode_op].empty:
@@ -2000,11 +2003,7 @@ else:
                 
                 # Tab 6: Rating distribution by mode
                 with st.expander("🏆 Rozkład Ratingów po Trybie", expanded=False):
-                    col1, col2 = st.columns([3, 1])
-                    with col2:
-                        selected_mode_rating = st.selectbox("Wybierz tryb:", sorted(valid_modes), key="mode_rating")
-                    with col1:
-                        pass
+                    selected_mode_rating = st.selectbox("Wybierz tryb:", sorted(valid_modes), key="mode_rating")
                     
                     mode_rating_df = df_modes[df_modes["Tryb"] == selected_mode_rating]
                     if not mode_rating_df.empty:
@@ -2431,24 +2430,42 @@ else:
 **Co możesz uzyskać:**
 - Historię turniejów w których grałeś
 - Wyniki turnieju (miejsce, liczba zwycięstw/remisów/porażek)
-- Rating zmianę z turnieju
+- Zmianę ratingu z turnieju
 - Nazwy turniejów i daty
 
 **Przykład implementacji:**
 ```python
 def fetch_tournaments(username):
-    response = requests.get(f"https://api.chess.com/pub/player/{username}/tournaments")
-    tournaments = response.json()["tournaments"]
-    
-    for tournament_url in tournaments:
-        tournament_data = requests.get(tournament_url).json()
-        # Analiza: win rate na turnieju, rating zmiana, faza turniejowa itp.
+    try:
+        response = requests.get(
+            f"https://api.chess.com/pub/player/{username}/tournaments",
+            timeout=10
+        )
+        if response.status_code != 200:
+            print(f"Error: {response.status_code}")
+            return []
+        
+        tournaments = response.json().get("tournaments", [])
+        results = []
+        
+        for tournament_url in tournaments:
+            try:
+                tournament_data = requests.get(tournament_url, timeout=10).json()
+                results.append(tournament_data)
+            except Exception as e:
+                print(f"Error fetching tournament: {e}")
+                continue
+        
+        return results
+    except Exception as e:
+        print(f"Error: {e}")
+        return []
 ```
 
 **Możliwe analizy:**
 - Średnia pozycja na turnieju po typie
 - Trend wyników turniejowych
-- Porównanie performance na turniejach online vs offline
+- Porównanie wydajności na turniejach online vs offline
 - Heatmapa turniejów (kiedy grasz turnieje)
 
 ---
@@ -2458,27 +2475,56 @@ def fetch_tournaments(username):
 **Opcja A: Via Lichess API (Rekomendowana)**
 ```python
 def analyze_game_with_lichess(game_id):
-    # Lichess API oferuje analizę z Stockfish
-    response = requests.get(
-        f"https://lichess.org/api/game/{game_id}?with=analysis",
-        headers={"Accept": "application/json"}
-    )
-    analysis = response.json().get("analysis", [])
-    
-    # Analiza: cp loss (centipawn loss), accuracy, bestMove suggestions
+    try:
+        response = requests.get(
+            f"https://lichess.org/api/game/{game_id}?with=analysis",
+            headers={"Accept": "application/json"},
+            timeout=10
+        )
+        if response.status_code != 200:
+            print(f"Error: {response.status_code}")
+            return None
+        
+        analysis = response.json().get("analysis", [])
+        return analysis
+    except Exception as e:
+        print(f"Error analyzing game: {e}")
+        return None
 ```
 
 **Opcja B: Local Stockfish (dla szczegółowej analizy)**
 ```python
+import chess
 import chess.engine
 
 def analyze_pgn_local(pgn_string):
-    with chess.engine.SimpleEngine.popen_uci("stockfish") as engine:
+    try:
+        # Parse moves from PGN string
+        game = chess.pgn.read_game(io.StringIO(pgn_string))
+        if not game:
+            return None
+        
+        results = []
         board = chess.Board()
-        for move in pgn_moves:
-            info = engine.analyse(board, chess.engine.Limit(time=0.1))
-            # cp_loss = info["score"] jeśli move != best move
+        
+        for move in game.mainline_moves():
+            try:
+                with chess.engine.SimpleEngine.popen_uci("stockfish") as engine:
+                    info = engine.analyse(board, chess.engine.Limit(time=0.1))
+                    results.append({
+                        "move": move.uci(),
+                        "eval": info.get("score")
+                    })
+            except Exception as e:
+                print(f"Error analyzing move {move}: {e}")
+                continue
+            
             board.push(move)
+        
+        return results
+    except Exception as e:
+        print(f"Error: {e}")
+        return None
 ```
 
 **Możliwe analizy:**

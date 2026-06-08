@@ -36,6 +36,7 @@ if 'cw_por' not in st.session_state: st.session_state.cw_por = True
 if 'cb_por' not in st.session_state: st.session_state.cb_por = True
 if 'fetch_args' not in st.session_state: st.session_state.fetch_args = []
 if 'default_view' not in st.session_state: st.session_state.default_view = VIEW_MY
+if 'saved_nick' not in st.session_state: st.session_state.saved_nick = ""
 
 bg_dict = {
     "Jasny": "#f3f4f6",
@@ -75,6 +76,66 @@ components.html(
             metaWebApp.content = "yes";
             head.appendChild(metaWebApp);
         }}
+    </script>
+    """, height=0, width=0
+)
+
+# --- NICKNAME PERSISTENCE WITH LOCALSTORAGE ---
+components.html(
+    """
+    <script>
+        // Handle nickname persistence with localStorage
+        const savedNick = localStorage.getItem('chess_nickname') || '';
+         
+        // Store the saved nickname in window for access by other scripts
+        window.chessNickname = savedNick;
+         
+        // Create mutation observer to detect when Streamlit text inputs are ready
+        const observer = new MutationObserver(function(mutations) {
+            // Find all text input fields
+            const inputs = document.querySelectorAll('input[type="text"]');
+            inputs.forEach(input => {
+                // Check if this is the main nick input (look for context)
+                if (input.value === '' && savedNick && input.placeholder === '' && !input.hasAttribute('data-nick-initialized')) {
+                    // Check if this input is near a label that says "Nick:"
+                    const parent = input.closest('div');
+                    if (parent) {
+                        const label = parent.textContent;
+                        if (label.includes('Nick:') && !label.includes('rywala')) {
+                            input.value = savedNick;
+                            input.setAttribute('data-nick-initialized', 'true');
+                            input.dispatchEvent(new Event('change', { bubbles: true }));
+                        }
+                    }
+                }
+                 
+                // Save nickname whenever any nick input changes
+                input.addEventListener('change', function() {
+                    const parent = input.closest('div');
+                    if (parent && parent.textContent.includes('Nick:') && !parent.textContent.includes('rywala')) {
+                        if (input.value) {
+                            localStorage.setItem('chess_nickname', input.value);
+                            window.chessNickname = input.value;
+                        }
+                    }
+                });
+            });
+        });
+         
+        observer.observe(document.body, { childList: true, subtree: true });
+         
+        // Also handle blur events for quicker saving
+        document.addEventListener('blur', function(event) {
+            if (event.target && event.target.type === 'text') {
+                const parent = event.target.closest('div');
+                if (parent && parent.textContent.includes('Nick:') && !parent.textContent.includes('rywala')) {
+                    if (event.target.value) {
+                        localStorage.setItem('chess_nickname', event.target.value);
+                        window.chessNickname = event.target.value;
+                    }
+                }
+            }
+        }, true);
     </script>
     """, height=0, width=0
 )
@@ -1577,9 +1638,12 @@ if st.session_state.data is None:
     if log_m == SCOPE_SINGLE:
         c1, c2 = st.columns([1, 4])
         plat = c1.selectbox("Plat:", ["Chess.com", "Lichess"])
-        nick = c2.text_input("Nick:")
+        nick = c2.text_input("Nick:", value=st.session_state.saved_nick, placeholder="Wpisz nick gracza")
+        if nick and nick != st.session_state.saved_nick:
+            st.session_state.saved_nick = nick
         if st.button(t("btn_analize"), type="primary", use_container_width=True):
             if nick:
+                st.session_state.saved_nick = nick
                 with st.spinner(tu("Pobieranie...")):
                     f = run_fetch_with_progress(nick, plat)
                     if f[0] is not None and not f[1].empty: 
@@ -1738,7 +1802,7 @@ else:
         if s_m != tu("Wszystkie"): df_f = df_f[df_f["Tryb"] == s_m].copy()
 
         if not df_f.empty:
-            t_stat, t_hist, t_czas, t_deb, t_ana, t_modes = st.tabs(["📊 Statystyki", "📅 Historia", "⏳ Czas", "🔬 Debiuty", "🧠 Analiza", "🎮 Tryby Gry"])
+            t_stat, t_hist, t_czas, t_deb, t_ana = st.tabs(["📊 Statystyki", "📅 Historia", "⏳ Czas", "🔬 Debiuty", "🧠 Analiza"])
             
             with t_stat:
                 w, d, l = (df_f["Wynik"]=="Wygrane").sum(), (df_f["Wynik"]=="Remisy").sum(), (df_f["Wynik"]=="Przegrane").sum()
@@ -1953,115 +2017,6 @@ else:
                         st.markdown(btn_html, unsafe_allow_html=True)
                 else:
                     st.info("Brak partii do analizy dla podanych kryteriów.")
-
-            with t_modes:
-                """Game modes comparison tab"""
-                if df_f.empty or df_f["Tryb"].nunique() == 0:
-                    st.info("Brak danych do analizy trybów gry")
-                else:
-                    df_modes = df_f.copy()
-                    if "MoveTimes" not in df_modes.columns:
-                        df_modes["MoveTimes"] = [[] for _ in range(len(df_modes))]
-                    
-                    valid_modes = df_modes["Tryb"].unique()
-                    
-                    # Section 1: Overview comparison
-                    with st.expander("📊 Porównanie Trybów", expanded=True):
-                        modes_comparison = build_game_modes_comparison(df_modes)
-                        st.dataframe(modes_comparison, use_container_width=True, hide_index=True)
-                    
-                    # Section 2: Move time trend over months
-                    with st.expander("📈 Trend Czasu na Ruch po Miesiącach", expanded=False):
-                        trend_df = build_mode_movetime_trend(df_modes)
-                        if not trend_df.empty:
-                            fig_trend = px.bar(
-                                trend_df, x="YearMonth", y="AvgTimePerMove", color="Tryb",
-                                title="Średni czas na ruch w każdym trybie po miesiącach",
-                                labels={"YearMonth": "Miesiąc", "AvgTimePerMove": "Średni czas (s)", "Tryb": "Tryb"},
-                                barmode="group",
-                                color_discrete_sequence=px.colors.qualitative.Plotly
-                            )
-                            fig_trend = style_chart(fig_trend)
-                            fig_trend.update_xaxes(tickangle=-45)
-                            st.plotly_chart(fig_trend, use_container_width=True)
-                        else:
-                            st.info("Brak danych o czasach ruchów")
-                    
-                    # Section 3: Time-of-day heatmap by mode
-                    with st.expander("🕐 Aktywność po Godzinach (po Trybie)", expanded=False):
-                        selected_mode_heat = st.selectbox("Wybierz tryb:", sorted(valid_modes), key="mode_heat")
-                        mode_hour_data = df_modes[df_modes["Tryb"] == selected_mode_heat].groupby("Godzina").size().reset_index(name="Partie")
-                        
-                        if not mode_hour_data.empty:
-                            fig_heat = px.bar(
-                                mode_hour_data, x="Godzina", y="Partie",
-                                title=f"Gry w trybie {selected_mode_heat} po godzinach",
-                                color="Partie", color_continuous_scale=c_scale,
-                                labels={"Godzina": "Godzina", "Partie": "Liczba gier"}
-                            )
-                            fig_heat = style_chart(fig_heat)
-                            st.plotly_chart(fig_heat, use_container_width=True)
-                    
-                    # Section 4: Move pace by mode
-                    with st.expander("⚡ Tempo Ruchu po Trybie", expanded=False):
-                        selected_mode_pace = st.selectbox("Wybierz tryb:", sorted(valid_modes), key="mode_pace")
-                        
-                        pace_df = build_mode_movepace_table(df_modes, selected_mode_pace)
-                        pace_plot = pace_df.dropna(subset=["AvgSec"])
-                        
-                        if not pace_plot.empty:
-                            fig_pace_mode = px.line(
-                                pace_plot, x="Segment", y="AvgSec", markers=True,
-                                title=f"Tempo ruchu w trybie {selected_mode_pace}",
-                                labels={"Segment": "Decyl gry", "AvgSec": "Średni czas ruchu (s)"}
-                            )
-                            fig_pace_mode = style_chart(fig_pace_mode)
-                            st.plotly_chart(fig_pace_mode, use_container_width=True)
-                        else:
-                            st.info(f"Brak danych tempa dla trybu {selected_mode_pace}")
-                    
-                    # Section 5: Color preference by mode
-                    with st.expander("🎨 Przewaga Kolorów po Trybie", expanded=False):
-                        color_stats = build_mode_color_stats(df_modes)
-                        st.dataframe(color_stats, use_container_width=True, hide_index=True)
-                    
-                    # Section 6: Opening statistics by mode
-                    with st.expander("♟️ Otwarcia po Trybie", expanded=False):
-                        selected_mode_op = st.selectbox("Wybierz tryb:", sorted(valid_modes), key="mode_op")
-                        
-                        openings_stats = build_mode_opening_stats(df_modes)
-                        if selected_mode_op in openings_stats and not openings_stats[selected_mode_op].empty:
-                            op_df = pd.DataFrame({
-                                "Otwarcie": openings_stats[selected_mode_op].index,
-                                "Partie": openings_stats[selected_mode_op].values
-                            })
-                            
-                            fig_op = px.bar(
-                                op_df, x="Partie", y="Otwarcie",
-                                orientation="h",
-                                title=f"Top otwarcia w trybie {selected_mode_op}",
-                                color="Partie", color_continuous_scale=c_scale
-                            )
-                            fig_op.update_yaxes(autorange="reversed")
-                            fig_op = style_chart(fig_op)
-                            st.plotly_chart(fig_op, use_container_width=True)
-                        else:
-                            st.info(f"Brak danych otwarć dla trybu {selected_mode_op}")
-                    
-                    # Section 7: Rating distribution by mode
-                    with st.expander("🏆 Rozkład Ratingów po Trybie", expanded=False):
-                        selected_mode_rating = st.selectbox("Wybierz tryb:", sorted(valid_modes), key="mode_rating")
-                        
-                        mode_rating_df = df_modes[df_modes["Tryb"] == selected_mode_rating]
-                        if not mode_rating_df.empty:
-                            fig_rating = px.histogram(
-                                mode_rating_df, x="ELO", nbins=20,
-                                title=f"Rozkład ratingów w trybie {selected_mode_rating}",
-                                labels={"ELO": "Rating", "count": "Liczba gier"},
-                                color_discrete_sequence=[cw]
-                            )
-                            fig_rating = style_chart(fig_rating)
-                            st.plotly_chart(fig_rating, use_container_width=True)
 
     elif app_m == VIEW_COMPARE:
         c1, c2 = st.columns(2)

@@ -37,6 +37,7 @@ if 'cb_por' not in st.session_state: st.session_state.cb_por = True
 if 'fetch_args' not in st.session_state: st.session_state.fetch_args = []
 if 'default_view' not in st.session_state: st.session_state.default_view = VIEW_MY
 if 'saved_nick' not in st.session_state: st.session_state.saved_nick = ""
+if 'compare_autofocus' not in st.session_state: st.session_state.compare_autofocus = False
 
 bg_dict = {
     "Jasny": "#f3f4f6",
@@ -1663,6 +1664,7 @@ if st.session_state.data is None:
                         st.session_state.data = (f1[0], pd.concat([f1[1], f2[1]], ignore_index=True))
                         st.session_state.user, st.session_state.platforms = f"{n1}+{n2}", list(set([p1, p2]))
                         st.session_state.fetch_args = [(n1, p1), (n2, p2)]
+                        st.session_state.compare_autofocus = False
                         st.session_state.default_view = VIEW_MY
                         st.rerun()
                     else: st.error("Błąd pobierania danych. Upewnij się, że oba konta posiadają historię gier.")
@@ -1680,16 +1682,20 @@ if st.session_state.data is None:
                         st.session_state.data = f1
                         st.session_state.user = n1
                         st.session_state.platforms = [p1]
-                        st.session_state.fetch_args = [(n1, p1)]
+                        st.session_state.fetch_args = [(n1, p1), (n2, p2)]
                         st.session_state.data2 = f2[1]
                         st.session_state.user2 = n2
                         st.session_state.plat2 = p2
+                        st.session_state.compare_autofocus = True
                         st.session_state.default_view = VIEW_COMPARE
                         st.rerun()
                     else:
                         st.error("Nie udało się pobrać danych dla obu graczy.")
 else:
     profile, df_raw = st.session_state.data
+    if st.session_state.compare_autofocus and st.session_state.data2 is not None:
+        st.session_state.default_view = VIEW_COMPARE
+        st.session_state.compare_autofocus = False
     df_loc = df_raw.copy()
     if "MoveTimes" not in df_loc.columns:
         df_loc["MoveTimes"] = [[] for _ in range(len(df_loc))]
@@ -1730,7 +1736,18 @@ else:
                 with st.spinner("Pobieranie najnowszych partii w tle..."):
                     fetch_data.clear() # czyści cache dla API
                     args = st.session_state.get('fetch_args', [])
-                    if len(args) == 1:
+                    has_compare = bool(st.session_state.data2 is not None and st.session_state.user2 and st.session_state.plat2)
+                    if has_compare:
+                        u1 = st.session_state.user
+                        p1 = st.session_state.platforms[0] if st.session_state.platforms else (args[0][1] if args else "Chess.com")
+                        f1 = run_fetch_with_progress(u1, p1)
+                        f2_rival = run_fetch_with_progress(st.session_state.user2, st.session_state.plat2)
+                        if f1[0] is not None and not f1[1].empty:
+                            st.session_state.data = f1
+                        if f2_rival[0] is not None and not f2_rival[1].empty:
+                            st.session_state.data2 = f2_rival[1]
+                        st.session_state.fetch_args = [(u1, p1), (st.session_state.user2, st.session_state.plat2)]
+                    elif len(args) == 1:
                         f = run_fetch_with_progress(args[0][0], args[0][1])
                         if f[0] is not None and not f[1].empty:
                             st.session_state.data = f
@@ -1739,11 +1756,6 @@ else:
                         f2 = run_fetch_with_progress(args[1][0], args[1][1])
                         if f1[0] is not None and not f1[1].empty and f2[0] is not None and not f2[1].empty:
                             st.session_state.data = (f1[0], pd.concat([f1[1], f2[1]], ignore_index=True))
-                    
-                    if st.session_state.data2 is not None and st.session_state.user2 and st.session_state.plat2:
-                        f2_rival = run_fetch_with_progress(st.session_state.user2, st.session_state.plat2)
-                        if f2_rival[0] is not None and not f2_rival[1].empty:
-                            st.session_state.data2 = f2_rival[1]
                 st.rerun()
                 
         with c_btn2:
@@ -1751,6 +1763,7 @@ else:
                 for k in ['data','data2','url','user','user2','plat2']: st.session_state[k] = None if k in ['data','data2','url'] else ""
                 st.session_state.platforms = []
                 st.session_state.fetch_args = []
+                st.session_state.compare_autofocus = False
                 st.session_state.default_view = VIEW_MY
                 st.rerun()
 
@@ -2029,6 +2042,10 @@ else:
                     f2 = run_fetch_with_progress(n2, p2)
                     if f2[1] is not None and not f2[1].empty: 
                         st.session_state.data2, st.session_state.user2, st.session_state.plat2 = f2[1], n2, p2
+                        p1_active = user_plats[0] if user_plats else "Chess.com"
+                        st.session_state.fetch_args = [(username, p1_active), (n2, p2)]
+                        st.session_state.compare_autofocus = True
+                        st.session_state.default_view = VIEW_COMPARE
                         st.rerun()
                     else:
                         st.error("Nie udało się pobrać danych rywala lub gracz nie ma historii.")
@@ -2388,11 +2405,37 @@ else:
                                           labels={"value": "Suma Zwycięstw", "Partia_Nr": "Nr Partii", "variable": "Gracz"})
                         fig_h2h = style_chart(fig_h2h)
                         st.plotly_chart(fig_h2h, use_container_width=True)
+
+                        h2_sel = h2.sort_values("Timestamp", ascending=False).reset_index(drop=True)
+                        h2_sel["label"] = h2_sel.apply(
+                            lambda x: (
+                                f"{get_result_icon(x['Wynik'])} {x['Timestamp'].strftime('%Y-%m-%d %H:%M')} | "
+                                f"{get_mode_badge(x['Tryb'])} / "
+                                f"{get_opening_short_label(x.get('Debiut_Grupa', ''), x.get('Debiut', ''))}"
+                            ),
+                            axis=1
+                        )
+                        h2_idx = st.selectbox(
+                            "Mecz do analizy (H2H):",
+                            options=h2_sel.index,
+                            format_func=lambda idx: h2_sel.at[idx, "label"]
+                        )
+                        g_h2 = h2_sel.loc[h2_idx]
+                        if st.button("Analizuj wybrany mecz (Lichess Engine)", use_container_width=True, key="h2h_prepare_analysis"):
+                            with st.spinner(tu("Przesyłanie PGN do analizy...")):
+                                st.session_state.url = g_h2["Link"] if g_h2["Platforma"] == "Lichess" else import_to_lichess(g_h2["PGN_Raw"])
+                                st.rerun()
+                        if st.session_state.url:
+                            btn_h2_html = (
+                                f"<a href='{st.session_state.url}' target='_blank' style='display:block; width:100%; text-align:center; background-color:{cw}; color:white; padding:12px; border-radius:5px; text-decoration:none; font-weight:bold; margin-top:10px;'>"
+                                f"OTWÓRZ ANALIZĘ ➡️"
+                                f"</a>"
+                            )
+                            st.markdown(btn_h2_html, unsafe_allow_html=True)
                         
                         st.write("**Historia spotkań:**")
                         st.dataframe(h2[["Data", "Tryb", "Kolor", "Wynik", "Ruchy", "Debiut"]].sort_values("Data", ascending=False), use_container_width=True, hide_index=True)
                     else: 
                         st.info(f"Brak zarejestrowanych bezpośrednich partii pomiędzy **{u1}** a **{u2}** (przy obecnych filtrach).")
     
-
 

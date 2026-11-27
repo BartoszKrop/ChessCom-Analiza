@@ -69,3 +69,14 @@ test("quickResigns liczy poddania przed 20. ruchem", () => {
   assert.equal(r.pct, 50);
   assert.deepEqual(r.byMode, [{ mode: "Blitz", n: 2, losses: 4, pct: 50 }]);
 });
+
+import { eloChange } from "../../docs/js/stats.js";
+
+test("eloChange: zmiana rankingu w ostatnich 30 dniach", () => {
+  const d = 86400;
+  const g = (t, elo, account = "u (C)", mode = "Blitz") => ({ endTs: t * d, elo, account, mode });
+  assert.equal(eloChange([g(1, 1000), g(20, 1100), g(45, 1150), g(50, 1130)], "Blitz"), 30); // od partii z dnia 20
+  assert.equal(eloChange([g(40, 1000), g(50, 1040)], "Blitz"), 40); // krótsza historia: od pierwszej partii
+  assert.equal(eloChange([g(40, 1000)], "Blitz"), null);
+  assert.equal(eloChange([g(1, 900, "x (L)"), g(40, 1000), g(50, 1040)], "Blitz"), 40); // tylko konto najnowszej partii
+});

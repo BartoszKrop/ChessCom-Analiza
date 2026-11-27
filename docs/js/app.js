@@ -8,7 +8,7 @@ import { countUp, enter, initSwipeTabs, initToTop } from "./polish.js?v=72";
 import { addLocalTime, DAYS, MODES, sanMoves } from "./parse.js?v=72";
 import { tOpening, tReason } from "./i18n.js?v=72";
 import {
-  LENGTH_BINS, lengthBin, pct, filterGames, counts, groupWin, eloSummary, totalHours,
+  LENGTH_BINS, lengthBin, pct, filterGames, counts, groupWin, eloSummary, eloChange, totalHours,
   mostCommon, movePace, streakEffect, openingTable, reasonShares, dayHourGrid, monthGrid,
   sessionIndexWin, SESSION_ORDER, ratingDiffWin, DIFF_ORDER, timeResults, quickResigns, opponents, monthSummary, prevMonth, openingTree,
 } from "./stats.js?v=72";
@@ -172,8 +172,8 @@ function table(parent, cols, rows, { scroll = false, onRow = null } = {}) {
   parent.appendChild(wrap);
 }
 
-function metric(label, value, sub = "") {
-  return `<div class="metric"><div class="label">${esc(label)}</div><div class="value">${esc(value)}</div>${sub ? `<div class="sub">${esc(sub)}</div>` : ""}</div>`;
+function metric(label, value, sub = "", subHtml = "") {
+  return `<div class="metric"><div class="label">${esc(label)}</div><div class="value">${esc(value)}</div>${sub || subHtml ? `<div class="sub">${subHtml || esc(sub)}</div>` : ""}</div>`;
 }
 
 // Słupki Win%: bez koloru gracza kolorujemy względem 50%, a małe próbki (< 10 partii) przygaszamy.
@@ -460,7 +460,12 @@ function renderHeader() {
 
   $("#elo-cards").innerHTML = MODES.slice().reverse().map((m) => {
     const s = eloSummary(d.games, m);
-    if (!cmp || !state.rival) return metric(`${m} (peak / teraz)`, s ? `${s.peak} / ${s.current}` : "– / –");
+    if (!cmp || !state.rival) {
+      if (!s) return metric(`${MODE_ICON[m]} ${m}`, "–", "brak partii");
+      const ch = eloChange(d.games, m);
+      const trend = ch ? ` · <span class="trend ${ch > 0 ? "up" : "down"}" title="Zmiana w ostatnich 30 dniach">${ch > 0 ? "▲\uFE0E" : "▼\uFE0E"}${Math.abs(ch)}</span>` : "";
+      return metric(`${MODE_ICON[m]} ${m}`, s.current, "", `peak ${s.peak}${trend}`);
+    }
     const r = eloSummary(state.rival.games, m);
     return metric(`${m}: obecne`, `${s?.current ?? "–"} / ${r?.current ?? "–"}`, `Peak: ${s?.peak ?? "–"} / ${r?.peak ?? "–"}`);
   }).join("");

@@ -1,6 +1,6 @@
 // Tryb „ćwicz błędy”: pozycje sprzed Twoich błędów z partii, trzeba kliknąć właściwy ruch (ten, który wskazał silnik).
 import { Chess } from "../vendor/chess.js";
-import { renderBoard } from "./board.js?v=48";
+import { renderBoard } from "./board.js?v=49";
 
 const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 const BAD = ["blunder", "mistake", "miss"];

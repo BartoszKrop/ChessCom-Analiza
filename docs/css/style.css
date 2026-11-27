@@ -269,7 +269,8 @@ tr.clickable:hover td { background: rgba(127, 127, 127, .12); }
 /* Pełny ekran, trener, animacje, ikony SVG */
 body.noscroll { overflow: hidden; }
 .sf-panel.full { position: fixed; inset: 0; z-index: 100; margin: 0; border-radius: 0; overflow: auto; background: var(--bg); padding: 16px max(16px, 3vw); animation: fadeIn .18s ease; }
-.sf-panel.full .sf-main { grid-template-columns: minmax(0, min(78vh, 62vw)) minmax(0, 1fr); }
+.sf-panel.full .sf-main { grid-template-columns: minmax(0, min(calc(100dvh - 130px), 68vw)) minmax(0, 1fr); margin-top: 0; justify-content: center; }
+.sf-panel.full .sf-boardwrap { width: 100%; }
 .sf-panel.full .sf-movelist { max-height: 46vh; }
 .sf-nav [data-nav=full].on { background: var(--accent); color: #fff; }
 .sf-nav2 { flex-basis: 100%; display: flex; gap: 6px; }
@@ -294,5 +295,5 @@ body.noscroll { overflow: hidden; }
 .sf-panel .sf-info > * { animation: fadeIn .25s ease both; }
 button { transition: background-color .15s, transform .08s, box-shadow .15s; }
 button:active { transform: scale(.97); }
-@media (max-width: 760px) { .sf-panel.full .sf-main { grid-template-columns: 1fr; } }
+@media (max-width: 760px) { .sf-panel.full { padding: 8px; } .sf-panel.full .sf-main { grid-template-columns: 1fr; } }
 @media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation-duration: .001ms !important; transition-duration: .001ms !important; } }

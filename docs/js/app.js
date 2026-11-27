@@ -1,16 +1,17 @@
-import { fetchPlayer, importToLichess, PlayerNotFound, ApiError, cacheGet, cacheSet } from "./api.js?v=66";
-import { renderBoard } from "./board.js?v=66";
-import { patterns } from "./insights.js?v=66";
-import { startTrainer } from "./trainer.js?v=66";
-import { initInstallPrompt } from "./install.js?v=66";
-import { disablePageZoom } from "./nozoom.js?v=66";
-import { addLocalTime, DAYS, MODES, sanMoves } from "./parse.js?v=66";
-import { tOpening, tReason } from "./i18n.js?v=66";
+import { fetchPlayer, importToLichess, PlayerNotFound, ApiError, cacheGet, cacheSet } from "./api.js?v=67";
+import { renderBoard } from "./board.js?v=67";
+import { patterns } from "./insights.js?v=67";
+import { startTrainer } from "./trainer.js?v=67";
+import { initInstallPrompt } from "./install.js?v=67";
+import { disablePageZoom } from "./nozoom.js?v=67";
+import { countUp, enter, initSwipeTabs, initToTop } from "./polish.js?v=67";
+import { addLocalTime, DAYS, MODES, sanMoves } from "./parse.js?v=67";
+import { tOpening, tReason } from "./i18n.js?v=67";
 import {
   LENGTH_BINS, lengthBin, pct, filterGames, counts, groupWin, eloSummary, totalHours,
   mostCommon, movePace, streakEffect, openingTable, reasonShares, dayHourGrid, monthGrid,
   sessionIndexWin, SESSION_ORDER, ratingDiffWin, DIFF_ORDER, timeResults, quickResigns, opponents, monthSummary, prevMonth, openingTree,
-} from "./stats.js?v=66";
+} from "./stats.js?v=67";
 
 const $ = (s) => document.querySelector(s);
 const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
@@ -502,6 +503,8 @@ function switchTab(tab) {
 
 // Wykresy w siatce rysowane są zanim siatka ułoży kolumny, więc po renderze dopasowujemy szerokość.
 function fitCharts() {
+  enter($("#tab-content"));
+  countUp($("#tab-content"));
   requestAnimationFrame(() => window.Plotly && document.querySelectorAll("#tab-content .js-plotly-plot").forEach((c) => window.Plotly.Plots.resize(c)));
 }
 
@@ -728,7 +731,7 @@ function tabOpen(el, games) {
 let engineMod = null;
 async function engine() {
   if (!engineMod) {
-    engineMod = await import("./engine.js?v=66");
+    engineMod = await import("./engine.js?v=67");
     engineMod.useCache(cacheGet, cacheSet);
   }
   return engineMod;
@@ -1372,6 +1375,7 @@ function init() {
     state.tab = b.dataset.tab;
     store.set("tab:" + (state.view === "compare" ? "cmp" : "my"), state.tab);
     document.querySelectorAll("#tabs button").forEach((x) => x.classList.toggle("on", x === b));
+    b.scrollIntoView({ inline: "center", block: "nearest", behavior: "smooth" });
     renderTab();
   });
   ["#f-from", "#f-to"].forEach((s) => $(s).addEventListener("change", () => {
@@ -1422,6 +1426,8 @@ function init() {
 }
 
 initQuickbar();
+initSwipeTabs();
+initToTop();
 init();
 initInstallPrompt();
 disablePageZoom();

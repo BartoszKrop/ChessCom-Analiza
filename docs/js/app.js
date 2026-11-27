@@ -1,14 +1,14 @@
-import { fetchPlayer, importToLichess, PlayerNotFound, ApiError, cacheGet, cacheSet } from "./api.js?v=46";
-import { renderBoard } from "./board.js?v=46";
-import { patterns } from "./insights.js?v=46";
-import { startTrainer } from "./trainer.js?v=46";
-import { addLocalTime, DAYS, MODES, sanMoves } from "./parse.js?v=46";
-import { tOpening, tReason } from "./i18n.js?v=46";
+import { fetchPlayer, importToLichess, PlayerNotFound, ApiError, cacheGet, cacheSet } from "./api.js?v=47";
+import { renderBoard } from "./board.js?v=47";
+import { patterns } from "./insights.js?v=47";
+import { startTrainer } from "./trainer.js?v=47";
+import { addLocalTime, DAYS, MODES, sanMoves } from "./parse.js?v=47";
+import { tOpening, tReason } from "./i18n.js?v=47";
 import {
   LENGTH_BINS, lengthBin, pct, filterGames, counts, groupWin, eloSummary, totalHours,
   mostCommon, movePace, streakEffect, openingTable, reasonShares, dayHourGrid, monthGrid,
   sessionIndexWin, SESSION_ORDER, ratingDiffWin, DIFF_ORDER, timeResults, quickResigns, opponents, monthSummary, prevMonth, openingTree,
-} from "./stats.js?v=46";
+} from "./stats.js?v=47";
 
 const $ = (s) => document.querySelector(s);
 const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
@@ -672,7 +672,7 @@ function tabOpen(el, games) {
 let engineMod = null;
 async function engine() {
   if (!engineMod) {
-    engineMod = await import("./engine.js?v=46");
+    engineMod = await import("./engine.js?v=47");
     engineMod.useCache(cacheGet, cacheSet);
   }
   return engineMod;
@@ -776,8 +776,8 @@ function sfViewer(panel, g, r, eng, onDeeper) {
         <div class="sf-nav">
           <button data-nav="first" aria-label="Początek">⏮</button><button data-nav="prev" aria-label="Poprzedni ruch">◀</button>
           <button data-nav="next" aria-label="Następny ruch">▶</button><button data-nav="last" aria-label="Koniec">⏭</button>
-          <button data-nav="err" class="err-btn">Następny błąd</button><button data-nav="flip" aria-label="Obróć planszę (R)">⇅</button><button data-nav="full" aria-label="Pełny ekran (F)" title="Pełny ekran (F)">⛶</button>
-          <button data-nav="train" class="train-btn" title="Znajdź właściwy ruch w swoich błędach">🎯 Ćwicz błędy z tej partii</button>
+          <button data-nav="flip" aria-label="Obróć planszę (R)">⇅</button><button data-nav="full" aria-label="Pełny ekran (F)" title="Pełny ekran (F)">⛶</button>
+          <div class="sf-nav2"><button data-nav="train" class="train-btn" title="Znajdź właściwy ruch w swoich błędach">🎯 Ćwicz błędy</button><button data-nav="err" class="err-btn">Następny błąd ›</button></div>
         </div>
       </div>
       <div class="sf-side">

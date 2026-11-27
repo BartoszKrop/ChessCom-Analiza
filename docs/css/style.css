@@ -247,7 +247,6 @@ tr.clickable:hover td { background: rgba(127, 127, 127, .12); }
   .sf-main { grid-template-columns: 1fr; }
   .sf-movelist { max-height: 220px; }
   .sf-nav button { flex: 1; padding: 4px 6px; }
-  .sf-nav .err-btn { flex-basis: 100%; order: 10; }
 }
 
 /* Znaczki ocen ruchów (jak na Chess.com) */
@@ -273,7 +272,9 @@ body.noscroll { overflow: hidden; }
 .sf-panel.full .sf-main { grid-template-columns: minmax(0, min(78vh, 62vw)) minmax(0, 1fr); }
 .sf-panel.full .sf-movelist { max-height: 46vh; }
 .sf-nav [data-nav=full].on { background: var(--accent); color: #fff; }
-.sf-nav .train-btn { flex-basis: 100%; font-weight: 600; }
+.sf-nav2 { flex-basis: 100%; display: flex; gap: 6px; }
+.sf-nav2 button { flex: 1; min-height: 36px; font-weight: 600; }
+.sf-nav2 .err-btn { color: var(--loss); }
 .sf-panel.training .sf-nav, .sf-panel.training .sf-sum, .sf-panel.training .sf-movelist { display: none; }
 .tr-btns { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; }
 .sf-verdict.ok { color: var(--win); }
@@ -282,7 +283,8 @@ body.noscroll { overflow: hidden; }
 .bd .sq.hint::before { content: ""; position: absolute; inset: 0; box-shadow: inset 0 0 0 .35cqw #4a90d9; background: rgba(74, 144, 217, .35); z-index: 0; }
 .bd .sq.tgt::before { content: ""; position: absolute; left: 36%; top: 36%; width: 28%; height: 28%; border-radius: 50%; background: rgba(0, 0, 0, .25); z-index: 2; }
 .sf-panel.training .bd .sq { cursor: pointer; }
-.bdg.ico svg { width: 72%; height: 72%; display: block; }
+.bdg.ico:not(.board) { width: 1.45em; padding: 0; }
+.bdg.ico:not(.board) svg { width: 1em; height: 1em; display: block; }
 .bdg.ico.board svg { width: 70%; height: 70%; }
 @keyframes slideIn { from { transform: translate(calc(var(--dx) * 100%), calc(var(--dy) * 100%)); } to { transform: none; } }
 @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }

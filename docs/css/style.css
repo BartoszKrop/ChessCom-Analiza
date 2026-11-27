@@ -38,7 +38,7 @@ label { display: grid; gap: 4px; font-size: .9rem; color: var(--muted); }
 .card { background: var(--card); border: 1px solid var(--border); border-radius: 8px; padding: 16px; margin-bottom: 16px; }
 .row { display: flex; gap: 8px; margin-bottom: 8px; flex-wrap: wrap; }
 .row > input { flex: 1 1 200px; }
-input, select, button { font: inherit; color: var(--text); background: var(--bg); border: 1px solid var(--grid); border-radius: 6px; padding: 8px 10px; min-height: 40px; }
+input, select, button { max-width: 100%; font: inherit; color: var(--text); background: var(--bg); border: 1px solid var(--grid); border-radius: 6px; padding: 8px 10px; min-height: 40px; }
 input[type="number"] { width: 64px; }
 button { cursor: pointer; background: var(--card); }
 button.primary { background: var(--accent); color: #fff; border-color: transparent; font-weight: 600; }
@@ -63,7 +63,7 @@ button:disabled { opacity: .6; cursor: progress; }
 .metrics { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 10px; margin-bottom: 16px; }
 .metric { background: var(--card); border: 1px solid var(--border); border-radius: 8px; padding: 12px; }
 .metric .label { font-size: .8rem; color: var(--muted); }
-.metric .value { font-size: 1.5rem; font-weight: 700; }
+.metric .value { font-size: 1.5rem; font-weight: 700; overflow-wrap: anywhere; }
 .metric .sub { font-size: .8rem; color: var(--muted); }
 
 .filters summary { cursor: pointer; font-weight: 600; }
@@ -71,24 +71,28 @@ button:disabled { opacity: .6; cursor: progress; }
 .filters-body label:last-child { display: flex; align-items: center; gap: 6px; }
 .colors { display: flex; gap: 6px; }
 
-.tabs { display: flex; gap: 4px; overflow-x: auto; border-bottom: 1px solid var(--grid); margin-bottom: 12px; }
+.tabs { display: flex; flex-wrap: wrap; gap: 2px 4px; border-bottom: 1px solid var(--grid); margin-bottom: 12px; }
 .tabs button { background: none; border: none; border-bottom: 3px solid transparent; border-radius: 0; white-space: nowrap; color: var(--muted); }
 .tabs button.on { color: var(--text); border-bottom-color: var(--accent); }
 
-.chart { width: 100%; min-height: 340px; background: var(--card); border-radius: 8px; margin-bottom: 12px; }
+.chart { width: 100%; height: 340px; background: var(--card); border-radius: 8px; margin-bottom: 12px; overflow: hidden; }
 .grid2 { display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 16px; }
 .grid3 { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 12px; }
 .callout { background: var(--card); border-left: 4px solid var(--accent); padding: 12px 15px; border-radius: 5px; margin: 12px 0 8px; }
 
-.table-wrap { overflow-x: auto; }
+.table-wrap { overflow-x: auto; border-radius: 8px; }
+.table-wrap.scroll { max-height: 440px; overflow-y: auto; }
+.table-wrap.scroll th { position: sticky; top: 0; background: var(--card); z-index: 1; }
 table { width: 100%; border-collapse: collapse; font-size: .9rem; background: var(--card); border-radius: 8px; overflow: hidden; }
 th, td { padding: 7px 10px; text-align: left; border-bottom: 1px solid var(--grid); }
 th { color: var(--muted); font-weight: 600; cursor: pointer; user-select: none; }
-td.num, th.num { text-align: right; }
+td.num, th.num { text-align: right; white-space: nowrap; }
+td.nowrap, th.nowrap { white-space: nowrap; }
 
 .h2h { display: grid; grid-template-columns: 1fr 1fr 1fr; text-align: center; background: var(--card); border-radius: 8px; padding: 20px; margin-bottom: 20px; }
 .h2h div:nth-child(2) { border-left: 1px solid var(--grid); border-right: 1px solid var(--grid); }
-.h2h .name { font-weight: 700; overflow: hidden; text-overflow: ellipsis; }
+.h2h > div { min-width: 0; padding: 0 6px; }
+.h2h .name { font-weight: 700; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .h2h .score { font-size: 2.2rem; font-weight: 700; }
 
 .game-pick { display: grid; gap: 10px; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); margin-bottom: 10px; }
@@ -96,8 +100,35 @@ td.num, th.num { text-align: right; }
 
 footer { text-align: center; color: var(--muted); font-size: .8rem; padding: 16px; }
 
-@media (max-width: 600px) {
+#a-game { width: 100%; }
+.profile h2 { overflow-wrap: anywhere; min-width: 0; }
+
+@media (max-width: 640px) {
+  main, .topbar { padding-left: 12px; padding-right: 12px; }
+  h1 { font-size: 1.3rem; }
+  .profile { gap: 10px; }
+  .profile img { width: 44px; height: 44px; }
+  .profile h2 { font-size: 1.2rem; flex: 1; }
   .profile-actions { margin-left: 0; width: 100%; }
   .profile-actions button { flex: 1; }
-  .metric .value { font-size: 1.2rem; }
+  #elo-cards { grid-template-columns: repeat(3, 1fr); gap: 6px; }
+  #elo-cards .metric { padding: 8px; }
+  #elo-cards .value { font-size: 1rem; }
+  #elo-cards .label, #elo-cards .sub { font-size: .7rem; }
+  .metrics { grid-template-columns: repeat(2, 1fr); gap: 6px; }
+  .metric { padding: 10px; }
+  .metric .value { font-size: 1.1rem; }
+  .card { padding: 12px; }
+  .tabs button { padding: 8px 8px; font-size: .9rem; }
+  .chart { height: 280px; }
+  .grid2, .grid3 { grid-template-columns: 1fr; }
+  table { font-size: .82rem; }
+  th, td { padding: 6px 7px; }
+  .h2h { padding: 14px 8px; }
+  .h2h .score { font-size: 1.7rem; }
+  .filters-body { gap: 8px; }
+  .filters-body > label:nth-child(1), .filters-body > label:nth-child(2) { flex: 1 1 140px; }
 }
+
+/* Dzieci siatki nie mogą rozpychać strony szerokimi tabelami. */
+.grid2 > *, .grid3 > * { min-width: 0; }

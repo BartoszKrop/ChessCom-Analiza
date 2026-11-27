@@ -278,6 +278,7 @@ function applyLoaded(a, b, [n1, p1], [n2, p2]) {
   saveRecent({ scope: state.scope, user: n1, plat: p1, user2: state.scope === "single" ? "" : n2, plat2: p2 });
   resetFilters();
   showResults();
+  lastSync = Date.now();
 }
 
 async function startAnalysis(e) {
@@ -1434,6 +1435,18 @@ function init() {
     $("#p1-nick").value = store.get("lastNick", "");
   }
   $("#p1-nick").addEventListener("change", (e) => store.set("lastNick", e.target.value.trim()));
+}
+
+// Powrót do aplikacji po dłuższej przerwie (np. po partii na Chess.com): nowe partie dociągają się same.
+const RESYNC_MS = 5 * 60 * 1000;
+document.addEventListener("visibilitychange", () => {
+  if (document.visibilityState !== "visible" || !state.data || $("#results").classList.contains("hidden")) return;
+  if (Date.now() - lastSync > RESYNC_MS) sync({ silent: true });
+});
+
+// Ktoś już coś oglądał: bibliotekę wykresów wczytujemy w wolnej chwili, żeby pierwsze wykresy były od razu.
+if (getRecent().length || new URLSearchParams(location.search).get("user")) {
+  (window.requestIdleCallback || ((f) => setTimeout(f, 1500)))(() => ensurePlotly().catch(() => {}));
 }
 
 initSwipeTabs();

@@ -1,15 +1,16 @@
-import { fetchPlayer, importToLichess, PlayerNotFound, ApiError, cacheGet, cacheSet } from "./api.js?v=56";
-import { renderBoard } from "./board.js?v=56";
-import { patterns } from "./insights.js?v=56";
-import { startTrainer } from "./trainer.js?v=56";
-import { initInstallPrompt } from "./install.js?v=56";
-import { addLocalTime, DAYS, MODES, sanMoves } from "./parse.js?v=56";
-import { tOpening, tReason } from "./i18n.js?v=56";
+import { fetchPlayer, importToLichess, PlayerNotFound, ApiError, cacheGet, cacheSet } from "./api.js?v=57";
+import { renderBoard } from "./board.js?v=57";
+import { patterns } from "./insights.js?v=57";
+import { startTrainer } from "./trainer.js?v=57";
+import { initInstallPrompt } from "./install.js?v=57";
+import { disablePageZoom } from "./nozoom.js?v=57";
+import { addLocalTime, DAYS, MODES, sanMoves } from "./parse.js?v=57";
+import { tOpening, tReason } from "./i18n.js?v=57";
 import {
   LENGTH_BINS, lengthBin, pct, filterGames, counts, groupWin, eloSummary, totalHours,
   mostCommon, movePace, streakEffect, openingTable, reasonShares, dayHourGrid, monthGrid,
   sessionIndexWin, SESSION_ORDER, ratingDiffWin, DIFF_ORDER, timeResults, quickResigns, opponents, monthSummary, prevMonth, openingTree,
-} from "./stats.js?v=56";
+} from "./stats.js?v=57";
 
 const $ = (s) => document.querySelector(s);
 const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
@@ -673,7 +674,7 @@ function tabOpen(el, games) {
 let engineMod = null;
 async function engine() {
   if (!engineMod) {
-    engineMod = await import("./engine.js?v=56");
+    engineMod = await import("./engine.js?v=57");
     engineMod.useCache(cacheGet, cacheSet);
   }
   return engineMod;
@@ -1287,3 +1288,4 @@ function init() {
 
 init();
 initInstallPrompt();
+disablePageZoom();

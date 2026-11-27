@@ -19,7 +19,6 @@ jobs:
 
   python:
     runs-on: ubuntu-latest
-    if: ${{ hashFiles('tests/test_chess_data.py') != '' }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5

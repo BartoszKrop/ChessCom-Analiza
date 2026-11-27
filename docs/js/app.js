@@ -1,11 +1,11 @@
-import { fetchPlayer, importToLichess, PlayerNotFound, ApiError } from "./api.js?v=34";
-import { addLocalTime, DAYS, MODES, sanMoves } from "./parse.js?v=34";
-import { tOpening, tReason } from "./i18n.js?v=34";
+import { fetchPlayer, importToLichess, PlayerNotFound, ApiError } from "./api.js?v=35";
+import { addLocalTime, DAYS, MODES, sanMoves } from "./parse.js?v=35";
+import { tOpening, tReason } from "./i18n.js?v=35";
 import {
   LENGTH_BINS, lengthBin, pct, filterGames, counts, groupWin, eloSummary, totalHours,
   mostCommon, movePace, streakEffect, openingTable, reasonShares, dayHourGrid, monthGrid,
-  sessionIndexWin, SESSION_ORDER, ratingDiffWin, DIFF_ORDER, timeResults, opponents, monthSummary, prevMonth, openingTree,
-} from "./stats.js?v=34";
+  sessionIndexWin, SESSION_ORDER, ratingDiffWin, DIFF_ORDER, timeResults, quickResigns, opponents, monthSummary, prevMonth, openingTree,
+} from "./stats.js?v=35";
 
 const $ = (s) => document.querySelector(s);
 const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
@@ -473,6 +473,15 @@ function tabInsights(el, games) {
     { key: "winPct", label: "Wygrane na czas", num: true, nowrap: true, html: (r) => `${r.winPct}% <span class="muted">(${r.wonOnTime}/${r.wins})</span>` },
   ], timeResults(games));
 
+  // Szybkie poddania
+  const qr = quickResigns(games);
+  el.insertAdjacentHTML("beforeend", `<h3 title="Porażki przez poddanie albo porzucenie partii przed 20. ruchem">Szybkie poddania (przed 20. ruchem) ⓘ</h3>`);
+  if (!qr.n) info(el, "Brak szybkich poddań. Walczysz do końca 💪");
+  else {
+    el.insertAdjacentHTML("beforeend", `<div class="metrics">${metric("Szybkie poddania", qr.n, `${qr.pct}% wszystkich porażek`)}${qr.byMode.map((r) => metric(r.mode, `${r.pct}%`, `${r.n} z ${r.losses} porażek`)).join("")}</div>`);
+    el.insertAdjacentHTML("beforeend", `<div class="callout">Najczęściej w debiutach: ${qr.byGroup.map((o) => `<b>${esc(tOpening(o.name, state.opLang))}</b> (${o.n})`).join(", ")}</div>`);
+  }
+
   // Rywale
   const opps = opponents(games);
   el.insertAdjacentHTML("beforeend", "<h3>Najczęstsi rywale</h3>");
@@ -639,6 +648,58 @@ function tabOpen(el, games) {
   openingTreeBox(el, games);
 }
 
+// ----- Analiza silnikiem
+const sfCache = new Map();
+const KIND = { blunder: ["??", "Błąd rażący", "--loss"], mistake: ["?", "Błąd", "--draw"], inaccuracy: ["?!", "Niedokładność", "--muted"] };
+
+async function stockfishPanel(btn, g) {
+  const cardEl = btn.closest(".game-card");
+  const old = cardEl.nextElementSibling?.classList.contains("sf-panel") ? cardEl.nextElementSibling : null;
+  if (old) { old.remove(); return; }
+  const panel = document.createElement("div");
+  panel.className = "sf-panel card";
+  panel.innerHTML = `<div class="progress"><div class="bar"></div><span>Uruchamiam silnik…</span></div>`;
+  cardEl.after(panel);
+  try {
+    const eng = await import("./engine.js?v=35");
+    let res = sfCache.get(g.link);
+    if (!res) {
+      res = await eng.analyzeGame(g, {
+        onProgress: (d, t) => {
+          panel.querySelector(".bar").style.width = `${(d / t) * 100}%`;
+          panel.querySelector("span").textContent = `Analiza: pozycja ${d} z ${t}`;
+        },
+      });
+      if (!res) return panel.remove();
+      sfCache.set(g.link, res);
+    }
+    renderSf(panel, g, res);
+  } catch (err) {
+    panel.innerHTML = `<div class="error">${esc(err.message || "Analiza się nie udała.")}</div>`;
+  }
+}
+
+function renderSf(panel, g, r) {
+  panel.innerHTML = `<div class="metrics sf-metrics">
+      ${metric("Celność", `${r.accuracy}%`)}${metric("?? rażące", r.blunders)}${metric("? błędy", r.mistakes)}${metric("?! niedokładności", r.inaccuracies)}
+    </div>`;
+  const x = r.evals.map((_, i) => i / 2);
+  const y = r.evals.map((v) => Math.max(-6, Math.min(6, v / 100)));
+  const bad = r.plies.filter((p) => p.mine && (p.kind === "blunder" || p.kind === "mistake"));
+  const box = chartBox(panel, "Ocena pozycji (dla białych)");
+  box.classList.add("short");
+  plot(box, [
+    { type: "scatter", mode: "lines", x, y, fill: "tozeroy", line: { color: css("--accent"), width: 1.5 }, fillcolor: "rgba(129,182,76,.25)", hovertemplate: "ruch %{x:.1f}: %{y:+.1f}<extra></extra>", name: "ocena" },
+    { type: "scatter", mode: "markers", x: bad.map((p) => (p.ply + 1) / 2), y: bad.map((p) => y[p.ply + 1]), marker: { color: bad.map((p) => css(KIND[p.kind][2])), size: 8 }, text: bad.map((p) => `${p.no}. ${p.san}${KIND[p.kind][0]}`), hovertemplate: "%{text}<extra></extra>", name: "Twoje błędy" },
+  ], { showlegend: false, yaxis: { range: [-6.3, 6.3], zeroline: true, title: { text: "pionki" } }, xaxis: { title: { text: "Ruch" } }, margin: { l: 44, r: 10, t: 10, b: 40 } });
+  const list = r.plies.filter((p) => p.mine && p.kind);
+  panel.insertAdjacentHTML("beforeend", list.length
+    ? `<ul class="sf-moves">${list.map((p) => `<li><b style="color:var(${KIND[p.kind][2]})">${p.no}.${p.ply % 2 ? ".." : ""} ${esc(p.san)}${KIND[p.kind][0]}</b> <span class="muted">${KIND[p.kind][1]}, −${Math.round(p.drop)}% szans</span>${p.bestSan ? ` · lepiej <b>${esc(p.bestSan)}</b>` : ""}</li>`).join("")}</ul>`
+    : `<div class="info small">Bez błędów i niedokładności. Czysta partia!</div>`);
+  panel.insertAdjacentHTML("beforeend", `<div class="info small">Stockfish 18 lite w Twojej przeglądarce, głębokość 12. Ocena przybliżona, celność liczona wzorem Lichess.</div>`);
+  fitCharts();
+}
+
 const RESULT_ICON = { W: "🟢", L: "🔴", D: "⚪️" };
 const MODE_ICON = { Blitz: "⚡️", Rapid: "😴", Bullet: "💨" };
 
@@ -672,6 +733,7 @@ function tabAnalysis(el, games) {
       <div class="gc-actions">
         ${g.link ? `<a href="${esc(g.link)}" target="_blank" rel="noopener">${g.platform === "Lichess" ? "Lichess" : "Chess.com"}</a>` : ""}
         ${g.platform === "Lichess" ? "" : `<button data-i="${i}" class="gc-ana">Analiza Lichess</button>`}
+        <button data-i="${i}" class="gc-sf">🔍 Stockfish</button>
       </div>
     </div>`;
   };
@@ -691,6 +753,8 @@ function tabAnalysis(el, games) {
   ["#a-opp", "#a-group", "#a-res", "#a-day"].forEach((sel) => $(sel).addEventListener("input", () => { preset.color = null; refill(); }));
   $("#a-more").addEventListener("click", draw);
   $("#a-list").addEventListener("click", async (e) => {
+    const sf = e.target.closest(".gc-sf");
+    if (sf) return stockfishPanel(sf, list[Number(sf.dataset.i)]);
     const btn = e.target.closest(".gc-ana");
     if (!btn) return;
     const g = list[Number(btn.dataset.i)];

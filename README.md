@@ -11,3 +11,8 @@ Zakończone miesiące Chess.com i partie Lichess zapisują się w IndexedDB, wi�
 - Link z nickiem od razu uruchamia analizę: `.../?user=NICK&platform=Chess.com` (albo `Lichess`).
 - Lokalnie: `python3 -m http.server -d docs` i otwórz http://localhost:8000.
 - Testy: `node --test tests/js/*.test.mjs`.
+
+## Biblioteki w `docs/vendor/`
+
+- [Stockfish.js](https://github.com/nmrugg/stockfish.js) 18 lite single-threaded (GPLv3, `vendor/stockfish/Copying.txt`): analiza partii w przeglądarce.
+- [chess.js](https://github.com/jhlywa/chess.js) 1.4.0 (BSD-2, `vendor/chess.js.LICENSE`): odtwarzanie ruchów z PGN.

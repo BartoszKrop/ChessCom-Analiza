@@ -195,3 +195,10 @@ tr.clickable:hover td { background: rgba(127, 127, 127, .12); }
 .crumbs button { min-height: 28px; padding: 2px 8px; background: transparent; border: none; color: var(--accent); font-weight: 600; }
 .crumbs button:last-child { color: var(--text); }
 .crumbs span { color: var(--muted); }
+
+/* Analiza Stockfishem */
+.sf-panel { margin: -4px 0 8px; padding: 12px; }
+.sf-metrics { grid-template-columns: repeat(4, 1fr); }
+.chart.short { height: 220px; }
+.sf-moves { list-style: none; margin: 8px 0; padding: 0; display: grid; gap: 4px; font-size: .92rem; }
+@media (max-width: 640px) { .sf-metrics { grid-template-columns: repeat(2, 1fr); } }

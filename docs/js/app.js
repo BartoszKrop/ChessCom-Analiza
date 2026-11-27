@@ -1,17 +1,32 @@
-import { fetchPlayer, importToLichess, PlayerNotFound, ApiError, cacheGet, cacheSet } from "./api.js?v=45";
-import { renderBoard } from "./board.js?v=45";
-import { patterns } from "./insights.js?v=45";
-import { startTrainer } from "./trainer.js?v=45";
-import { addLocalTime, DAYS, MODES, sanMoves } from "./parse.js?v=45";
-import { tOpening, tReason } from "./i18n.js?v=45";
+import { fetchPlayer, importToLichess, PlayerNotFound, ApiError, cacheGet, cacheSet } from "./api.js?v=46";
+import { renderBoard } from "./board.js?v=46";
+import { patterns } from "./insights.js?v=46";
+import { startTrainer } from "./trainer.js?v=46";
+import { addLocalTime, DAYS, MODES, sanMoves } from "./parse.js?v=46";
+import { tOpening, tReason } from "./i18n.js?v=46";
 import {
   LENGTH_BINS, lengthBin, pct, filterGames, counts, groupWin, eloSummary, totalHours,
   mostCommon, movePace, streakEffect, openingTable, reasonShares, dayHourGrid, monthGrid,
   sessionIndexWin, SESSION_ORDER, ratingDiffWin, DIFF_ORDER, timeResults, quickResigns, opponents, monthSummary, prevMonth, openingTree,
-} from "./stats.js?v=45";
+} from "./stats.js?v=46";
 
 const $ = (s) => document.querySelector(s);
 const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+
+// Plotly (duży plik) ładujemy dopiero przy pierwszym wykresie, żeby strona startowa była lekka.
+const PLOTLY_URL = "https://cdn.jsdelivr.net/npm/plotly.js-dist-min@2.35.2/plotly.min.js";
+let plotlyPromise = null;
+function ensurePlotly() {
+  if (window.Plotly) return Promise.resolve(window.Plotly);
+  plotlyPromise ||= new Promise((resolve, reject) => {
+    const sc = document.createElement("script");
+    sc.src = PLOTLY_URL;
+    sc.onload = () => resolve(window.Plotly);
+    sc.onerror = () => { plotlyPromise = null; reject(new Error("Nie udało się wczytać biblioteki wykresów (brak internetu?)")); };
+    document.head.appendChild(sc);
+  });
+  return plotlyPromise;
+}
 
 // ---------------------------------------------------------------- ustawienia
 const store = {
@@ -87,7 +102,7 @@ function plot(el, traces, layout = {}) {
   };
   const merged = { ...base, ...layout, xaxis: { ...base.xaxis, ...layout.xaxis }, yaxis: { ...base.yaxis, ...layout.yaxis } };
   // Rysujemy w następnej klatce, gdy siatka (np. dwa wykresy obok siebie) ma już docelowe szerokości.
-  return new Promise((resolve) => requestAnimationFrame(() => resolve(window.Plotly.react(el, traces, merged, { displayModeBar: false, responsive: true }))));
+  return ensurePlotly().then((P) => new Promise((resolve) => requestAnimationFrame(() => resolve(P.react(el, traces, merged, { displayModeBar: false, responsive: true }))))).catch((e) => { el.innerHTML = `<div class="info">${esc(e.message)}</div>`; });
 }
 
 const isNarrow = () => window.innerWidth < 640;
@@ -396,6 +411,7 @@ function renderResults() {
 
   let tabs = cmp ? CMP_TABS : MY_TABS;
   if (cmp && !d.platforms.includes(state.rival.plat)) tabs = tabs.filter(([k]) => k !== "h2h");
+  if (!state.tab) state.tab = store.get("tab:" + (cmp ? "cmp" : "my"), null);
   if (!tabs.some(([k]) => k === state.tab)) state.tab = tabs[0][0];
   $("#tabs").innerHTML = tabs.map(([k, l]) => `<button data-tab="${k}" class="${k === state.tab ? "on" : ""}">${l}</button>`).join("")
     + (cmp ? `<button data-tab="__rival" title="Zmień rywala">🔄 Inny rywal</button>` : "");
@@ -422,6 +438,7 @@ function renderTab() {
 
 function switchTab(tab) {
   state.tab = tab;
+  if (tab !== "__rival") store.set("tab:" + (state.view === "compare" ? "cmp" : "my"), tab);
   document.querySelectorAll("#tabs button").forEach((x) => x.classList.toggle("on", x.dataset.tab === tab));
   renderTab();
   $("#tabs").scrollIntoView({ behavior: "smooth", block: "start" });
@@ -429,7 +446,7 @@ function switchTab(tab) {
 
 // Wykresy w siatce rysowane są zanim siatka ułoży kolumny, więc po renderze dopasowujemy szerokość.
 function fitCharts() {
-  requestAnimationFrame(() => document.querySelectorAll("#tab-content .js-plotly-plot").forEach((c) => window.Plotly.Plots.resize(c)));
+  requestAnimationFrame(() => window.Plotly && document.querySelectorAll("#tab-content .js-plotly-plot").forEach((c) => window.Plotly.Plots.resize(c)));
 }
 
 // ----- Moja analiza
@@ -655,7 +672,7 @@ function tabOpen(el, games) {
 let engineMod = null;
 async function engine() {
   if (!engineMod) {
-    engineMod = await import("./engine.js?v=45");
+    engineMod = await import("./engine.js?v=46");
     engineMod.useCache(cacheGet, cacheSet);
   }
   return engineMod;
@@ -1210,6 +1227,7 @@ function init() {
     if (!b) return;
     if (b.dataset.tab === "__rival") { state.rival = null; renderResults(); return; }
     state.tab = b.dataset.tab;
+    store.set("tab:" + (state.view === "compare" ? "cmp" : "my"), state.tab);
     document.querySelectorAll("#tabs button").forEach((x) => x.classList.toggle("on", x === b));
     renderTab();
   });
@@ -1253,8 +1271,7 @@ function init() {
   if (q.get("user2")) $("#p2-nick").value = q.get("user2");
   if (q.get("user")) {
     $("#p1-nick").value = q.get("user");
-    const go = () => (window.Plotly ? startAnalysis() : setTimeout(go, 50));
-    go();
+    startAnalysis();
   } else {
     $("#p1-nick").value = store.get("lastNick", "");
   }

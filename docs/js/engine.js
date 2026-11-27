@@ -2,7 +2,7 @@
 // Pliki silnika leżą w docs/vendor/stockfish (GPLv3, https://github.com/nmrugg/stockfish.js).
 
 import { Chess } from "../vendor/chess.js";
-import { sanMoves } from "./parse.js?v=36";
+import { sanMoves } from "./parse.js?v=37";
 
 const ENGINE_URL = new URL("../vendor/stockfish/stockfish-18-lite-single.js", import.meta.url).href;
 
@@ -47,7 +47,10 @@ function evaluate(fen, depth) {
     const on = (line) => {
       if (line.startsWith("info") && line.includes(" score ")) {
         const m = line.match(/score (cp|mate) (-?\d+)/);
-        if (m && !line.includes("lowerbound") && !line.includes("upperbound")) last = m[1] === "cp" ? { cp: Number(m[2]), mate: null } : { cp: null, mate: Number(m[2]) };
+        if (m && !line.includes("lowerbound") && !line.includes("upperbound")) {
+          const pv = (line.match(/ pv (.+)$/) || [, ""])[1].split(" ").filter(Boolean).slice(0, 6);
+          last = m[1] === "cp" ? { cp: Number(m[2]), mate: null, pv } : { cp: null, mate: Number(m[2]), pv };
+        }
       } else if (line.startsWith("bestmove")) {
         listeners.delete(on);
         resolve({ ...last, best: line.split(" ")[1] });
@@ -62,12 +65,42 @@ function evaluate(fen, depth) {
   return p;
 }
 
-let generation = 0;
-export const cancelAnalysis = () => { generation++; };
+// Przerwanie: nowa analiza (albo cancelAnalysis) unieważnia poprzednią.
+let current = null;
+export const cancelAnalysis = () => { if (current) current.cancelled = true; };
+const newToken = () => { cancelAnalysis(); current = { cancelled: false }; return current; };
+
+export const ANALYSIS_DEPTH = 12;
+const CACHE_PREFIX = "sf|v1|";
+
+// Faza partii w pozycji: debiut do 12. ruchu, końcówka gdy zostało ≤ 6 figur (bez pionów i królów).
+export function phaseOf(fen, moveNo) {
+  const pieces = (fen.split(" ")[0].match(/[nbrqNBRQ]/g) || []).length;
+  if (pieces <= 6) return "end";
+  return moveNo <= 12 ? "open" : "middle";
+}
+
+function uciToSan(fen, uciMoves) {
+  const c = new Chess(fen), out = [];
+  for (const u of uciMoves) {
+    try { out.push(c.move({ from: u.slice(0, 2), to: u.slice(2, 4), promotion: u[4] }).san); } catch { break; }
+  }
+  return out;
+}
+
+export async function cachedAnalysis(game) {
+  if (!game.link || !cacheGet) return null;
+  try { return (await cacheGet(CACHE_PREFIX + game.link)) || null; } catch { return null; }
+}
+
+let cacheGet = null, cacheSet = null;
+export function useCache(get, set) { cacheGet = get; cacheSet = set; }
 
 // Analiza całej partii. onProgress(done, total). Zwraca null, gdy przerwano.
-export async function analyzeGame(game, { depth = 12, onProgress } = {}) {
-  const my = ++generation;
+export async function analyzeGame(game, { depth = ANALYSIS_DEPTH, onProgress, token } = {}) {
+  const cached = await cachedAnalysis(game);
+  if (cached) return cached;
+  const my = token || newToken();
   await start();
   const chess = new Chess();
   const sans = sanMoves(game.pgn, 1000);
@@ -80,40 +113,61 @@ export async function analyzeGame(game, { depth = 12, onProgress } = {}) {
   }
   if (!moves.length) throw new Error("Nie udało się odczytać ruchów tej partii.");
 
-  // Ocena każdej pozycji z perspektywy białych (w centypionach).
-  const evals = [];
+  // Ocena każdej pozycji z perspektywy białych (w centypionach) + najlepszy wariant.
+  const evals = [], best = [], pv = [];
   for (let i = 0; i < fens.length; i++) {
-    if (my !== generation) return null;
+    if (my.cancelled) return null;
     const probe = new Chess(fens[i]);
-    let white;
+    let white, e = { pv: [] };
     if (probe.isCheckmate()) white = probe.turn() === "w" ? -MATE_CP : MATE_CP;
     else if (probe.isDraw() || probe.isStalemate()) white = 0;
-    const e = white === undefined ? await evaluate(fens[i], depth) : { best: null };
-    if (white === undefined) white = evalToCp(e) * (probe.turn() === "w" ? 1 : -1);
-    evals.push({ white, best: e.best });
+    else {
+      e = await evaluate(fens[i], depth);
+      white = evalToCp(e) * (probe.turn() === "w" ? 1 : -1);
+    }
+    evals.push(white);
+    best.push(e.best && e.best !== "(none)" ? e.best : null);
+    pv.push(uciToSan(fens[i], e.pv?.length ? e.pv : e.best ? [e.best] : []));
     onProgress?.(i + 1, fens.length);
   }
 
-  // Ruchy gracza: utrata szansy wygranej względem najlepszej kontynuacji.
+  // Ruchy: utrata szansy wygranej względem oceny przed ruchem (perspektywa strony, która ruszała).
   const meWhite = game.color === "w";
   const plies = moves.map((mv, i) => {
-    const before = evals[i].white, after = evals[i + 1].white;
-    const mine = (i % 2 === 0) === meWhite;
-    const sign = i % 2 === 0 ? 1 : -1; // perspektywa strony, która ruszała
-    const drop = Math.max(0, winChance(sign * before) - winChance(sign * after));
-    let bestSan = null;
-    const best = evals[i].best;
-    if (best && best !== mv.lan) {
-      try { bestSan = new Chess(fens[i]).move({ from: best.slice(0, 2), to: best.slice(2, 4), promotion: best[4] }).san; } catch { /* pomijamy */ }
-    }
-    return { ply: i, no: Math.floor(i / 2) + 1, san: mv.san, mine, drop, kind: classify(drop), bestSan: mv.lan === best ? null : bestSan, after };
+    const sign = i % 2 === 0 ? 1 : -1;
+    const drop = Math.max(0, winChance(sign * evals[i]) - winChance(sign * evals[i + 1]));
+    const isBest = best[i] === mv.lan;
+    return {
+      no: Math.floor(i / 2) + 1, san: mv.san, lan: mv.lan, from: mv.from, to: mv.to,
+      mine: (i % 2 === 0) === meWhite, drop: Math.round(drop * 10) / 10, kind: isBest ? null : classify(drop),
+      bestSan: isBest ? null : pv[i][0] || null, line: isBest ? [] : pv[i], phase: phaseOf(fens[i], Math.floor(i / 2) + 1),
+    };
   });
   const minePlies = plies.filter((p) => p.mine);
   const acc = minePlies.length ? minePlies.reduce((s, p) => s + moveAccuracy(p.drop), 0) / minePlies.length : 0;
   const count = (k) => minePlies.filter((p) => p.kind === k).length;
-  return {
-    evals: evals.map((e) => e.white), plies,
+  const res = {
+    fens, evals, best, plies, depth,
     accuracy: Math.round(acc * 10) / 10,
     blunders: count("blunder"), mistakes: count("mistake"), inaccuracies: count("inaccuracy"),
   };
+  if (game.link && cacheSet) cacheSet(CACHE_PREFIX + game.link, res);
+  return res;
+}
+
+// Analiza wielu partii po kolei. onProgress(gameIdx, total, posDone, posTotal). Zwraca wyniki (bez przerwanych).
+export async function analyzeMany(games, { onProgress, onResult } = {}) {
+  const token = newToken();
+  const out = [];
+  for (let i = 0; i < games.length; i++) {
+    if (token.cancelled) break;
+    let r = null;
+    try {
+      r = await analyzeGame(games[i], { token, onProgress: (d, t) => onProgress?.(i, games.length, d, t) });
+    } catch { /* pomijamy partię, której nie da się odczytać */ }
+    if (token.cancelled) break;
+    if (r) { out.push({ game: games[i], res: r }); onResult?.(games[i], r); }
+    onProgress?.(i + 1, games.length, 0, 0);
+  }
+  return { results: out, cancelled: token.cancelled };
 }

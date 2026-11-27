@@ -2,7 +2,7 @@
 // Zakończone miesiące Chess.com trzymamy w IndexedDB, bo się nie zmieniają:
 // drugie wejście na profil pobiera tylko bieżący miesiąc.
 
-import { parseChesscomGame, parseLichessGame, MODES } from "./parse.js?v=36";
+import { parseChesscomGame, parseLichessGame, MODES } from "./parse.js?v=37";
 
 export class PlayerNotFound extends Error {}
 export class ApiError extends Error {}
@@ -38,7 +38,7 @@ function db() {
   return dbPromise;
 }
 
-async function cacheGet(key) {
+export async function cacheGet(key) {
   const d = await db();
   if (!d) return undefined;
   return new Promise((resolve) => {
@@ -48,7 +48,7 @@ async function cacheGet(key) {
   });
 }
 
-async function cacheSet(key, value) {
+export async function cacheSet(key, value) {
   const d = await db();
   if (!d) return;
   try {

@@ -359,3 +359,10 @@ body.noscroll .quickbar { display: none; }
 .qb-btn b { font-size: .9rem; max-width: 100%; }
 .qb-btn i { position: absolute; right: 9px; top: 50%; transform: translateY(-50%); }
 @media (max-width: 420px) { .qb-btn i { display: none; } }
+/* Pasek filtrów: o ok. 10% większy */
+.qb-btn { min-height: 48px; padding: 2px 10px; }
+.qb-btn .qb-l { font-size: .75rem; }
+.qb-btn b { font-size: 1rem; }
+.qb-menu button { min-height: 42px; font-size: 1.05rem; }
+#results:not(.hidden) { padding-bottom: 66px; }
+body:has(#results:not(.hidden)) #install-banner { bottom: 76px; }

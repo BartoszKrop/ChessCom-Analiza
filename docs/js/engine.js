@@ -3,7 +3,7 @@
 // Pliki silnika leżą w docs/vendor/stockfish (GPLv3, https://github.com/nmrugg/stockfish.js).
 
 import { Chess } from "../vendor/chess.js";
-import { sanMoves } from "./parse.js?v=51";
+import { sanMoves } from "./parse.js?v=52";
 
 const engineUrl = (file) => new URL(`../vendor/stockfish/${file}`, import.meta.url).href;
 
@@ -24,6 +24,8 @@ export const moveAccuracy = (drop) => Math.max(0, Math.min(100, 103.1668 * Math.
 // Celność całej partii wzorem Lichess (zbliżonym do CAPS z Chess.com): średnia z (a) średniej ważonej zmiennością pozycji
 // i (b) średniej harmonicznej celności ruchów. Harmoniczna mocno karze pojedyncze poważne błędy, zwykła średnia je „rozmywa”.
 // evals: ocena białych w każdej pozycji (n+1), drops: utrata szansy wygranej w każdym z n ruchów, whiteMoves: czy ruch i to ruch białych.
+// Lekkie dopasowanie do Chess.com (ich wyniki są bardziej „ściśnięte” do środka). Dopasowane do 4 porównań (średni błąd ok. 2,6 pkt zamiast 3,8).
+export const calibrateAccuracy = (a) => Math.round((0.8 * a + 14.5) * 10) / 10;
 export function gameAccuracy(evals, drops, isMine) {
   const n = drops.length;
   const wins = evals.map(winChance);
@@ -195,7 +197,7 @@ const newToken = () => { cancelAnalysis(); current = { cancelled: false }; retur
 export const ANALYSIS_DEPTH = 16; // przy wielu wątkach: defaultDepth() = 18
 export const DEEP_DEPTH = 20; // przy wielu wątkach: deepDepth() = 22
 export const BATCH_DEPTH = 12;
-const CACHE_PREFIX = "sf|v4|";
+const CACHE_PREFIX = "sf|v5|";
 
 // Faza partii w pozycji: debiut do 12. ruchu, końcówka gdy zostało ≤ 6 figur (bez pionów i królów).
 export function phaseOf(fen, moveNo) {
@@ -289,7 +291,7 @@ export async function analyzeGame(game, { depth = defaultDepth(), onProgress, to
     const list = plies.filter((p) => p.mine === mine);
     const counts = Object.fromEntries(KIND_ORDER.map((k) => [k, 0]));
     list.forEach((p) => counts[p.kind]++);
-    const accuracy = gameAccuracy(evals, plies.map((p) => p.drop), (i) => plies[i].mine === mine);
+    const accuracy = calibrateAccuracy(gameAccuracy(evals, plies.map((p) => p.drop), (i) => plies[i].mine === mine));
     return { counts, accuracy };
   };
   const me = sideStats(true), opp = sideStats(false);

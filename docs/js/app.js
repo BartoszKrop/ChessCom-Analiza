@@ -1,16 +1,16 @@
-import { fetchPlayer, importToLichess, PlayerNotFound, ApiError, cacheGet, cacheSet } from "./api.js?v=57";
-import { renderBoard } from "./board.js?v=57";
-import { patterns } from "./insights.js?v=57";
-import { startTrainer } from "./trainer.js?v=57";
-import { initInstallPrompt } from "./install.js?v=57";
-import { disablePageZoom } from "./nozoom.js?v=57";
-import { addLocalTime, DAYS, MODES, sanMoves } from "./parse.js?v=57";
-import { tOpening, tReason } from "./i18n.js?v=57";
+import { fetchPlayer, importToLichess, PlayerNotFound, ApiError, cacheGet, cacheSet } from "./api.js?v=59";
+import { renderBoard } from "./board.js?v=59";
+import { patterns } from "./insights.js?v=59";
+import { startTrainer } from "./trainer.js?v=59";
+import { initInstallPrompt } from "./install.js?v=59";
+import { disablePageZoom } from "./nozoom.js?v=59";
+import { addLocalTime, DAYS, MODES, sanMoves } from "./parse.js?v=59";
+import { tOpening, tReason } from "./i18n.js?v=59";
 import {
   LENGTH_BINS, lengthBin, pct, filterGames, counts, groupWin, eloSummary, totalHours,
   mostCommon, movePace, streakEffect, openingTable, reasonShares, dayHourGrid, monthGrid,
   sessionIndexWin, SESSION_ORDER, ratingDiffWin, DIFF_ORDER, timeResults, quickResigns, opponents, monthSummary, prevMonth, openingTree,
-} from "./stats.js?v=57";
+} from "./stats.js?v=59";
 
 const $ = (s) => document.querySelector(s);
 const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
@@ -373,7 +373,29 @@ function readFilters(render = true) {
   if (!f.colors.length) parts.push("brak koloru!");
   if (f.hourMin > 0 || f.hourMax < 23) parts.push(`${f.hourMin}:00–${f.hourMax}:59`);
   $("#filter-summary").textContent = parts.length ? `· ${parts.join(" · ")}` : "";
+  syncQuickbar();
   if (render) renderTab();
+}
+
+// Dolny pasek szybkich filtrów (tryb i okres) steruje tymi samymi polami co panel filtrów.
+function syncQuickbar() {
+  document.querySelectorAll("#qb-mode button").forEach((b) => b.classList.toggle("on", b.dataset.mode === state.filters.mode));
+  const on = document.querySelector("#presets button.on");
+  document.querySelectorAll("#qb-per button").forEach((b) => b.classList.toggle("on", !!on && b.dataset.days === on.dataset.days));
+}
+function initQuickbar() {
+  $("#qb-mode").addEventListener("click", (e) => {
+    const b = e.target.closest("button");
+    if (!b) return;
+    $("#f-mode").value = b.dataset.mode;
+    readFilters();
+  });
+  $("#qb-per").addEventListener("click", (e) => {
+    const b = e.target.closest("button");
+    if (!b) return;
+    setPreset(Number(b.dataset.days));
+    readFilters();
+  });
 }
 
 // ---------------------------------------------------------------- widoki
@@ -674,7 +696,7 @@ function tabOpen(el, games) {
 let engineMod = null;
 async function engine() {
   if (!engineMod) {
-    engineMod = await import("./engine.js?v=57");
+    engineMod = await import("./engine.js?v=59");
     engineMod.useCache(cacheGet, cacheSet);
   }
   return engineMod;
@@ -1286,6 +1308,7 @@ function init() {
   $("#p1-nick").addEventListener("change", (e) => store.set("lastNick", e.target.value.trim()));
 }
 
+initQuickbar();
 init();
 initInstallPrompt();
 disablePageZoom();

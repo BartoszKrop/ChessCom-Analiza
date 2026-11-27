@@ -7,17 +7,17 @@
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <title>ChessStats</title>
-  <link rel="icon" href="icons/icon.svg?v=2" type="image/svg+xml">
+  <link rel="icon" href="icons/icon.svg?v=3" type="image/svg+xml">
   <link rel="manifest" href="manifest.webmanifest">
-  <link rel="apple-touch-icon" href="icons/icon-180.png?v=2">
-  <link rel="stylesheet" href="css/style.css?v=57">
-  <link rel="stylesheet" href="css/pieces.css?v=57">
+  <link rel="apple-touch-icon" href="icons/icon-180.png?v=3">
+  <link rel="stylesheet" href="css/style.css?v=59">
+  <link rel="stylesheet" href="css/pieces.css?v=59">
   <link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin>
-  <script type="module" src="js/app.js?v=57"></script>
+  <script type="module" src="js/app.js?v=59"></script>
 </head>
 <body>
   <header class="topbar">
-    <a class="brand" href="./" aria-label="ChessStats"><img src="icons/icon.svg?v=2" alt="" width="34" height="34"><h1>ChessStats</h1></a>
+    <a class="brand" href="./" aria-label="ChessStats"><img src="icons/icon.svg?v=3" alt="" width="34" height="34"><h1>ChessStats</h1></a>
     <details class="settings">
       <summary aria-label="Ustawienia" title="Ustawienia"><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="3.2"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.9l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.9-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1-1.5 1.7 1.7 0 0 0-1.9.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.9 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1 1.7 1.7 0 0 0-.3-1.9l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.9.3h0a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5h0a1.7 1.7 0 0 0 1.9-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.9v0a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></svg></summary>
       <div class="settings-body">
@@ -130,6 +130,15 @@
 
       <nav class="tabs" id="tabs"></nav>
       <div id="tab-content"></div>
+
+      <div class="quickbar" id="quickbar" role="toolbar" aria-label="Szybkie filtry">
+        <div class="qb-group" id="qb-mode" aria-label="Tryb gry">
+          <button type="button" data-mode="">Wszystkie</button><button type="button" data-mode="Bullet">Bullet</button><button type="button" data-mode="Blitz">Blitz</button><button type="button" data-mode="Rapid">Rapid</button>
+        </div>
+        <div class="qb-group" id="qb-per" aria-label="Okres">
+          <button type="button" data-days="30">30 dni</button><button type="button" data-days="90">3 mies.</button><button type="button" data-days="365">Rok</button><button type="button" data-days="0">Całość</button>
+        </div>
+      </div>
     </section>
   </main>
 

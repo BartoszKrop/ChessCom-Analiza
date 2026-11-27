@@ -1,10 +1,10 @@
-import { fetchPlayer, importToLichess, PlayerNotFound, ApiError } from "./api.js";
-import { addLocalTime, DAYS, MODES } from "./parse.js";
-import { tOpening, tReason } from "./i18n.js";
+import { fetchPlayer, importToLichess, PlayerNotFound, ApiError } from "./api.js?v=31";
+import { addLocalTime, DAYS, MODES } from "./parse.js?v=31";
+import { tOpening, tReason } from "./i18n.js?v=31";
 import {
   LENGTH_BINS, lengthBin, pct, filterGames, counts, groupWin, eloSummary, totalHours,
   mostCommon, movePace, streakEffect, openingTable, reasonShares, dayHourGrid, calendarGrid,
-} from "./stats.js";
+} from "./stats.js?v=31";
 
 const $ = (s) => document.querySelector(s);
 const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));

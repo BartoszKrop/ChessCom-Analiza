@@ -10,9 +10,9 @@
   <link rel="icon" href="icons/icon.svg" type="image/svg+xml">
   <link rel="manifest" href="manifest.webmanifest">
   <link rel="apple-touch-icon" href="icons/icon-180.png">
-  <link rel="stylesheet" href="css/style.css">
+  <link rel="stylesheet" href="css/style.css?v=31">
   <script src="https://cdn.jsdelivr.net/npm/plotly.js-dist-min@2.35.2/plotly.min.js" defer></script>
-  <script type="module" src="js/app.js"></script>
+  <script type="module" src="js/app.js?v=31"></script>
 </head>
 <body>
   <header class="topbar">
@@ -71,9 +71,9 @@
         <img id="avatar" alt="" class="hidden">
         <h2 id="player-name"></h2>
         <div class="profile-actions">
-          <button id="share-btn" class="icon-btn" title="Kopiuj link do tych statystyk" aria-label="Kopiuj link">🔗</button>
-          <button id="refresh-btn" class="icon-btn" title="Odśwież (pobierz nowe partie)" aria-label="Odśwież">⟳</button>
-          <button id="change-btn" class="icon-btn" title="Zmień gracza" aria-label="Zmień gracza">⇄</button>
+          <button id="share-btn" class="icon-btn" title="Kopiuj link do tych statystyk" aria-label="Kopiuj link"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 13a5 5 0 0 0 7.5.5l3-3a5 5 0 0 0-7-7l-1.7 1.7"/><path d="M14 11a5 5 0 0 0-7.5-.5l-3 3a5 5 0 0 0 7 7l1.7-1.7"/></svg></button>
+          <button id="refresh-btn" class="icon-btn" title="Odśwież (pobierz nowe partie)" aria-label="Odśwież"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12a9 9 0 1 1-2.6-6.4"/><path d="M21 3v6h-6"/></svg></button>
+          <button id="change-btn" class="icon-btn" title="Zmień gracza" aria-label="Zmień gracza"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M7 4 3 8l4 4"/><path d="M3 8h14"/><path d="m17 20 4-4-4-4"/><path d="M21 16H7"/></svg></button>
         </div>
       </div>
       <div class="progress hidden" id="progress2"><div class="bar"></div><span></span></div>

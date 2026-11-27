@@ -58,7 +58,11 @@ button:disabled { opacity: .6; cursor: progress; }
 
 .profile { display: flex; align-items: center; gap: 14px; margin-bottom: 14px; flex-wrap: wrap; }
 .profile img { width: 60px; height: 60px; border-radius: 6px; object-fit: cover; box-shadow: 0 2px 4px rgba(0,0,0,.5); }
-.profile-actions { margin-left: auto; display: flex; gap: 8px; }
+.profile-actions { margin-left: auto; display: flex; gap: 6px; flex-shrink: 0; }
+.icon-btn { width: 38px; min-height: 38px; height: 38px; padding: 0; font-size: 1.15rem; line-height: 1; border-radius: 999px; display: inline-flex; align-items: center; justify-content: center; }
+.icon-btn:hover { border-color: var(--accent); }
+.icon-btn:disabled { animation: spin 1s linear infinite; }
+@keyframes spin { to { transform: rotate(360deg); } }
 
 .metrics { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 10px; margin-bottom: 16px; }
 .metric { background: var(--card); border: 1px solid var(--border); border-radius: 8px; padding: 12px; }
@@ -101,7 +105,7 @@ td.nowrap, th.nowrap { white-space: nowrap; }
 footer { text-align: center; color: var(--muted); font-size: .8rem; padding: 16px; }
 
 #a-game { width: 100%; }
-.profile h2 { overflow-wrap: anywhere; min-width: 0; }
+.profile h2 { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
 @media (max-width: 640px) {
   main, .topbar { padding-left: 12px; padding-right: 12px; }
@@ -109,8 +113,7 @@ footer { text-align: center; color: var(--muted); font-size: .8rem; padding: 16p
   .profile { gap: 10px; }
   .profile img { width: 44px; height: 44px; }
   .profile h2 { font-size: 1.2rem; flex: 1; }
-  .profile-actions { margin-left: 0; width: 100%; }
-  .profile-actions button { flex: 1; }
+  .profile { flex-wrap: nowrap; }
   #elo-cards { grid-template-columns: repeat(3, 1fr); gap: 6px; }
   #elo-cards .metric { padding: 8px; }
   #elo-cards .value { font-size: 1rem; }
@@ -132,3 +135,54 @@ footer { text-align: center; color: var(--muted); font-size: .8rem; padding: 16p
 
 /* Dzieci siatki nie mogą rozpychać strony szerokimi tabelami. */
 .grid2 > *, .grid3 > * { min-width: 0; }
+
+/* ---------- ulepszenia UX ---------- */
+.hint { color: var(--muted); font-size: .8rem; margin: 12px 0 0; }
+.recent { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin-top: 12px; }
+.recent-title { color: var(--muted); font-size: .85rem; margin-right: 2px; }
+.recent button { min-height: 32px; padding: 4px 10px; font-size: .85rem; border-radius: 999px; }
+
+.filter-summary { font-weight: 400; color: var(--muted); font-size: .85rem; }
+.presets { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 12px; }
+.presets button { min-height: 34px; padding: 4px 12px; font-size: .9rem; border-radius: 999px; }
+.presets button.on { background: var(--accent); color: #fff; border-color: transparent; }
+[data-theme="neon"] .presets button.on { color: #0a0a14; }
+.hours { display: grid; gap: 4px; font-size: .9rem; color: var(--muted); min-width: 220px; flex: 1 1 220px; }
+.hours b { color: var(--text); }
+.dual { display: flex; gap: 8px; }
+.dual input[type="range"] { flex: 1; min-height: 32px; padding: 0; accent-color: var(--accent); background: none; border: none; }
+
+.info.small { font-size: .82rem; padding: 6px 10px; margin: 6px 0; background: none; }
+.chart.tall { height: 300px; }
+.chart.calendar { height: 190px; }
+
+.wdl { display: flex; height: 10px; min-width: 70px; border-radius: 3px; overflow: hidden; background: var(--bg); }
+.wdl i { display: block; height: 100%; }
+tr.clickable { cursor: pointer; }
+tr.clickable:hover td { background: rgba(127, 127, 127, .12); }
+
+.game-list { display: grid; gap: 8px; margin-top: 6px; }
+.game-card { display: flex; gap: 12px; align-items: center; justify-content: space-between; background: var(--card); border: 1px solid var(--border); border-left: 4px solid var(--draw); border-radius: 8px; padding: 10px 12px; }
+.game-card.win { border-left-color: var(--win); }
+.game-card.loss { border-left-color: var(--loss); }
+.gc-main { min-width: 0; display: grid; gap: 2px; }
+.gc-res { font-size: .95rem; }
+.game-card.win .gc-res { color: var(--win); }
+.game-card.loss .gc-res { color: var(--loss); }
+.gc-meta, .muted { color: var(--muted); font-size: .82rem; }
+.gc-opp { overflow-wrap: anywhere; }
+.gc-open { font-size: .88rem; }
+.gc-actions { display: flex; flex-direction: column; gap: 6px; align-items: stretch; flex-shrink: 0; }
+.gc-actions a, .gc-actions button { display: block; text-align: center; font-size: .85rem; min-height: 34px; padding: 7px 10px; border-radius: 6px; border: 1px solid var(--grid); text-decoration: none; color: var(--text); background: var(--bg); white-space: nowrap; }
+.gc-actions .primary-link { background: var(--accent); color: #fff; border-color: transparent; }
+.more { width: 100%; margin-top: 10px; }
+
+.toast { position: fixed; left: 50%; bottom: 24px; transform: translateX(-50%); background: var(--text); color: var(--bg); padding: 10px 16px; border-radius: 8px; font-weight: 600; z-index: 50; box-shadow: 0 6px 20px rgba(0,0,0,.35); }
+
+@media (max-width: 640px) {
+  .game-card { flex-direction: column; align-items: stretch; }
+  .gc-actions { flex-direction: row; }
+  .gc-actions > * { flex: 1; }
+  .chart.tall { height: 260px; }
+  .chart.calendar { height: 170px; }
+}

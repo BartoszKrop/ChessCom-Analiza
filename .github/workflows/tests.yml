@@ -13,7 +13,7 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 22
-      - run: node --test tests/js/
+      - run: node --test tests/js/*.test.mjs
       - name: Składnia modułów strony
         run: for f in docs/js/*.js; do node --check "$f"; done
 

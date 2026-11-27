@@ -10,7 +10,7 @@ Zakończone miesiące Chess.com i partie Lichess zapisują się w IndexedDB, wi�
 - Włączenie: **Settings → Pages → Deploy from a branch → `main` / `/docs`**.
 - Link z nickiem od razu uruchamia analizę: `.../?user=NICK&platform=Chess.com` (albo `Lichess`).
 - Lokalnie: `python3 -m http.server -d docs` i otwórz http://localhost:8000.
-- Testy: `node --test tests/js/`.
+- Testy: `node --test tests/js/*.test.mjs`.
 
 ## Wersja Streamlit (`app.py`)
 

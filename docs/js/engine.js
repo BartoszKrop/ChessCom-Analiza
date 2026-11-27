@@ -3,7 +3,7 @@
 // Pliki silnika leżą w docs/vendor/stockfish (GPLv3, https://github.com/nmrugg/stockfish.js).
 
 import { Chess } from "../vendor/chess.js";
-import { sanMoves } from "./parse.js?v=52";
+import { sanMoves } from "./parse.js?v=53";
 
 const engineUrl = (file) => new URL(`../vendor/stockfish/${file}`, import.meta.url).href;
 
@@ -60,13 +60,14 @@ export function classify(drop) {
 // drop: utrata szansy wygranej (0–100), isBest: zagrany ruch == najlepszy silnika, gap: przewaga najlepszego
 // ruchu nad drugim (szansa wygranej, null gdy nieznana), winBefore/winAfter: szansa wygranej gracza przed/po ruchu,
 // sacrifice: ruch poświęca materiał, prevOppError: poprzedni ruch rywala był błędem.
-export function classifyMove({ drop, isBest, gap = null, winBefore = 50, winAfter = 50, sacrifice = false, prevOppError = false }) {
+export function classifyMove({ drop, isBest, gap = null, winBefore = 50, winAfter = 50, sacrifice = false, prevOppError = false, recapture = false }) {
   const err = classify(drop);
   if (err === "blunder") return "blunder";
   if (err === "mistake") return prevOppError ? "miss" : "mistake";
   if (err === "inaccuracy") return "inaccuracy";
   if (sacrifice && drop < 3 && winAfter >= 40 && winBefore < 90) return "brilliant";
-  if (isBest && gap !== null && gap >= 15 && winBefore < 75 && winAfter >= 25) return "great";
+  // Świetny: jedyny dobry ruch (nie zwykłe odbicie bierki) albo wyraźne wykorzystanie błędu rywala.
+  if (isBest && !recapture && gap !== null && winAfter >= 25 && ((gap >= 15 && winBefore < 75) || (prevOppError && gap >= 10 && winBefore < 90))) return "great";
   if (isBest) return "best";
   if (drop < 2) return "excellent";
   return "good";
@@ -197,7 +198,7 @@ const newToken = () => { cancelAnalysis(); current = { cancelled: false }; retur
 export const ANALYSIS_DEPTH = 16; // przy wielu wątkach: defaultDepth() = 18
 export const DEEP_DEPTH = 20; // przy wielu wątkach: deepDepth() = 22
 export const BATCH_DEPTH = 12;
-const CACHE_PREFIX = "sf|v5|";
+const CACHE_PREFIX = "sf|v6|";
 
 // Faza partii w pozycji: debiut do 12. ruchu, końcówka gdy zostało ≤ 6 figur (bez pionów i królów).
 export function phaseOf(fen, moveNo) {
@@ -277,13 +278,14 @@ export async function analyzeGame(game, { depth = defaultDepth(), onProgress, to
       drop, isBest, gap, winBefore, winAfter,
       sacrifice: isSacrifice(fens[i], fens[i + 1], pv[i + 1], white),
       prevOppError: !!prev && ERROR_KINDS.includes(prev.kind) && prev.kind !== "inaccuracy",
+      recapture: !!mv.captured && !!moves[i - 1]?.captured && moves[i - 1].to === mv.to,
     });
     const why = ERROR_KINDS.includes(kind)
       ? explainMove({ fenBefore: fens[i], san: mv.san, bestLine: pv[i], afterLine: pv[i + 1] || [], evalBefore: sign * evals[i], evalAfter: sign * evals[i + 1], moverWhite: white })
       : null;
     plies.push({
       why, no: Math.floor(i / 2) + 1, san: mv.san, lan: mv.lan, from: mv.from, to: mv.to,
-      mine: white === meWhite, drop: Math.round(drop * 10) / 10, kind,
+      mine: white === meWhite, drop: Math.round(drop * 10) / 10, kind, gap: gap === null ? null : Math.round(gap), wb: Math.round(winBefore),
       bestSan: isBest ? null : pv[i][0] || null, line: isBest ? [] : pv[i], phase: phaseOf(fens[i], Math.floor(i / 2) + 1),
     });
   });

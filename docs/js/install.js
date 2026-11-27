@@ -20,8 +20,8 @@ export function initInstallPrompt(delayMs = 10000) {
     bar.id = "install-banner";
     bar.setAttribute("role", "dialog");
     bar.innerHTML = `<img src="icons/icon-192.png" alt="" width="40" height="40"><div class="ib-text"><b>Zainstaluj ChessStats</b><span>${deferred
-      ? "Ikona na ekranie głównym, pełny ekran bez paska przeglądarki."
-      : "Stuknij „Udostępnij” w Safari, potem „Do ekranu początkowego”."}</span></div>${deferred ? `<button class="primary" id="ib-go">Zainstaluj</button>` : ""}<button class="link-btn" id="ib-x" aria-label="Zamknij">✕</button>`;
+      ? "Jako aplikacja korzysta się dużo wygodniej: pełny ekran bez paska przeglądarki u góry, więcej miejsca na wykresy i partie, ikona na ekranie głównym i start jednym stuknięciem."
+      : "Jako aplikacja korzysta się dużo wygodniej: pełny ekran bez paska przeglądarki u góry i więcej miejsca. Stuknij „Udostępnij” w Safari, potem „Do ekranu początkowego”."}</span></div>${deferred ? `<button class="primary" id="ib-go">Zainstaluj</button>` : ""}<button class="link-btn" id="ib-x" aria-label="Zamknij">✕</button>`;
     document.body.appendChild(bar);
     bar.querySelector("#ib-x").addEventListener("click", () => { safe.set(KEY, "1"); bar.remove(); });
     bar.querySelector("#ib-go")?.addEventListener("click", async () => {

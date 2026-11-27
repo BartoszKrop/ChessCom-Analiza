@@ -38,14 +38,34 @@ const css = (v) => getComputedStyle(document.documentElement).getPropertyValue(v
 function plot(el, traces, layout = {}) {
   const base = {
     paper_bgcolor: css("--card"), plot_bgcolor: "rgba(0,0,0,0)",
-    font: { color: css("--muted") }, margin: { l: 45, r: 10, t: 20, b: 40 },
-    legend: { orientation: "h", y: -0.2, x: 0.5, xanchor: "center" },
+    font: { color: css("--muted"), size: isNarrow() ? 11 : 12 }, margin: { l: 50, r: 10, t: 36, b: 50 },
+    legend: { orientation: "h", y: 1.02, yanchor: "bottom", x: 0, xanchor: "left" },
     xaxis: { gridcolor: css("--grid"), zerolinecolor: css("--grid"), showgrid: false },
     yaxis: { gridcolor: css("--grid"), zerolinecolor: css("--grid") },
     hoverlabel: { namelength: -1 },
   };
   const merged = { ...base, ...layout, xaxis: { ...base.xaxis, ...layout.xaxis }, yaxis: { ...base.yaxis, ...layout.yaxis } };
   window.Plotly.react(el, traces, merged, { displayModeBar: false, responsive: true });
+}
+
+const isNarrow = () => window.innerWidth < 640;
+const shortName = (n, max = 12) => (n.length > max ? n.slice(0, max - 1) + "…" : n);
+
+// Przy długim zakresie dzienne słupki są nieczytelne: grupujemy po tygodniach albo miesiącach.
+function activityBucket(games) {
+  if (!games.length) return { key: (g) => g.day, label: "dzień" };
+  const spanDays = (games[games.length - 1].endTs - games[0].endTs) / 86400;
+  if (spanDays > 540) return { key: (g) => `${g.month}-01`, label: "miesiąc" };
+  if (spanDays > 120) {
+    return {
+      key: (g) => {
+        const d = new Date(g.date); d.setHours(0, 0, 0, 0); d.setDate(d.getDate() - g.dow);
+        return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+      },
+      label: "tydzień",
+    };
+  }
+  return { key: (g) => g.day, label: "dzień" };
 }
 
 function chartBox(parent, title) {
@@ -60,15 +80,15 @@ function info(parent, text) {
   parent.insertAdjacentHTML("beforeend", `<div class="info">${esc(text)}</div>`);
 }
 
-function table(parent, cols, rows) {
-  // cols: [{key, label, num, fmt}]
+function table(parent, cols, rows, { scroll = false } = {}) {
+  // cols: [{key, label, num, fmt}]; scroll: ogranicza wysokość długich tabel
   const wrap = document.createElement("div");
-  wrap.className = "table-wrap";
+  wrap.className = scroll ? "table-wrap scroll" : "table-wrap";
   let sortKey = null, asc = false;
   const draw = () => {
     const data = sortKey ? [...rows].sort((a, b) => (a[sortKey] > b[sortKey] ? 1 : -1) * (asc ? 1 : -1)) : rows;
-    wrap.innerHTML = `<table><thead><tr>${cols.map((c) => `<th class="${c.num ? "num" : ""}" data-k="${c.key}">${esc(c.label)}</th>`).join("")}</tr></thead>
-      <tbody>${data.map((r) => `<tr>${cols.map((c) => `<td class="${c.num ? "num" : ""}">${esc(c.fmt ? c.fmt(r[c.key]) : r[c.key])}</td>`).join("")}</tr>`).join("")}</tbody></table>`;
+    wrap.innerHTML = `<table><thead><tr>${cols.map((c) => `<th class="${c.num ? "num" : ""} ${c.nowrap ? "nowrap" : ""}" data-k="${c.key}">${esc(c.label)}</th>`).join("")}</tr></thead>
+      <tbody>${data.map((r) => `<tr>${cols.map((c) => `<td class="${c.num ? "num" : ""} ${c.nowrap ? "nowrap" : ""}">${esc(c.fmt ? c.fmt(r[c.key]) : r[c.key])}</td>`).join("")}</tr>`).join("")}</tbody></table>`;
     wrap.querySelectorAll("th").forEach((th) => th.addEventListener("click", () => {
       asc = sortKey === th.dataset.k ? !asc : false;
       sortKey = th.dataset.k;
@@ -244,6 +264,7 @@ function renderResults() {
   const d = state.data;
   $("#player-name").textContent = d.name;
   const av = $("#avatar");
+  av.onerror = () => av.classList.add("hidden");
   if (d.profile.avatar) { av.src = d.profile.avatar; av.classList.remove("hidden"); } else av.classList.add("hidden");
   document.querySelectorAll("#view button").forEach((b) => b.classList.toggle("on", b.dataset.view === state.view));
 
@@ -326,9 +347,10 @@ function tabStats(el, games) {
 }
 
 function tabHist(el, games) {
-  const days = [...new Set(games.map((g) => g.day))].sort();
-  const by = (res) => { const m = new Map(); games.forEach((g) => g.result === res && m.set(g.day, (m.get(g.day) || 0) + 1)); return days.map((d) => m.get(d) || 0); };
-  plot(chartBox(el, "Aktywność i wyniki dzienne"), [
+  const b = activityBucket(games);
+  const days = [...new Set(games.map(b.key))].sort();
+  const by = (res) => { const m = new Map(); games.forEach((g) => g.result === res && m.set(b.key(g), (m.get(b.key(g)) || 0) + 1)); return days.map((d) => m.get(d) || 0); };
+  plot(chartBox(el, `Aktywność i wyniki (partie na ${b.label})`), [
     { type: "bar", name: "Przegrane", x: days, y: by("L"), marker: { color: css("--loss") } },
     { type: "bar", name: "Remisy", x: days, y: by("D"), marker: { color: css("--draw") } },
     { type: "bar", name: "Wygrane", x: days, y: by("W"), marker: { color: css("--win") } },
@@ -338,14 +360,14 @@ function tabHist(el, games) {
   const months = [...groupWin(games, (g) => g.month)].sort((a, b) => (a[0] < b[0] ? 1 : -1))
     .map(([month, e]) => ({ month, n: e.n, w: e.w, d: e.d, l: e.l, winPct: e.winPct }));
   table(el, [
-    { key: "month", label: "Miesiąc" }, { key: "n", label: "Gry", num: true }, { key: "w", label: "W", num: true },
+    { key: "month", label: "Miesiąc", nowrap: true }, { key: "n", label: "Gry", num: true }, { key: "w", label: "W", num: true },
     { key: "d", label: "R", num: true }, { key: "l", label: "P", num: true }, { key: "winPct", label: "Win%", num: true, fmt: (v) => `${v}%` },
-  ], months);
+  ], months, { scroll: true });
 }
 
 function tabTime(el, games) {
   const hours = Array.from({ length: 24 }, (_, i) => i);
-  plot(chartBox(el, "Skuteczność wg godzin"), [winBar(groupWin(games, (g) => g.hour), hours, "Win%", css("--accent"))], { yaxis: { range: [0, 100], title: { text: "Win %" } }, xaxis: { dtick: 1, title: { text: "Godzina" } } });
+  plot(chartBox(el, "Skuteczność wg godzin"), [winBar(groupWin(games, (g) => g.hour), hours, "Win%", css("--accent"))], { yaxis: { range: [0, 100], title: { text: "Win %" } }, xaxis: { dtick: isNarrow() ? 3 : 1, title: { text: "Godzina" } } });
   const dayBar = winBar(groupWin(games, (g) => g.dow), [0, 1, 2, 3, 4, 5, 6], "Win%", css("--accent"));
   plot(chartBox(el, "Skuteczność wg dni"), [{ ...dayBar, x: dayBar.x.map((d) => DAYS[d]) }], { yaxis: { range: [0, 100], title: { text: "Win %" } } });
   plot(chartBox(el, "Skuteczność wg długości partii"), [winBar(groupWin(games, (g) => lengthBin(g.moves)), LENGTH_BINS, "Win%", css("--accent"))], { yaxis: { range: [0, 100], title: { text: "Win %" } }, xaxis: { type: "category", title: { text: "Ruchy" } } });
@@ -361,7 +383,7 @@ function tabTime(el, games) {
   plot(box, ["Po serii wygranych", "Po serii porażek"].map((type, i) => {
     const r = st.filter((x) => x.type === type);
     return { type: "bar", name: type, x: r.map((x) => x.streak), y: r.map((x) => x.winPct), text: r.map((x) => `${x.winPct}%`), customdata: r.map((x) => x.n), hovertemplate: "%{x}: %{y}% (%{customdata} partii)<extra></extra>", textposition: "outside", marker: { color: i ? css("--loss") : css("--win") } };
-  }), { barmode: "group", yaxis: { range: [0, 105], title: { text: "Win % następnej partii" } } });
+  }), { barmode: "group", yaxis: { range: [0, 118], title: { text: "Win % następnej partii" } } });
 }
 
 function tabOpen(el, games) {
@@ -466,7 +488,7 @@ function tabCompareStats(el, g1, g2) {
     grid2.appendChild(box);
     const traces = [[g1, u1, "--p1"], [g2, u2, "--p2"]].map(([l, n, c]) => {
       const r = reasonShares(l, res);
-      return { type: "bar", name: n, x: r.items.map(([k]) => tReason(k)), y: r.items.map(([, v]) => Math.round((v / r.total) * 1000) / 10), text: r.items.map(([, v]) => `${v} (${Math.round((v / r.total) * 1000) / 10}%)`), textposition: "outside", marker: { color: css(c) } };
+      return { type: "bar", name: n, x: r.items.map(([k]) => tReason(k)), y: r.items.map(([, v]) => Math.round((v / r.total) * 1000) / 10), text: r.items.map(([, v]) => `${Math.round((v / r.total) * 100)}%`), customdata: r.items.map(([, v]) => v), textposition: isNarrow() ? "none" : "outside", cliponaxis: false, hovertemplate: "%{x}: %{customdata} partii (%{y}%)<extra>%{fullData.name}</extra>", marker: { color: css(c) } };
     });
     plot(chartBox(box, title), traces, { barmode: "group", yaxis: { title: { text: "%" } } });
   }
@@ -474,8 +496,9 @@ function tabCompareStats(el, g1, g2) {
 
 function tabCompareHist(el, g1, g2) {
   const [u1, u2] = names();
-  const perDay = (l) => { const m = new Map(); l.forEach((g) => m.set(g.day, (m.get(g.day) || 0) + 1)); return [...m].sort(); };
-  plot(chartBox(el, "Porównanie aktywności dziennej"), [[g1, u1, "--p1"], [g2, u2, "--p2"]].map(([l, n, c]) => {
+  const b = activityBucket(mergeGames(g1, g2));
+  const perDay = (l) => { const m = new Map(); l.forEach((g) => m.set(b.key(g), (m.get(b.key(g)) || 0) + 1)); return [...m].sort(); };
+  plot(chartBox(el, `Porównanie aktywności (partie na ${b.label})`), [[g1, u1, "--p1"], [g2, u2, "--p2"]].map(([l, n, c]) => {
     const d = perDay(l);
     return { type: "bar", name: n, x: d.map(([k]) => k), y: d.map(([, v]) => v), marker: { color: css(c) } };
   }), { barmode: "group", xaxis: { type: "date" } });
@@ -483,8 +506,8 @@ function tabCompareHist(el, g1, g2) {
   const m1 = per(g1), m2 = per(g2);
   const months = [...new Set([...m1.keys(), ...m2.keys()])].sort().reverse();
   el.insertAdjacentHTML("beforeend", "<h3>Partie miesięcznie</h3>");
-  table(el, [{ key: "month", label: "Miesiąc" }, { key: "a", label: u1, num: true }, { key: "b", label: u2, num: true }],
-    months.map((month) => ({ month, a: m1.get(month) || 0, b: m2.get(month) || 0 })));
+  table(el, [{ key: "month", label: "Miesiąc", nowrap: true }, { key: "a", label: shortName(u1), num: true }, { key: "b", label: shortName(u2), num: true }],
+    months.map((month) => ({ month, a: m1.get(month) || 0, b: m2.get(month) || 0 })), { scroll: true });
 }
 
 function tabCompareTime(el, g1, g2) {
@@ -493,7 +516,7 @@ function tabCompareTime(el, g1, g2) {
     const t = winBar(groupWin(l, keyFn), order, n, css(c));
     return { ...t, x: t.x.map(labelFn) };
   });
-  plot(chartBox(el, "Skuteczność wg godzin"), pair((g) => g.hour, Array.from({ length: 24 }, (_, i) => i)), { barmode: "group", yaxis: { range: [0, 100], title: { text: "Win %" } }, xaxis: { dtick: 1 } });
+  plot(chartBox(el, "Skuteczność wg godzin"), pair((g) => g.hour, Array.from({ length: 24 }, (_, i) => i)), { barmode: "group", yaxis: { range: [0, 100], title: { text: "Win %" } }, xaxis: { dtick: isNarrow() ? 3 : 1 } });
   plot(chartBox(el, "Skuteczność wg dni"), pair((g) => g.dow, [0, 1, 2, 3, 4, 5, 6], (d) => DAYS[d]), { barmode: "group", yaxis: { range: [0, 100], title: { text: "Win %" } }, xaxis: { categoryorder: "array", categoryarray: DAYS } });
   plot(chartBox(el, "Skuteczność wg długości partii"), pair((g) => lengthBin(g.moves), LENGTH_BINS), { barmode: "group", yaxis: { range: [0, 100], title: { text: "Win %" } }, xaxis: { type: "category", categoryorder: "array", categoryarray: LENGTH_BINS } });
   const p = [[g1, u1, "--p1"], [g2, u2, "--p2"]].map(([l, n, c]) => { const r = movePace(l); return { type: "scatter", mode: "lines+markers", name: n, x: r.map((x) => x.label), y: r.map((x) => x.avg), line: { color: css(c) } }; });
@@ -502,6 +525,7 @@ function tabCompareTime(el, g1, g2) {
 
 function tabCompareOpen(el, g1, g2) {
   const [u1, u2] = names();
+  el.insertAdjacentHTML("beforeend", `<div class="info">1 = <b style="color:var(--p1)">${esc(u1)}</b> · 2 = <b style="color:var(--p2)">${esc(u2)}</b> · % = skuteczność (win%)</div>`);
   const grid = document.createElement("div");
   grid.className = "grid2";
   el.appendChild(grid);
@@ -516,8 +540,8 @@ function tabCompareOpen(el, g1, g2) {
     })).sort((x, y) => y.an + y.bn - (x.an + x.bn)).slice(0, 20);
     if (!rows.length) { info(box, "Brak partii"); continue; }
     table(box, [
-      { key: "name", label: "Debiut" }, { key: "an", label: `${u1} gry`, num: true }, { key: "aw", label: `${u1} win%`, num: true, fmt: (v) => `${v}%` },
-      { key: "bn", label: `${u2} gry`, num: true }, { key: "bw", label: `${u2} win%`, num: true, fmt: (v) => `${v}%` },
+      { key: "name", label: "Debiut" }, { key: "an", label: "Gry 1", num: true }, { key: "aw", label: "% 1", num: true, fmt: (v) => `${v}%` },
+      { key: "bn", label: "Gry 2", num: true }, { key: "bw", label: "% 2", num: true, fmt: (v) => `${v}%` },
     ], rows);
   }
 }
@@ -528,9 +552,9 @@ function tabH2H(el, g1) {
   if (!h.length) return info(el, `Brak bezpośrednich partii między ${u1} a ${u2} (przy obecnych filtrach).`);
   const c = counts(h);
   el.insertAdjacentHTML("beforeend", `<div class="h2h">
-    <div><div class="name" style="color:var(--p1)">${esc(u1)}</div><div class="score" style="color:var(--p1)">${c.W}</div></div>
+    <div><div class="name" style="color:var(--p1)" title="${esc(u1)}">${esc(u1)}</div><div class="score" style="color:var(--p1)">${c.W}</div></div>
     <div><div class="name">REMISY</div><div class="score">${c.D}</div></div>
-    <div><div class="name" style="color:var(--p2)">${esc(u2)}</div><div class="score" style="color:var(--p2)">${c.L}</div></div></div>`);
+    <div><div class="name" style="color:var(--p2)" title="${esc(u2)}">${esc(u2)}</div><div class="score" style="color:var(--p2)">${c.L}</div></div></div>`);
   let w = 0, l = 0;
   const cw = h.map((g) => (w += g.result === "W")), cl = h.map((g) => (l += g.result === "L"));
   const x = h.map((_, i) => i + 1);
@@ -540,8 +564,8 @@ function tabH2H(el, g1) {
   ], { xaxis: { title: { text: "Nr partii" } }, yaxis: { title: { text: "Suma zwycięstw" } } });
   el.insertAdjacentHTML("beforeend", "<h3>Historia spotkań</h3>");
   const res = { W: "Wygrana", D: "Remis", L: "Porażka" };
-  table(el, [{ key: "day", label: "Data" }, { key: "mode", label: "Tryb" }, { key: "color", label: "Kolor" }, { key: "res", label: "Wynik" }, { key: "moves", label: "Ruchy", num: true }, { key: "opening", label: "Debiut" }],
-    h.slice().reverse().map((g) => ({ ...g, color: g.color === "w" ? "Białe" : "Czarne", res: res[g.result] })));
+  table(el, [{ key: "day", label: "Data", nowrap: true }, { key: "mode", label: "Tryb" }, { key: "res", label: "Wynik", nowrap: true }, { key: "moves", label: "Ruchy", num: true }, { key: "opening", label: "Debiut" }],
+    h.slice().reverse().map((g) => ({ ...g, res: `${g.color === "w" ? "⚪" : "⚫"} ${res[g.result]}` })), { scroll: true });
 }
 
 // ---------------------------------------------------------------- start
@@ -553,6 +577,11 @@ function setScope(scope) {
   $("#start-btn").textContent = { single: "Analizuj", merge: "Połącz i analizuj", compare: "Uruchom porównanie" }[scope];
   if (scope === "merge") $("#p2-plat").value = $("#p1-plat").value === "Lichess" ? "Chess.com" : "Lichess";
 }
+
+let wasNarrow = isNarrow();
+window.addEventListener("resize", () => {
+  if (isNarrow() !== wasNarrow) { wasNarrow = isNarrow(); renderTab(); }
+});
 
 function init() {
   $("#theme").value = store.get("theme", "chesscom");

@@ -1,5 +1,5 @@
 // Wyłącza przybliżanie strony (szczypanie, podwójne stuknięcie) poza wykresami, gdzie przybliżanie jest przydatne.
-const inChart = (t) => t instanceof Element && !!t.closest(".chart, .js-plotly-plot");
+const inChart = () => false; // strona stała: bez przybliżania i przesuwania w bok, także na wykresach
 
 export function disablePageZoom() {
   const opt = { passive: false };

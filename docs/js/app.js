@@ -1,15 +1,15 @@
-import { fetchPlayer, importToLichess, PlayerNotFound, ApiError, cacheGet, cacheSet } from "./api.js?v=52";
-import { renderBoard } from "./board.js?v=52";
-import { patterns } from "./insights.js?v=52";
-import { startTrainer } from "./trainer.js?v=52";
-import { initInstallPrompt } from "./install.js?v=52";
-import { addLocalTime, DAYS, MODES, sanMoves } from "./parse.js?v=52";
-import { tOpening, tReason } from "./i18n.js?v=52";
+import { fetchPlayer, importToLichess, PlayerNotFound, ApiError, cacheGet, cacheSet } from "./api.js?v=53";
+import { renderBoard } from "./board.js?v=53";
+import { patterns } from "./insights.js?v=53";
+import { startTrainer } from "./trainer.js?v=53";
+import { initInstallPrompt } from "./install.js?v=53";
+import { addLocalTime, DAYS, MODES, sanMoves } from "./parse.js?v=53";
+import { tOpening, tReason } from "./i18n.js?v=53";
 import {
   LENGTH_BINS, lengthBin, pct, filterGames, counts, groupWin, eloSummary, totalHours,
   mostCommon, movePace, streakEffect, openingTable, reasonShares, dayHourGrid, monthGrid,
   sessionIndexWin, SESSION_ORDER, ratingDiffWin, DIFF_ORDER, timeResults, quickResigns, opponents, monthSummary, prevMonth, openingTree,
-} from "./stats.js?v=52";
+} from "./stats.js?v=53";
 
 const $ = (s) => document.querySelector(s);
 const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
@@ -673,12 +673,12 @@ function tabOpen(el, games) {
 let engineMod = null;
 async function engine() {
   if (!engineMod) {
-    engineMod = await import("./engine.js?v=52");
+    engineMod = await import("./engine.js?v=53");
     engineMod.useCache(cacheGet, cacheSet);
   }
   return engineMod;
 }
-const sfKey = (g) => `sf|v5|${g.link}`; // ten sam klucz co w engine.js
+const sfKey = (g) => `sf|v6|${g.link}`; // ten sam klucz co w engine.js
 // Kategorie ruchów jak na Chess.com: znaczek, nazwa i kolor.
 const KIND = {
   brilliant: { mark: "!!", name: "Genialny ruch", short: "Genialne", color: "#1baca6", list: true },

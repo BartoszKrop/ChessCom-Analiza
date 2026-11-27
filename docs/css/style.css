@@ -197,8 +197,58 @@ tr.clickable:hover td { background: rgba(127, 127, 127, .12); }
 .crumbs span { color: var(--muted); }
 
 /* Analiza Stockfishem */
-.sf-panel { margin: -4px 0 8px; padding: 12px; }
+:root { --mistake: #f08c00; --inacc: #d9b400; --sq-light: #ebecd0; --sq-dark: #739552; }
+.sf-panel { margin: -4px 0 8px; padding: 12px; outline: none; }
 .sf-metrics { grid-template-columns: repeat(4, 1fr); }
 .chart.short { height: 220px; }
-.sf-moves { list-style: none; margin: 8px 0; padding: 0; display: grid; gap: 4px; font-size: .92rem; }
+.sf-main { display: grid; grid-template-columns: minmax(0, 440px) minmax(0, 1fr); gap: 16px; margin-top: 12px; align-items: start; }
+.sf-boardwrap { display: flex; gap: 6px; }
+.board { flex: 1; min-width: 0; touch-action: pan-y; }
+.bd { position: relative; display: grid; grid-template-columns: repeat(8, 1fr); aspect-ratio: 1; border-radius: 4px; overflow: hidden; user-select: none; }
+.bd .sq { position: relative; aspect-ratio: 1; }
+.bd .sq.l { background: var(--sq-light); }
+.bd .sq.d { background: var(--sq-dark); }
+.bd .sq.hl::after { content: ""; position: absolute; inset: 0; background: rgba(255, 235, 59, .45); }
+.bd .sq.hl.blunder::after { background: rgba(220, 38, 38, .5); }
+.bd .sq.hl.mistake::after { background: rgba(240, 140, 0, .5); }
+.bd .sq.hl.inaccuracy::after { background: rgba(217, 180, 0, .45); }
+.bd .pc { position: absolute; inset: 0; background-size: cover; z-index: 1; }
+.bd .cf, .bd .cr { position: absolute; font-size: 10px; font-weight: 700; z-index: 1; line-height: 1; }
+.bd .cf { right: 3px; bottom: 2px; }
+.bd .cr { left: 3px; top: 3px; }
+.bd .sq.l .cf, .bd .sq.l .cr { color: var(--sq-dark); }
+.bd .sq.d .cf, .bd .sq.d .cr { color: var(--sq-light); }
+.bd .arrows { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; z-index: 2; }
+.evalbar { position: relative; width: 22px; flex-shrink: 0; background: #403d39; border-radius: 4px; overflow: hidden; }
+.evalbar .fill { position: absolute; left: 0; right: 0; background: #f1f1f1; transition: height .25s; }
+.evalbar span { position: absolute; left: 0; right: 0; text-align: center; font-size: 9px; font-weight: 700; z-index: 1; }
+.evalbar span.low { bottom: 3px; color: #403d39; }
+.evalbar span.high { top: 3px; color: #f1f1f1; }
+.sf-nav { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+.sf-nav button { min-height: 36px; padding: 4px 12px; }
+.sf-nav .err-btn { flex: 1; color: var(--loss); font-weight: 600; }
+.sf-info { display: grid; gap: 4px; padding: 10px 12px; background: var(--bg); border-radius: 6px; min-height: 92px; font-size: .95rem; }
+.sf-move { font-size: 1.05rem; }
+.sf-verdict { color: var(--k, var(--text)); }
+.sf-verdict.good { color: var(--win); }
+.link-btn { min-height: 0; padding: 0 4px; border: none; background: none; color: var(--accent); font-weight: 600; }
+.sf-movelist { margin-top: 10px; max-height: 330px; overflow-y: auto; position: relative; }
+.mvgrid { display: grid; grid-template-columns: 2.6em 1fr 1fr; gap: 2px 4px; font-size: .92rem; }
+.mvgrid .no { color: var(--muted); padding: 4px 0; text-align: right; }
+.mv { min-height: 0; padding: 4px 8px; text-align: left; border: none; background: transparent; border-radius: 4px; color: var(--text); }
+.mv.opp { color: var(--muted); }
+.mv i { font-style: normal; font-weight: 700; color: var(--k); margin-left: 2px; }
+.mv.on { background: var(--accent); color: #fff; }
+.mv.on i { color: #fff; }
+.sf-batch { margin-bottom: 14px; }
+.sf-batch-head { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 14px; }
+.sf-batch-ctl { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.sf-batch-ctl label { white-space: nowrap; }
+.sf-batch-head select { min-height: 34px; padding: 4px 8px; }
+@media (max-width: 760px) {
+  .sf-main { grid-template-columns: 1fr; }
+  .sf-movelist { max-height: 220px; }
+  .sf-nav button { flex: 1; padding: 4px 6px; }
+  .sf-nav .err-btn { flex-basis: 100%; order: 10; }
+}
 @media (max-width: 640px) { .sf-metrics { grid-template-columns: repeat(2, 1fr); } }

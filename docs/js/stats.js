@@ -112,7 +112,7 @@ export function streakEffect(games) {
 }
 
 export function openingTable(games, keyFn, limit) {
-  return [...groupWin(games, keyFn)].map(([name, e]) => ({ name, n: e.n, winPct: e.winPct }))
+  return [...groupWin(games, keyFn)].map(([name, e]) => ({ name, n: e.n, w: e.w, d: e.d, l: e.l, winPct: e.winPct }))
     .sort((a, b) => b.n - a.n).slice(0, limit);
 }
 
@@ -121,4 +121,36 @@ export function reasonShares(games, result) {
   const m = new Map();
   for (const g of sub) m.set(g.reason, (m.get(g.reason) || 0) + 1);
   return { total: sub.length, items: [...m].sort((a, b) => b[1] - a[1]) };
+}
+
+// Skuteczność w siatce dzień tygodnia × godzina (null, gdy za mało partii).
+export function dayHourGrid(games, minGames = 3) {
+  const n = Array.from({ length: 7 }, () => new Array(24).fill(0));
+  const w = Array.from({ length: 7 }, () => new Array(24).fill(0));
+  for (const g of games) { n[g.dow][g.hour]++; if (g.result === "W") w[g.dow][g.hour]++; }
+  const z = n.map((row, d) => row.map((c, h) => (c >= minGames ? pct(w[d][h], c) : null)));
+  return { z, n };
+}
+
+// Liczba partii na dzień w ostatnich 53 tygodniach przed `endDay` (YYYY-MM-DD), w układzie kalendarza.
+export function calendarGrid(games, endDay) {
+  const end = new Date(`${endDay}T12:00:00`);
+  const endDow = (end.getDay() + 6) % 7;
+  const start = new Date(end); start.setDate(end.getDate() - endDow - 52 * 7);
+  const key = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+  const perDay = new Map();
+  for (const g of games) perDay.set(g.day, (perDay.get(g.day) || 0) + 1);
+  const weeks = [], z = Array.from({ length: 7 }, () => []), text = Array.from({ length: 7 }, () => []);
+  for (let wk = 0; wk < 53; wk++) {
+    const ws = new Date(start); ws.setDate(start.getDate() + wk * 7);
+    weeks.push(key(ws));
+    for (let d = 0; d < 7; d++) {
+      const day = new Date(ws); day.setDate(ws.getDate() + d);
+      const k = key(day);
+      const future = day > end;
+      z[d].push(future ? null : perDay.get(k) || 0);
+      text[d].push(k);
+    }
+  }
+  return { weeks, z, text };
 }

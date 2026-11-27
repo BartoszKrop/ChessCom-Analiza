@@ -7,7 +7,9 @@
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <title>ChessStats</title>
-  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>♟️</text></svg>">
+  <link rel="icon" href="icons/icon.svg" type="image/svg+xml">
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="apple-touch-icon" href="icons/icon-180.png">
   <link rel="stylesheet" href="css/style.css">
   <script src="https://cdn.jsdelivr.net/npm/plotly.js-dist-min@2.35.2/plotly.min.js" defer></script>
   <script type="module" src="js/app.js"></script>
@@ -59,6 +61,8 @@
       </form>
       <div class="progress hidden" id="progress"><div class="bar"></div><span></span></div>
       <div class="error hidden" id="start-error"></div>
+      <div id="recent" class="recent hidden"></div>
+      <p class="hint">Pierwsze pobranie dużego konta może potrwać chwilę. Potem dane są zapamiętane w przeglądarce i kolejne wejścia są prawie natychmiastowe.</p>
     </section>
 
     <!-- WYNIKI -->
@@ -67,8 +71,9 @@
         <img id="avatar" alt="" class="hidden">
         <h2 id="player-name"></h2>
         <div class="profile-actions">
-          <button id="refresh-btn">Odśwież</button>
-          <button id="change-btn" class="primary">Zmień gracza</button>
+          <button id="share-btn" class="icon-btn" title="Kopiuj link do tych statystyk" aria-label="Kopiuj link">🔗</button>
+          <button id="refresh-btn" class="icon-btn" title="Odśwież (pobierz nowe partie)" aria-label="Odśwież">⟳</button>
+          <button id="change-btn" class="icon-btn" title="Zmień gracza" aria-label="Zmień gracza">⇄</button>
         </div>
       </div>
       <div class="progress hidden" id="progress2"><div class="bar"></div><span></span></div>
@@ -90,7 +95,13 @@
       </div>
 
       <details class="card filters" id="filters">
-        <summary>🔍 Filtry</summary>
+        <summary>🔍 Filtry <span id="filter-summary" class="filter-summary"></span></summary>
+        <div class="presets" id="presets">
+          <button type="button" data-days="30">30 dni</button>
+          <button type="button" data-days="90">3 miesiące</button>
+          <button type="button" data-days="365">Rok</button>
+          <button type="button" data-days="0" class="on">Wszystko</button>
+        </div>
         <div class="filters-body">
           <label>Od <input type="date" id="f-from"></label>
           <label>Do <input type="date" id="f-to"></label>
@@ -101,7 +112,13 @@
             <button type="button" id="f-white" class="toggle on">⚪ Białe</button>
             <button type="button" id="f-black" class="toggle on">⚫ Czarne</button>
           </div>
-          <label>Godziny <input type="number" id="f-h1" min="0" max="23" value="0"> – <input type="number" id="f-h2" min="0" max="23" value="23"></label>
+          <div class="hours">
+            <span>Godziny <b id="f-hours-label">0:00 – 23:59</b></span>
+            <div class="dual">
+              <input type="range" id="f-h1" min="0" max="23" value="0" aria-label="Od godziny">
+              <input type="range" id="f-h2" min="0" max="23" value="23" aria-label="Do godziny">
+            </div>
+          </div>
         </div>
       </details>
 
@@ -110,6 +127,7 @@
     </section>
   </main>
 
+  <div id="toast" class="toast hidden"></div>
   <footer>Dane: <a href="https://www.chess.com/news/view/published-data-api" target="_blank" rel="noopener">Chess.com API</a> · <a href="https://lichess.org/api" target="_blank" rel="noopener">Lichess API</a></footer>
 </body>
 </html>

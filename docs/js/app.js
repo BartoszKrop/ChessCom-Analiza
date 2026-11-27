@@ -3,7 +3,7 @@ import { addLocalTime, DAYS, MODES } from "./parse.js";
 import { tOpening, tReason } from "./i18n.js";
 import {
   LENGTH_BINS, lengthBin, pct, filterGames, counts, groupWin, eloSummary, totalHours,
-  mostCommon, movePace, streakEffect, openingTable, reasonShares,
+  mostCommon, movePace, streakEffect, openingTable, reasonShares, dayHourGrid, calendarGrid,
 } from "./stats.js";
 
 const $ = (s) => document.querySelector(s);
@@ -23,7 +23,44 @@ const state = {
   tab: null,
   opLang: store.get("opLang", "pl"),
   filters: { from: "", to: "", mode: "", colors: ["w", "b"], hourMin: 0, hourMax: 23 },
+  anaPreset: null, // np. { group } po kliknięciu debiutu
 };
+
+function toast(text) {
+  const t = $("#toast");
+  t.textContent = text;
+  t.classList.remove("hidden");
+  clearTimeout(toast.timer);
+  toast.timer = setTimeout(() => t.classList.add("hidden"), 2200);
+}
+
+// ---------------------------------------------------------------- ostatnio wyszukiwani
+function getRecent() {
+  try { return JSON.parse(store.get("recent", "[]")) || []; } catch { return []; }
+}
+
+function saveRecent(entry) {
+  const id = (e) => [e.scope, e.user, e.plat, e.user2 || "", e.plat2 || ""].join("|").toLowerCase();
+  const list = [entry, ...getRecent().filter((e) => id(e) !== id(entry))].slice(0, 6);
+  store.set("recent", JSON.stringify(list));
+}
+
+function renderRecent() {
+  const list = getRecent();
+  const el = $("#recent");
+  el.classList.toggle("hidden", !list.length);
+  if (!list.length) return;
+  const label = (e) => e.scope === "single" ? `${e.user} · ${e.plat === "Lichess" ? "Lichess" : "Chess.com"}`
+    : `${e.user} ${e.scope === "merge" ? "+" : "vs"} ${e.user2}`;
+  el.innerHTML = `<span class="recent-title">Ostatnio:</span>` + list.map((e, i) => `<button type="button" data-i="${i}">${esc(label(e))}</button>`).join("");
+  el.querySelectorAll("button").forEach((b) => b.addEventListener("click", () => {
+    const e = list[Number(b.dataset.i)];
+    setScope(e.scope);
+    $("#p1-nick").value = e.user; $("#p1-plat").value = e.plat;
+    if (e.user2) { $("#p2-nick").value = e.user2; $("#p2-plat").value = e.plat2; }
+    startAnalysis();
+  }));
+}
 
 function applyTheme(theme) {
   document.documentElement.dataset.theme = theme;
@@ -45,7 +82,8 @@ function plot(el, traces, layout = {}) {
     hoverlabel: { namelength: -1 },
   };
   const merged = { ...base, ...layout, xaxis: { ...base.xaxis, ...layout.xaxis }, yaxis: { ...base.yaxis, ...layout.yaxis } };
-  window.Plotly.react(el, traces, merged, { displayModeBar: false, responsive: true });
+  // Rysujemy w następnej klatce, gdy siatka (np. dwa wykresy obok siebie) ma już docelowe szerokości.
+  requestAnimationFrame(() => window.Plotly.react(el, traces, merged, { displayModeBar: false, responsive: true }));
 }
 
 const isNarrow = () => window.innerWidth < 640;
@@ -80,15 +118,16 @@ function info(parent, text) {
   parent.insertAdjacentHTML("beforeend", `<div class="info">${esc(text)}</div>`);
 }
 
-function table(parent, cols, rows, { scroll = false } = {}) {
-  // cols: [{key, label, num, fmt}]; scroll: ogranicza wysokość długich tabel
+function table(parent, cols, rows, { scroll = false, onRow = null } = {}) {
+  // cols: [{key, label, num, fmt, html}]; scroll: ogranicza wysokość długich tabel; onRow: klik w wiersz
   const wrap = document.createElement("div");
   wrap.className = scroll ? "table-wrap scroll" : "table-wrap";
   let sortKey = null, asc = false;
   const draw = () => {
     const data = sortKey ? [...rows].sort((a, b) => (a[sortKey] > b[sortKey] ? 1 : -1) * (asc ? 1 : -1)) : rows;
     wrap.innerHTML = `<table><thead><tr>${cols.map((c) => `<th class="${c.num ? "num" : ""} ${c.nowrap ? "nowrap" : ""}" data-k="${c.key}">${esc(c.label)}</th>`).join("")}</tr></thead>
-      <tbody>${data.map((r) => `<tr>${cols.map((c) => `<td class="${c.num ? "num" : ""} ${c.nowrap ? "nowrap" : ""}">${esc(c.fmt ? c.fmt(r[c.key]) : r[c.key])}</td>`).join("")}</tr>`).join("")}</tbody></table>`;
+      <tbody>${data.map((r, i) => `<tr data-i="${i}" class="${onRow ? "clickable" : ""}">${cols.map((c) => `<td class="${c.num ? "num" : ""} ${c.nowrap ? "nowrap" : ""}">${c.html ? c.html(r) : esc(c.fmt ? c.fmt(r[c.key]) : r[c.key])}</td>`).join("")}</tr>`).join("")}</tbody></table>`;
+    if (onRow) wrap.querySelectorAll("tbody tr").forEach((tr) => tr.addEventListener("click", () => onRow(data[Number(tr.dataset.i)])));
     wrap.querySelectorAll("th").forEach((th) => th.addEventListener("click", () => {
       asc = sortKey === th.dataset.k ? !asc : false;
       sortKey = th.dataset.k;
@@ -103,14 +142,50 @@ function metric(label, value, sub = "") {
   return `<div class="metric"><div class="label">${esc(label)}</div><div class="value">${esc(value)}</div>${sub ? `<div class="sub">${esc(sub)}</div>` : ""}</div>`;
 }
 
+// Słupki Win%: bez koloru gracza kolorujemy względem 50%, a małe próbki (< 10 partii) przygaszamy.
+const SMALL_SAMPLE = 10;
 const winBar = (m, order, name, color) => {
   const keys = order.filter((k) => m.has(k));
+  const y = keys.map((k) => m.get(k).winPct);
+  const n = keys.map((k) => m.get(k).n);
   return {
-    type: "bar", name, x: keys, y: keys.map((k) => m.get(k).winPct),
-    text: keys.map((k) => `${m.get(k).n} partii`), hovertemplate: "%{x}: %{y}% (%{text})<extra></extra>",
-    textposition: "none", marker: { color },
+    type: "bar", name, x: keys, y,
+    text: n.map((v) => `${v} partii${v < SMALL_SAMPLE ? ", mała próbka" : ""}`), hovertemplate: "%{x}: %{y}% (%{text})<extra></extra>",
+    textposition: "none",
+    marker: color
+      ? { color, opacity: n.map((v) => (v < SMALL_SAMPLE ? 0.35 : 1)) }
+      : { color: y, cmin: 35, cmax: 65, colorscale: [[0, css("--loss")], [0.5, css("--draw")], [1, css("--win")]], opacity: n.map((v) => (v < SMALL_SAMPLE ? 0.35 : 1)) },
   };
 };
+const LINE50 = { shapes: [{ type: "line", xref: "paper", x0: 0, x1: 1, y0: 50, y1: 50, line: { dash: "dot", width: 1, color: "rgba(160,160,160,.7)" } }] };
+
+// Przyciski zakresu i znacznik aktualnego rankingu na wykresach ELO.
+function eloLayout() {
+  return {
+    xaxis: {
+      rangeselector: {
+        buttons: [
+          { count: 1, step: "month", stepmode: "backward", label: "1M" },
+          { count: 6, step: "month", stepmode: "backward", label: "6M" },
+          { count: 1, step: "year", stepmode: "backward", label: "1R" },
+          { step: "all", label: "Całość" },
+        ],
+        bgcolor: css("--bg"), activecolor: css("--accent"), font: { color: css("--text") }, x: 0, y: 1.02, yanchor: "bottom",
+      },
+      type: "date", tickformat: "%m.%Y",
+    },
+    legend: { orientation: "h", y: 1.02, yanchor: "bottom", x: 1, xanchor: "right" },
+    margin: { l: 50, r: 50, t: 44, b: 40 },
+  };
+}
+
+function eloTraces(list, name, color) {
+  const last = list[list.length - 1];
+  return [
+    { type: "scatter", mode: "lines", name, x: list.map((g) => g.date), y: list.map((g) => g.elo), line: { color, width: 1.6 }, hovertemplate: "%{x|%d.%m.%Y}: %{y}<extra>" + esc(name) + "</extra>" },
+    { type: "scatter", mode: "markers+text", showlegend: false, x: [last.date], y: [last.elo], text: [String(last.elo)], textposition: "middle right", textfont: { color, size: 12 }, marker: { color, size: 8 }, hoverinfo: "skip", cliponaxis: false },
+  ];
+}
 
 // ---------------------------------------------------------------- pobieranie
 function progressUI(el) {
@@ -177,6 +252,7 @@ async function startAnalysis(e) {
     url.searchParams.set("platform", p1);
     if (state.scope !== "single") { url.searchParams.set("user2", n2); url.searchParams.set("platform2", p2); url.searchParams.set("mode", state.scope); }
     history.replaceState(null, "", url);
+    saveRecent({ scope: state.scope, user: n1, plat: p1, user2: state.scope === "single" ? "" : n2, plat2: p2 });
     resetFilters();
     showResults();
   } catch (err) {
@@ -227,26 +303,56 @@ function changePlayer() {
   history.replaceState(null, "", location.pathname);
   $("#results").classList.add("hidden");
   $("#start").classList.remove("hidden");
+  renderRecent();
 }
 
 // ---------------------------------------------------------------- filtry
-function resetFilters() {
+function dataRange() {
   const all = [...state.data.games, ...(state.rival?.games || [])];
-  const days = all.map((g) => g.day).sort();
-  Object.assign(state.filters, { from: days[0] || "", to: days[days.length - 1] || "", mode: "", colors: ["w", "b"], hourMin: 0, hourMax: 23 });
-  $("#f-from").value = state.filters.from; $("#f-to").value = state.filters.to;
-  $("#f-mode").value = ""; $("#f-h1").value = 0; $("#f-h2").value = 23;
-  $("#f-white").classList.add("on"); $("#f-black").classList.add("on");
+  let min = "", max = "";
+  for (const g of all) { if (!min || g.day < min) min = g.day; if (!max || g.day > max) max = g.day; }
+  return [min, max];
 }
 
-function readFilters() {
+function setPreset(days) {
+  const [min, max] = dataRange();
+  let from = min;
+  if (days > 0) {
+    const d = new Date(`${max}T12:00:00`); d.setDate(d.getDate() - days + 1);
+    const k = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+    from = k > min ? k : min;
+  }
+  $("#f-from").value = from; $("#f-to").value = max;
+  document.querySelectorAll("#presets button").forEach((b) => b.classList.toggle("on", Number(b.dataset.days) === days));
+}
+
+function resetFilters() {
+  setPreset(0);
+  $("#f-mode").value = ""; $("#f-h1").value = 0; $("#f-h2").value = 23;
+  $("#f-white").classList.add("on"); $("#f-black").classList.add("on");
+  readFilters(false);
+}
+
+function readFilters(render = true) {
   const f = state.filters;
   f.from = $("#f-from").value; f.to = $("#f-to").value; f.mode = $("#f-mode").value;
   f.colors = [$("#f-white").classList.contains("on") && "w", $("#f-black").classList.contains("on") && "b"].filter(Boolean);
-  const h1 = Math.max(0, Math.min(23, Number($("#f-h1").value) || 0));
-  const h2 = Math.max(0, Math.min(23, Number($("#f-h2").value) ?? 23));
+  const h1 = Number($("#f-h1").value), h2 = Number($("#f-h2").value);
   f.hourMin = Math.min(h1, h2); f.hourMax = Math.max(h1, h2);
-  renderTab();
+  $("#f-hours-label").textContent = `${f.hourMin}:00 – ${f.hourMax}:59`;
+
+  // Krótkie podsumowanie widoczne przy zwiniętym panelu.
+  const [min, max] = dataRange();
+  const parts = [];
+  const preset = document.querySelector("#presets button.on");
+  if (preset && preset.dataset.days !== "0") parts.push(preset.textContent);
+  else if (f.from !== min || f.to !== max) parts.push(`${f.from} – ${f.to}`);
+  if (f.mode) parts.push(f.mode);
+  if (f.colors.length === 1) parts.push(f.colors[0] === "w" ? "tylko białe" : "tylko czarne");
+  if (!f.colors.length) parts.push("brak koloru!");
+  if (f.hourMin > 0 || f.hourMax < 23) parts.push(`${f.hourMin}:00–${f.hourMax}:59`);
+  $("#filter-summary").textContent = parts.length ? `· ${parts.join(" · ")}` : "";
+  if (render) renderTab();
 }
 
 // ---------------------------------------------------------------- widoki
@@ -310,6 +416,13 @@ function renderTab() {
   fitCharts();
 }
 
+function switchTab(tab) {
+  state.tab = tab;
+  document.querySelectorAll("#tabs button").forEach((x) => x.classList.toggle("on", x.dataset.tab === tab));
+  renderTab();
+  $("#tabs").scrollIntoView({ behavior: "smooth", block: "start" });
+}
+
 // Wykresy w siatce rysowane są zanim siatka ułoży kolumny, więc po renderze dopasowujemy szerokość.
 function fitCharts() {
   requestAnimationFrame(() => document.querySelectorAll("#tab-content .js-plotly-plot").forEach((c) => window.Plotly.Plots.resize(c)));
@@ -328,10 +441,7 @@ function tabStats(el, games) {
   const byMode = MODES.map((m) => [m, games.filter((g) => g.mode === m)]).filter(([, l]) => l.length).sort((a, b) => b[1].length - a[1].length);
   for (const [m, list] of byMode) {
     const accounts = [...new Set(list.map((g) => g.account))];
-    plot(chartBox(el, `Ranking ${m}`), accounts.map((acc, i) => {
-      const l = list.filter((g) => g.account === acc);
-      return { type: "scatter", mode: "lines", name: acc, x: l.map((g) => g.date), y: l.map((g) => g.elo), line: { color: i ? css("--draw") : css("--accent") } };
-    }));
+    plot(chartBox(el, `Ranking ${m}`), accounts.flatMap((acc, i) => eloTraces(list.filter((g) => g.account === acc), acc, i ? css("--draw") : css("--accent"))), eloLayout());
   }
 
   const grid = document.createElement("div");
@@ -346,7 +456,28 @@ function tabStats(el, games) {
   }
 }
 
+const MONTHS_PL = ["sty", "lut", "mar", "kwi", "maj", "cze", "lip", "sie", "wrz", "paź", "lis", "gru"];
+// Polskie etykiety miesięcy: pierwszy tydzień każdego miesiąca.
+function monthTicks(weeks) {
+  const tickvals = [], ticktext = [];
+  let last = -1;
+  for (const w of weeks) {
+    const m = Number(w.slice(5, 7)) - 1;
+    if (m !== last) { tickvals.push(w); ticktext.push(MONTHS_PL[m]); last = m; }
+  }
+  return { tickvals: tickvals.slice(1), ticktext: ticktext.slice(1) };
+}
+
 function tabHist(el, games) {
+  const cal = calendarGrid(games, games[games.length - 1].day);
+  const calBox = chartBox(el, "Kalendarz aktywności (ostatnie 12 miesięcy)");
+  calBox.classList.add("calendar");
+  plot(calBox, [{
+    type: "heatmap", x: cal.weeks, y: DAYS, z: cal.z, text: cal.text, xgap: 3, ygap: 3,
+    colorscale: [[0, css("--bg")], [0.0001, css("--grid")], [1, css("--accent")]], zmin: 0,
+    hovertemplate: "%{text}: %{z} partii<extra></extra>", hoverongaps: false, showscale: false,
+  }], { yaxis: { autorange: "reversed", showgrid: false, fixedrange: true }, xaxis: { type: "date", showgrid: false, fixedrange: true, ...monthTicks(cal.weeks) }, margin: { l: 36, r: 10, t: 10, b: 24 } });
+
   const b = activityBucket(games);
   const days = [...new Set(games.map(b.key))].sort();
   const by = (res) => { const m = new Map(); games.forEach((g) => g.result === res && m.set(b.key(g), (m.get(b.key(g)) || 0) + 1)); return days.map((d) => m.get(d) || 0); };
@@ -354,7 +485,7 @@ function tabHist(el, games) {
     { type: "bar", name: "Przegrane", x: days, y: by("L"), marker: { color: css("--loss") } },
     { type: "bar", name: "Remisy", x: days, y: by("D"), marker: { color: css("--draw") } },
     { type: "bar", name: "Wygrane", x: days, y: by("W"), marker: { color: css("--win") } },
-  ], { barmode: "stack", xaxis: { type: "date" } });
+  ], { barmode: "stack", xaxis: { type: "date", tickformat: b.label === "dzień" ? "%d.%m" : "%m.%Y" } });
 
   el.insertAdjacentHTML("beforeend", "<h3>Wyniki miesięczne</h3>");
   const months = [...groupWin(games, (g) => g.month)].sort((a, b) => (a[0] < b[0] ? 1 : -1))
@@ -367,10 +498,23 @@ function tabHist(el, games) {
 
 function tabTime(el, games) {
   const hours = Array.from({ length: 24 }, (_, i) => i);
-  plot(chartBox(el, "Skuteczność wg godzin"), [winBar(groupWin(games, (g) => g.hour), hours, "Win%", css("--accent"))], { yaxis: { range: [0, 100], title: { text: "Win %" } }, xaxis: { dtick: isNarrow() ? 3 : 1, title: { text: "Godzina" } } });
-  const dayBar = winBar(groupWin(games, (g) => g.dow), [0, 1, 2, 3, 4, 5, 6], "Win%", css("--accent"));
-  plot(chartBox(el, "Skuteczność wg dni"), [{ ...dayBar, x: dayBar.x.map((d) => DAYS[d]) }], { yaxis: { range: [0, 100], title: { text: "Win %" } } });
-  plot(chartBox(el, "Skuteczność wg długości partii"), [winBar(groupWin(games, (g) => lengthBin(g.moves)), LENGTH_BINS, "Win%", css("--accent"))], { yaxis: { range: [0, 100], title: { text: "Win %" } }, xaxis: { type: "category", title: { text: "Ruchy" } } });
+  el.insertAdjacentHTML("beforeend", `<div class="info small">Zielone słupki: powyżej 50% wygranych, czerwone: poniżej. Przygaszone: mniej niż ${SMALL_SAMPLE} partii, więc wynik jest mało wiarygodny.</div>`);
+  plot(chartBox(el, "Skuteczność wg godzin"), [winBar(groupWin(games, (g) => g.hour), hours, "Win%")], { ...LINE50, yaxis: { range: [0, 100], title: { text: "Win %" } }, xaxis: { dtick: isNarrow() ? 3 : 1, title: { text: "Godzina" } } });
+  const dayBar = winBar(groupWin(games, (g) => g.dow), [0, 1, 2, 3, 4, 5, 6], "Win%");
+  plot(chartBox(el, "Skuteczność wg dni"), [{ ...dayBar, x: dayBar.x.map((d) => DAYS[d]) }], { ...LINE50, yaxis: { range: [0, 100], title: { text: "Win %" } } });
+
+  const hm = dayHourGrid(games);
+  const hmBox = chartBox(el, "Kiedy grasz najlepiej (dzień × godzina)");
+  hmBox.classList.add("tall");
+  plot(hmBox, [{
+    type: "heatmap", x: hours, y: DAYS, z: hm.z, customdata: hm.n, zmin: 30, zmax: 70, xgap: 2, ygap: 2,
+    colorscale: [[0, css("--loss")], [0.5, css("--grid")], [1, css("--win")]],
+    hovertemplate: "%{y}, %{x}:00 · win %{z}% (%{customdata} partii)<extra></extra>", hoverongaps: false,
+    colorbar: { title: { text: "Win %" }, thickness: 10, outlinewidth: 0 },
+  }], { yaxis: { autorange: "reversed", showgrid: false }, xaxis: { dtick: isNarrow() ? 3 : 1, showgrid: false }, margin: { l: 40, r: 10, t: 10, b: 30 } });
+  el.insertAdjacentHTML("beforeend", `<div class="info small">Puste pola: mniej niż 3 partie w danej godzinie i dniu.</div>`);
+
+  plot(chartBox(el, "Skuteczność wg długości partii"), [winBar(groupWin(games, (g) => lengthBin(g.moves)), LENGTH_BINS, "Win%")], { ...LINE50, yaxis: { range: [0, 100], title: { text: "Win %" } }, xaxis: { type: "category", title: { text: "Ruchy" } } });
 
   const pace = movePace(games);
   if (pace.length) plot(chartBox(el, "Tempo ruchu w trakcie partii"), [{ type: "scatter", mode: "lines+markers", x: pace.map((p) => p.label), y: pace.map((p) => p.avg), line: { color: css("--accent") }, name: "s / ruch" }], { yaxis: { title: { text: "Śr. sekundy / ruch" } }, xaxis: { type: "category", title: { text: "Segment partii (%)" } } });
@@ -390,18 +534,22 @@ function tabOpen(el, games) {
   const grid = document.createElement("div");
   grid.className = "grid2";
   el.appendChild(grid);
-  const cols = [{ key: "name", label: "Debiut" }, { key: "n", label: "Gry", num: true }, { key: "winPct", label: "Win%", num: true, fmt: (v) => `${v}%` }];
+  const wdl = (r) => `<div class="wdl" title="W ${r.w} / R ${r.d} / P ${r.l}"><i style="width:${(r.w / r.n) * 100}%;background:var(--win)"></i><i style="width:${(r.d / r.n) * 100}%;background:var(--draw)"></i><i style="width:${(r.l / r.n) * 100}%;background:var(--loss)"></i></div>`;
+  const cols = [{ key: "name", label: "Debiut" }, { key: "n", label: "Gry", num: true }, { key: "winPct", label: "Win%", num: true, fmt: (v) => `${v}%` }, { key: "bar", label: "W / R / P", html: wdl }];
+  const openGames = (group, color) => { state.anaPreset = { group, color }; switchTab("ana"); };
   for (const [c, label] of [["w", "⚪ Białe"], ["b", "⚫ Czarne"]]) {
     const box = document.createElement("div");
     grid.appendChild(box);
     box.insertAdjacentHTML("beforeend", `<h3>${label}</h3>`);
     const sub = games.filter((g) => g.color === c);
     if (!sub.length) { info(box, "Brak partii"); continue; }
-    table(box, cols, openingTable(sub, (g) => tOpening(g.group, state.opLang), 15));
+    const rows = openingTable(sub, (g) => g.group, 15).map((r) => ({ ...r, group: r.name, name: tOpening(r.name, state.opLang) }));
+    table(box, cols, rows, { onRow: (r) => openGames(r.group, c) });
     const det = document.createElement("details");
     det.innerHTML = `<summary style="cursor:pointer;margin:10px 0">Szczegółowe warianty</summary>`;
     box.appendChild(det);
     table(det, cols, openingTable(sub, (g) => g.opening, 20));
+    box.insertAdjacentHTML("beforeend", `<div class="info small">Kliknij debiut, żeby zobaczyć jego partie.</div>`);
   }
 }
 
@@ -409,49 +557,67 @@ const RESULT_ICON = { W: "🟢", L: "🔴", D: "⚪️" };
 const MODE_ICON = { Blitz: "⚡️", Rapid: "😴", Bullet: "💨" };
 
 function tabAnalysis(el, games) {
-  const lastDay = games[games.length - 1].day;
-  const groups = [...new Set(games.map((g) => g.group))].sort();
+  const preset = state.anaPreset || {};
+  state.anaPreset = null;
+  const groups = [...new Set(games.map((g) => g.group))].sort((a, b) => tOpening(a, state.opLang).localeCompare(tOpening(b, state.opLang)));
   el.insertAdjacentHTML("beforeend", `<div class="game-pick">
-    <label>Dzień <input type="date" id="a-day" value="${lastDay}"></label>
-    <label>Nick rywala (opcjonalnie) <input id="a-opp" autocomplete="off"></label>
-    <label>Grupa debiutu <select id="a-group"><option value="">Wszystkie</option>${groups.map((g) => `<option value="${esc(g)}">${esc(tOpening(g, state.opLang))}</option>`).join("")}</select></label>
+    <label>Rywal <input id="a-opp" autocomplete="off" placeholder="Szukaj po nicku"></label>
+    <label>Debiut <select id="a-group"><option value="">Wszystkie</option>${groups.map((g) => `<option value="${esc(g)}">${esc(tOpening(g, state.opLang))}</option>`).join("")}</select></label>
+    <label>Wynik <select id="a-res"><option value="">Wszystkie</option><option value="W">Wygrane</option><option value="D">Remisy</option><option value="L">Przegrane</option></select></label>
+    <label>Dzień <input type="date" id="a-day"></label>
   </div>
-  <label>Partia <select id="a-game"></select></label>
-  <button class="primary" id="a-go" style="width:100%;margin-top:10px">Przygotuj analizę (Lichess)</button>
-  <div id="a-out"></div>`);
+  <div id="a-count" class="info small"></div>
+  <div id="a-list" class="game-list"></div>
+  <button id="a-more" class="more hidden">Pokaż więcej</button>`);
+  if (preset.group) $("#a-group").value = preset.group;
 
-  let list = [];
-  const refill = () => {
-    const opp = $("#a-opp").value.trim().toLowerCase(), grp = $("#a-group").value;
-    list = games.filter((g) => (opp || grp)
-      ? (!opp || g.opp.toLowerCase().includes(opp)) && (!grp || g.group === grp)
-      : g.day === $("#a-day").value).slice().reverse();
-    $("#a-game").innerHTML = list.length
-      ? list.map((g, i) => `<option value="${i}">${RESULT_ICON[g.result]} ${g.day} ${String(g.hour).padStart(2, "0")}:${String(g.date.getMinutes()).padStart(2, "0")} | ${esc(g.opp)} (${g.oppElo}) / ${MODE_ICON[g.mode] || g.mode} / ${esc(tOpening(g.group, state.opLang))}</option>`).join("")
-      : `<option>Brak partii dla podanych kryteriów</option>`;
-    $("#a-go").disabled = !list.length;
-    $("#a-out").innerHTML = "";
+  const PAGE = 25;
+  let list = [], shown = 0;
+  const card = (g, i) => {
+    const res = { W: ["Wygrana", "win"], D: ["Remis", "draw"], L: ["Porażka", "loss"] }[g.result];
+    const time = `${g.day} ${String(g.hour).padStart(2, "0")}:${String(g.date.getMinutes()).padStart(2, "0")}`;
+    return `<div class="game-card ${res[1]}">
+      <div class="gc-main">
+        <div class="gc-top"><b class="gc-res">${res[0]}</b> <span class="gc-meta">${MODE_ICON[g.mode] || ""} ${g.mode} · ${g.color === "w" ? "⚪" : "⚫"} · ${g.moves} ruchów · ${time}</span></div>
+        <div class="gc-opp">vs <b>${esc(g.opp)}</b> (${g.oppElo}) · Ty: ${g.elo}</div>
+        <div class="gc-open">${esc(tOpening(g.group, state.opLang))}${g.opening && g.opening !== g.group ? ` · <span class="muted">${esc(g.opening)}</span>` : ""}</div>
+      </div>
+      <div class="gc-actions">
+        ${g.link ? `<a href="${esc(g.link)}" target="_blank" rel="noopener">${g.platform === "Lichess" ? "Lichess" : "Chess.com"}</a>` : ""}
+        ${g.platform === "Lichess" ? "" : `<button data-i="${i}" class="gc-ana">Analiza Lichess</button>`}
+      </div>
+    </div>`;
   };
-  ["#a-day", "#a-opp", "#a-group"].forEach((s) => $(s).addEventListener("input", refill));
-  $("#a-game").addEventListener("change", () => { $("#a-out").innerHTML = ""; });
-  refill();
-
-  $("#a-go").addEventListener("click", async () => {
-    const g = list[Number($("#a-game").value)];
-    if (!g) return;
-    const btn = $("#a-go");
-    btn.disabled = true;
-    btn.textContent = "Przesyłanie PGN do Lichess...";
-    let url = g.platform === "Lichess" ? g.link : await importToLichess(g.pgn);
-    btn.disabled = false;
-    btn.textContent = "Przygotuj analizę (Lichess)";
+  const draw = () => {
+    $("#a-list").insertAdjacentHTML("beforeend", list.slice(shown, shown + PAGE).map((g, j) => card(g, shown + j)).join(""));
+    shown = Math.min(shown + PAGE, list.length);
+    $("#a-more").classList.toggle("hidden", shown >= list.length);
+  };
+  const refill = () => {
+    const opp = $("#a-opp").value.trim().toLowerCase(), grp = $("#a-group").value, r = $("#a-res").value, day = $("#a-day").value;
+    list = games.filter((g) => (!opp || g.opp.toLowerCase().includes(opp)) && (!grp || g.group === grp) && (!r || g.result === r)
+      && (!day || g.day === day) && (!preset.color || !grp || g.color === preset.color)).slice().reverse();
+    $("#a-count").textContent = list.length ? `${list.length} partii, od najnowszej.` : "Brak partii dla podanych kryteriów.";
+    $("#a-list").innerHTML = ""; shown = 0;
+    draw();
+  };
+  ["#a-opp", "#a-group", "#a-res", "#a-day"].forEach((sel) => $(sel).addEventListener("input", () => { preset.color = null; refill(); }));
+  $("#a-more").addEventListener("click", draw);
+  $("#a-list").addEventListener("click", async (e) => {
+    const btn = e.target.closest(".gc-ana");
+    if (!btn) return;
+    const g = list[Number(btn.dataset.i)];
+    btn.disabled = true; btn.textContent = "Wysyłanie...";
+    const url = await importToLichess(g.pgn);
     if (url) {
-      $("#a-out").innerHTML = `<a class="open-analysis" href="${esc(url)}" target="_blank" rel="noopener">OTWÓRZ ANALIZĘ ➡️</a>`;
+      btn.outerHTML = `<a href="${esc(url)}" target="_blank" rel="noopener" class="primary-link">Otwórz analizę ➡️</a>`;
+      window.open(url, "_blank", "noopener");
     } else {
       try { await navigator.clipboard.writeText(g.pgn); } catch { /* brak uprawnień */ }
-      $("#a-out").innerHTML = `<div class="info">Nie udało się wysłać PGN automatycznie. PGN jest w schowku: wklej go na <a href="https://lichess.org/paste" target="_blank" rel="noopener">lichess.org/paste</a>.</div>`;
+      btn.outerHTML = `<a href="https://lichess.org/paste" target="_blank" rel="noopener">PGN w schowku → wklej na Lichess</a>`;
     }
   });
+  refill();
 }
 
 // ----- Porównanie
@@ -475,9 +641,7 @@ function tabCompareStats(el, g1, g2) {
     if (!a.length && !b.length) continue;
     const box = document.createElement("div");
     grid.appendChild(box);
-    plot(chartBox(box, `ELO ${m}`), [[a, u1, "--p1"], [b, u2, "--p2"]].filter(([l]) => l.length).map(([l, n, c]) => ({
-      type: "scatter", mode: "lines", name: n, x: l.map((g) => g.date), y: l.map((g) => g.elo), line: { color: css(c) },
-    })));
+    plot(chartBox(box, `ELO ${m}`), [[a, u1, "--p1"], [b, u2, "--p2"]].filter(([l]) => l.length).flatMap(([l, n, c]) => eloTraces(l, n, css(c))), eloLayout());
   }
 
   const grid2 = document.createElement("div");
@@ -501,7 +665,7 @@ function tabCompareHist(el, g1, g2) {
   plot(chartBox(el, `Porównanie aktywności (partie na ${b.label})`), [[g1, u1, "--p1"], [g2, u2, "--p2"]].map(([l, n, c]) => {
     const d = perDay(l);
     return { type: "bar", name: n, x: d.map(([k]) => k), y: d.map(([, v]) => v), marker: { color: css(c) } };
-  }), { barmode: "group", xaxis: { type: "date" } });
+  }), { barmode: "group", xaxis: { type: "date", tickformat: b.label === "dzień" ? "%d.%m" : "%m.%Y" } });
   const per = (l) => { const m = new Map(); l.forEach((g) => m.set(g.month, (m.get(g.month) || 0) + 1)); return m; };
   const m1 = per(g1), m2 = per(g2);
   const months = [...new Set([...m1.keys(), ...m2.keys()])].sort().reverse();
@@ -516,9 +680,9 @@ function tabCompareTime(el, g1, g2) {
     const t = winBar(groupWin(l, keyFn), order, n, css(c));
     return { ...t, x: t.x.map(labelFn) };
   });
-  plot(chartBox(el, "Skuteczność wg godzin"), pair((g) => g.hour, Array.from({ length: 24 }, (_, i) => i)), { barmode: "group", yaxis: { range: [0, 100], title: { text: "Win %" } }, xaxis: { dtick: isNarrow() ? 3 : 1 } });
-  plot(chartBox(el, "Skuteczność wg dni"), pair((g) => g.dow, [0, 1, 2, 3, 4, 5, 6], (d) => DAYS[d]), { barmode: "group", yaxis: { range: [0, 100], title: { text: "Win %" } }, xaxis: { categoryorder: "array", categoryarray: DAYS } });
-  plot(chartBox(el, "Skuteczność wg długości partii"), pair((g) => lengthBin(g.moves), LENGTH_BINS), { barmode: "group", yaxis: { range: [0, 100], title: { text: "Win %" } }, xaxis: { type: "category", categoryorder: "array", categoryarray: LENGTH_BINS } });
+  plot(chartBox(el, "Skuteczność wg godzin"), pair((g) => g.hour, Array.from({ length: 24 }, (_, i) => i)), { ...LINE50, barmode: "group", yaxis: { range: [0, 100], title: { text: "Win %" } }, xaxis: { dtick: isNarrow() ? 3 : 1 } });
+  plot(chartBox(el, "Skuteczność wg dni"), pair((g) => g.dow, [0, 1, 2, 3, 4, 5, 6], (d) => DAYS[d]), { ...LINE50, barmode: "group", yaxis: { range: [0, 100], title: { text: "Win %" } }, xaxis: { categoryorder: "array", categoryarray: DAYS } });
+  plot(chartBox(el, "Skuteczność wg długości partii"), pair((g) => lengthBin(g.moves), LENGTH_BINS), { ...LINE50, barmode: "group", yaxis: { range: [0, 100], title: { text: "Win %" } }, xaxis: { type: "category", categoryorder: "array", categoryarray: LENGTH_BINS } });
   const p = [[g1, u1, "--p1"], [g2, u2, "--p2"]].map(([l, n, c]) => { const r = movePace(l); return { type: "scatter", mode: "lines+markers", name: n, x: r.map((x) => x.label), y: r.map((x) => x.avg), line: { color: css(c) } }; });
   if (p.some((t) => t.x.length)) plot(chartBox(el, "Tempo ruchu w trakcie partii"), p, { yaxis: { title: { text: "Śr. sekundy / ruch" } }, xaxis: { type: "category" } });
 }
@@ -604,7 +768,22 @@ function init() {
     document.querySelectorAll("#tabs button").forEach((x) => x.classList.toggle("on", x === b));
     renderTab();
   });
-  ["#f-from", "#f-to", "#f-mode", "#f-h1", "#f-h2"].forEach((s) => $(s).addEventListener("change", readFilters));
+  ["#f-from", "#f-to"].forEach((s) => $(s).addEventListener("change", () => {
+    document.querySelectorAll("#presets button").forEach((b) => b.classList.remove("on"));
+    readFilters();
+  }));
+  $("#f-mode").addEventListener("change", () => readFilters());
+  ["#f-h1", "#f-h2"].forEach((s) => {
+    $(s).addEventListener("input", () => { $("#f-hours-label").textContent = `${Math.min($("#f-h1").value, $("#f-h2").value)}:00 – ${Math.max($("#f-h1").value, $("#f-h2").value)}:59`; });
+    $(s).addEventListener("change", () => readFilters());
+  });
+  document.querySelectorAll("#presets button").forEach((b) => b.addEventListener("click", () => { setPreset(Number(b.dataset.days)); readFilters(); }));
+  $("#share-btn").addEventListener("click", async () => {
+    try { await navigator.clipboard.writeText(location.href); toast("Link skopiowany"); }
+    catch { toast("Nie udało się skopiować. Skopiuj adres z paska przeglądarki."); }
+  });
+  renderRecent();
+  if ("serviceWorker" in navigator) navigator.serviceWorker.register("sw.js").catch(() => {});
   ["#f-white", "#f-black"].forEach((s) => $(s).addEventListener("click", () => { $(s).classList.toggle("on"); readFilters(); }));
 
   // Link z nickiem (?user=...&platform=...) od razu uruchamia analizę i działa jako zakładka.

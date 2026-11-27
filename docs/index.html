@@ -1,0 +1,115 @@
+<!doctype html>
+<html lang="pl" data-theme="chesscom">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#312e2b">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <title>ChessStats</title>
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>♟️</text></svg>">
+  <link rel="stylesheet" href="css/style.css">
+  <script src="https://cdn.jsdelivr.net/npm/plotly.js-dist-min@2.35.2/plotly.min.js" defer></script>
+  <script type="module" src="js/app.js"></script>
+</head>
+<body>
+  <header class="topbar">
+    <h1>♟️ ChessStats</h1>
+    <details class="settings">
+      <summary>⚙️ Ustawienia</summary>
+      <div class="settings-body">
+        <label>🎨 Motyw
+          <select id="theme">
+            <option value="chesscom">Chess.com</option>
+            <option value="neon">Neon Retro</option>
+            <option value="sea">Morski</option>
+            <option value="dark">Ciemny</option>
+            <option value="light">Jasny</option>
+          </select>
+        </label>
+        <label>♟️ Język debiutów
+          <select id="op-lang">
+            <option value="pl">Polski</option>
+            <option value="en">English</option>
+            <option value="de">Deutsch</option>
+          </select>
+        </label>
+      </div>
+    </details>
+  </header>
+
+  <main>
+    <!-- EKRAN STARTOWY -->
+    <section id="start" class="card">
+      <div class="seg" id="scope">
+        <button data-scope="single" class="on">Jeden profil</button>
+        <button data-scope="merge">Połącz profile (C+L)</button>
+        <button data-scope="compare">Porównanie graczy</button>
+      </div>
+      <form id="start-form">
+        <div class="row" id="p1-row">
+          <select id="p1-plat"><option>Chess.com</option><option>Lichess</option></select>
+          <input id="p1-nick" placeholder="Nick gracza" autocomplete="off" autocapitalize="off" spellcheck="false" required>
+        </div>
+        <div class="row hidden" id="p2-row">
+          <select id="p2-plat"><option>Lichess</option><option>Chess.com</option></select>
+          <input id="p2-nick" placeholder="Nick drugiego konta / gracza" autocomplete="off" autocapitalize="off" spellcheck="false">
+        </div>
+        <button type="submit" class="primary" id="start-btn">Analizuj</button>
+      </form>
+      <div class="progress hidden" id="progress"><div class="bar"></div><span></span></div>
+      <div class="error hidden" id="start-error"></div>
+    </section>
+
+    <!-- WYNIKI -->
+    <section id="results" class="hidden">
+      <div class="profile">
+        <img id="avatar" alt="" class="hidden">
+        <h2 id="player-name"></h2>
+        <div class="profile-actions">
+          <button id="refresh-btn">Odśwież</button>
+          <button id="change-btn" class="primary">Zmień gracza</button>
+        </div>
+      </div>
+      <div class="progress hidden" id="progress2"><div class="bar"></div><span></span></div>
+      <div class="error hidden" id="results-error"></div>
+
+      <div class="seg" id="view">
+        <button data-view="my" class="on">👤 Moja analiza</button>
+        <button data-view="compare">⚔️ Porównanie graczy</button>
+      </div>
+
+      <div id="elo-cards" class="metrics"></div>
+
+      <div id="rival-box" class="card hidden">
+        <form id="rival-form" class="row">
+          <select id="rival-plat"><option>Chess.com</option><option>Lichess</option></select>
+          <input id="rival-nick" placeholder="Nick rywala" autocomplete="off" autocapitalize="off" spellcheck="false" required>
+          <button type="submit" class="primary">Pobierz dane rywala</button>
+        </form>
+      </div>
+
+      <details class="card filters" id="filters">
+        <summary>🔍 Filtry</summary>
+        <div class="filters-body">
+          <label>Od <input type="date" id="f-from"></label>
+          <label>Do <input type="date" id="f-to"></label>
+          <label>Tryb
+            <select id="f-mode"><option value="">Wszystkie</option><option>Bullet</option><option>Blitz</option><option>Rapid</option></select>
+          </label>
+          <div class="colors">
+            <button type="button" id="f-white" class="toggle on">⚪ Białe</button>
+            <button type="button" id="f-black" class="toggle on">⚫ Czarne</button>
+          </div>
+          <label>Godziny <input type="number" id="f-h1" min="0" max="23" value="0"> – <input type="number" id="f-h2" min="0" max="23" value="23"></label>
+        </div>
+      </details>
+
+      <nav class="tabs" id="tabs"></nav>
+      <div id="tab-content"></div>
+    </section>
+  </main>
+
+  <footer>Dane: <a href="https://www.chess.com/news/view/published-data-api" target="_blank" rel="noopener">Chess.com API</a> · <a href="https://lichess.org/api" target="_blank" rel="noopener">Lichess API</a></footer>
+</body>
+</html>

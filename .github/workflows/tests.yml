@@ -1,0 +1,29 @@
+name: Testy
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  js:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: node --test tests/js/*.test.mjs
+      - name: Składnia modułów strony
+        run: for f in docs/js/*.js; do node --check "$f"; done
+
+  python:
+    runs-on: ubuntu-latest
+    if: ${{ hashFiles('tests/test_chess_data.py') != '' }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install -r requirements.txt pytest
+      - run: pytest -q tests

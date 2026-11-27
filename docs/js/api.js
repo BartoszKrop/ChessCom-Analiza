@@ -2,7 +2,7 @@
 // Zakończone miesiące Chess.com trzymamy w IndexedDB, bo się nie zmieniają:
 // drugie wejście na profil pobiera tylko bieżący miesiąc.
 
-import { parseChesscomGame, parseLichessGame, MODES } from "./parse.js";
+import { parseChesscomGame, parseLichessGame, MODES } from "./parse.js?v=31";
 
 export class PlayerNotFound extends Error {}
 export class ApiError extends Error {}

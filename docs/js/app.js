@@ -1,14 +1,14 @@
-import { fetchPlayer, importToLichess, PlayerNotFound, ApiError, cacheGet, cacheSet } from "./api.js?v=47";
-import { renderBoard } from "./board.js?v=47";
-import { patterns } from "./insights.js?v=47";
-import { startTrainer } from "./trainer.js?v=47";
-import { addLocalTime, DAYS, MODES, sanMoves } from "./parse.js?v=47";
-import { tOpening, tReason } from "./i18n.js?v=47";
+import { fetchPlayer, importToLichess, PlayerNotFound, ApiError, cacheGet, cacheSet } from "./api.js?v=48";
+import { renderBoard } from "./board.js?v=48";
+import { patterns } from "./insights.js?v=48";
+import { startTrainer } from "./trainer.js?v=48";
+import { addLocalTime, DAYS, MODES, sanMoves } from "./parse.js?v=48";
+import { tOpening, tReason } from "./i18n.js?v=48";
 import {
   LENGTH_BINS, lengthBin, pct, filterGames, counts, groupWin, eloSummary, totalHours,
   mostCommon, movePace, streakEffect, openingTable, reasonShares, dayHourGrid, monthGrid,
   sessionIndexWin, SESSION_ORDER, ratingDiffWin, DIFF_ORDER, timeResults, quickResigns, opponents, monthSummary, prevMonth, openingTree,
-} from "./stats.js?v=47";
+} from "./stats.js?v=48";
 
 const $ = (s) => document.querySelector(s);
 const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
@@ -672,7 +672,7 @@ function tabOpen(el, games) {
 let engineMod = null;
 async function engine() {
   if (!engineMod) {
-    engineMod = await import("./engine.js?v=47");
+    engineMod = await import("./engine.js?v=48");
     engineMod.useCache(cacheGet, cacheSet);
   }
   return engineMod;
@@ -767,7 +767,7 @@ function sfViewer(panel, g, r, eng, onDeeper) {
   const N = r.plies.length;
   let flip = g.color === "b";
   const bad = r.plies.map((p, i) => ({ p, i })).filter(({ p }) => isBadMove(p));
-  let cur = bad.length ? bad[0].i + 1 : N;
+  let cur = 0;
 
   panel.innerHTML = `
     <div class="sf-main">

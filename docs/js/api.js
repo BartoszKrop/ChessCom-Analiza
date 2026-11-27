@@ -22,8 +22,14 @@ function db() {
           for (const name of [...d.objectStoreNames]) d.deleteObjectStore(name);
           d.createObjectStore("months");
         };
-        req.onsuccess = () => resolve(req.result);
+        req.onsuccess = () => {
+          const d = req.result;
+          d.onversionchange = () => d.close(); // nie blokuj nowszej wersji strony w innej karcie
+          resolve(d);
+        };
         req.onerror = () => resolve(null);
+        req.onblocked = () => resolve(null); // stara karta trzyma bazę: działamy bez cache
+        setTimeout(() => resolve(null), 3000);
       } catch {
         resolve(null); // np. tryb prywatny: działamy bez cache
       }

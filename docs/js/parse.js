@@ -64,8 +64,8 @@ export function extractOpening(pgn) {
   if (tag) return tag[1].trim();
   const m = pgn.match(/openings\/(.*?)"/);
   if (!m) return "Inny";
-  let slug = m[1].replace(/(?<=[A-Za-z])-s(?=-[A-Z]|-$|$)/g, "'s");
-  return titleCase(slug.replace(/-/g, " ")).replace(/(?<=[A-Za-z])'S\b/g, "'s");
+  const slug = m[1].replace(/([A-Za-z])-s(?=-[A-Z]|-$|$)/g, "$1's");
+  return titleCase(slug.replace(/-/g, " ")).replace(/([A-Za-z])'S\b/g, "$1's");
 }
 
 export function openingForUser(name, isWhite) {
@@ -86,7 +86,8 @@ export function pgnMovetext(pgn) {
 
 export function movesCount(pgn) {
   let max = 0;
-  for (const m of pgnMovetext(pgn).matchAll(/(?<![\d.])(\d+)\./g)) max = Math.max(max, Number(m[1]));
+  // Bez lookbehind: starsze Safari (iOS < 16.4) go nie obsługują i cały moduł by nie ruszył.
+  for (const m of pgnMovetext(pgn).matchAll(/(^|[^\d.])(\d+)\./g)) max = Math.max(max, Number(m[2]));
   return max;
 }
 

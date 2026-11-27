@@ -1,10 +1,10 @@
-import { fetchPlayer, importToLichess, PlayerNotFound, ApiError } from "./api.js?v=31";
-import { addLocalTime, DAYS, MODES } from "./parse.js?v=31";
-import { tOpening, tReason } from "./i18n.js?v=31";
+import { fetchPlayer, importToLichess, PlayerNotFound, ApiError } from "./api.js?v=32";
+import { addLocalTime, DAYS, MODES } from "./parse.js?v=32";
+import { tOpening, tReason } from "./i18n.js?v=32";
 import {
   LENGTH_BINS, lengthBin, pct, filterGames, counts, groupWin, eloSummary, totalHours,
-  mostCommon, movePace, streakEffect, openingTable, reasonShares, dayHourGrid, calendarGrid,
-} from "./stats.js?v=31";
+  mostCommon, movePace, streakEffect, openingTable, reasonShares, dayHourGrid, weekGrid,
+} from "./stats.js?v=32";
 
 const $ = (s) => document.querySelector(s);
 const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
@@ -436,7 +436,7 @@ function tabStats(el, games) {
     ${metric("Win%", `${pct(c.W, c.n)}%`)}${metric("Czas gry", `${totalHours(games)} h`)}</div>`);
   const favW = mostCommon(games.filter((g) => g.color === "w").map((g) => g.group));
   const favB = mostCommon(games.filter((g) => g.color === "b").map((g) => g.group));
-  el.insertAdjacentHTML("beforeend", `<div class="callout"><b>Ulubione debiuty:</b><br>⚪ <b>${esc(favW ? tOpening(favW, state.opLang) : "Brak")}</b> &emsp;|&emsp; ⚫ <b>${esc(favB ? tOpening(favB, state.opLang) : "Brak")}</b></div>`);
+  el.insertAdjacentHTML("beforeend", `<div class="callout"><b>Ulubione debiuty:</b><div class="fav"><span>⚪ <b>${esc(favW ? tOpening(favW, state.opLang) : "Brak")}</b></span><span>⚫ <b>${esc(favB ? tOpening(favB, state.opLang) : "Brak")}</b></span></div></div>`);
 
   const byMode = MODES.map((m) => [m, games.filter((g) => g.mode === m)]).filter(([, l]) => l.length).sort((a, b) => b[1].length - a[1].length);
   for (const [m, list] of byMode) {
@@ -457,26 +457,21 @@ function tabStats(el, games) {
 }
 
 const MONTHS_PL = ["sty", "lut", "mar", "kwi", "maj", "cze", "lip", "sie", "wrz", "paź", "lis", "gru"];
-// Polskie etykiety miesięcy: pierwszy tydzień każdego miesiąca.
-function monthTicks(weeks) {
-  const tickvals = [], ticktext = [];
-  let last = -1;
-  for (const w of weeks) {
-    const m = Number(w.slice(5, 7)) - 1;
-    if (m !== last) { tickvals.push(w); ticktext.push(MONTHS_PL[m]); last = m; }
-  }
-  return { tickvals: tickvals.slice(1), ticktext: ticktext.slice(1) };
-}
+const MONTH_WEEK = [0, 31, 59, 90, 120, 151, 181, 212, 243, 273, 304, 334].map((d) => d / 7);
 
 function tabHist(el, games) {
-  const cal = calendarGrid(games, games[games.length - 1].day);
-  const calBox = chartBox(el, "Kalendarz aktywności (ostatnie 12 miesięcy)");
-  calBox.classList.add("calendar");
+  const cal = weekGrid(games);
+  const calBox = chartBox(el, "Kalendarz aktywności (partie w tygodniu)");
+  calBox.style.height = `${Math.max(cal.years.length * 30 + 40, 110)}px`;
   plot(calBox, [{
-    type: "heatmap", x: cal.weeks, y: DAYS, z: cal.z, text: cal.text, xgap: 3, ygap: 3,
+    type: "heatmap", x: Array.from({ length: 53 }, (_, i) => i), y: cal.years.map(String), z: cal.z, text: cal.text, xgap: 2, ygap: 3,
     colorscale: [[0, css("--bg")], [0.0001, css("--grid")], [1, css("--accent")]], zmin: 0,
-    hovertemplate: "%{text}: %{z} partii<extra></extra>", hoverongaps: false, showscale: false,
-  }], { yaxis: { autorange: "reversed", showgrid: false, fixedrange: true }, xaxis: { type: "date", showgrid: false, fixedrange: true, ...monthTicks(cal.weeks) }, margin: { l: 36, r: 10, t: 10, b: 24 } });
+    hovertemplate: "tydzień od %{text}: %{z} partii<extra></extra>", hoverongaps: false, showscale: false,
+  }], {
+    yaxis: { type: "category", autorange: "reversed", showgrid: false, fixedrange: true },
+    xaxis: { showgrid: false, fixedrange: true, zeroline: false, tickvals: MONTH_WEEK, ticktext: MONTHS_PL, range: [-0.5, 52.5] },
+    margin: { l: 44, r: 10, t: 10, b: 24 },
+  });
 
   const b = activityBucket(games);
   const days = [...new Set(games.map(b.key))].sort();

@@ -33,8 +33,14 @@ function arrowSvg({ from, to, color }, flip, i) {
     <polygon points="${x2},${y2} ${ex + px},${ey + py} ${ex - px},${ey - py}" stroke="none"/></g>`;
 }
 
+// Przesunięcie początkowe figury (w polach), z którego CSS animuje ją na miejsce.
+function slide(from, to, flip) {
+  const [x1, y1] = center(from, flip), [x2, y2] = center(to, flip);
+  return `--dx:${x1 - x2};--dy:${y1 - y2}`;
+}
+
 // opts: { fen, flip, last: [from, to], lastColor, arrows: [{from, to, color}], badge: {sq, html} }
-export function renderBoard(el, { fen, flip = false, last = null, lastColor = "", arrows = [], badge = null }) {
+export function renderBoard(el, { fen, flip = false, last = null, lastColor = "", arrows = [], badge = null, anim = null }) {
   const pos = parseFen(fen);
   let squares = "";
   for (let row = 0; row < 8; row++) {
@@ -46,7 +52,7 @@ export function renderBoard(el, { fen, flip = false, last = null, lastColor = ""
       const hl = isHl ? " hl" : "", hlStyle = isHl && lastColor ? ` style="--hl:${lastColor}"` : "";
       const coordFile = row === 7 ? `<span class="cf">${FILES[f]}</span>` : "";
       const coordRank = col === 0 ? `<span class="cr">${r + 1}</span>` : "";
-      squares += `<div class="sq ${dark ? "d" : "l"}${hl}"${hlStyle}>${coordRank}${coordFile}${pos[sq] ? `<div class="pc ${pos[sq]}"></div>` : ""}${badge && badge.sq === sq ? badge.html : ""}</div>`;
+      squares += `<div class="sq ${dark ? "d" : "l"}${hl}" data-sq="${sq}"${hlStyle}>${coordRank}${coordFile}${pos[sq] ? `<div class="pc ${pos[sq]}"${anim && anim.to === sq ? ` style="${slide(anim.from, sq, flip)}"` : ""}></div>` : ""}${badge && badge.sq === sq ? badge.html : ""}</div>`;
     }
   }
   el.innerHTML = `<div class="bd">${squares}<svg class="arrows" viewBox="0 0 8 8">${arrows.map((a, i) => arrowSvg(a, flip, i)).join("")}</svg></div>`;

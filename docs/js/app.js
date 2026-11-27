@@ -1,13 +1,14 @@
-import { fetchPlayer, importToLichess, PlayerNotFound, ApiError, cacheGet, cacheSet } from "./api.js?v=44";
-import { renderBoard } from "./board.js?v=44";
-import { patterns } from "./insights.js?v=44";
-import { addLocalTime, DAYS, MODES, sanMoves } from "./parse.js?v=44";
-import { tOpening, tReason } from "./i18n.js?v=44";
+import { fetchPlayer, importToLichess, PlayerNotFound, ApiError, cacheGet, cacheSet } from "./api.js?v=45";
+import { renderBoard } from "./board.js?v=45";
+import { patterns } from "./insights.js?v=45";
+import { startTrainer } from "./trainer.js?v=45";
+import { addLocalTime, DAYS, MODES, sanMoves } from "./parse.js?v=45";
+import { tOpening, tReason } from "./i18n.js?v=45";
 import {
   LENGTH_BINS, lengthBin, pct, filterGames, counts, groupWin, eloSummary, totalHours,
   mostCommon, movePace, streakEffect, openingTable, reasonShares, dayHourGrid, monthGrid,
   sessionIndexWin, SESSION_ORDER, ratingDiffWin, DIFF_ORDER, timeResults, quickResigns, opponents, monthSummary, prevMonth, openingTree,
-} from "./stats.js?v=44";
+} from "./stats.js?v=45";
 
 const $ = (s) => document.querySelector(s);
 const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
@@ -654,7 +655,7 @@ function tabOpen(el, games) {
 let engineMod = null;
 async function engine() {
   if (!engineMod) {
-    engineMod = await import("./engine.js?v=44");
+    engineMod = await import("./engine.js?v=45");
     engineMod.useCache(cacheGet, cacheSet);
   }
   return engineMod;
@@ -665,14 +666,22 @@ const KIND = {
   brilliant: { mark: "!!", name: "Genialny ruch", short: "Genialne", color: "#1baca6", list: true },
   great: { mark: "!", name: "Świetny ruch", short: "Świetne", color: "#5c8bb0", list: true },
   best: { mark: "★", name: "Najlepszy ruch", short: "Najlepsze", color: "#81b64c" },
-  excellent: { mark: "👍", name: "Znakomity ruch", short: "Znakomite", color: "#96bc4b" },
+  excellent: { mark: "✓✓", name: "Znakomity ruch", short: "Znakomite", color: "#96bc4b" },
   good: { mark: "✓", name: "Dobry ruch", short: "Dobre", color: "#97af8b" },
   inaccuracy: { mark: "?!", name: "Niedokładność", short: "Niedokładności", color: "#e6b800", list: true, err: true },
   mistake: { mark: "?", name: "Błąd", short: "Błędy", color: "#e58f2a", list: true, err: true },
   miss: { mark: "✕", name: "Przeoczenie", short: "Przeoczenia", color: "#ff7769", list: true, err: true },
   blunder: { mark: "??", name: "Błąd rażący", short: "Błędy rażące", color: "#ca3431", list: true, err: true },
 };
-const badge = (kind, cls = "") => `<span class="bdg ${cls}" style="--bc:${KIND[kind].color}" title="${KIND[kind].name}">${KIND[kind].mark}</span>`;
+// Własne ikony SVG zamiast emoji (te same na każdym systemie).
+const SVG = (d, fill) => `<svg viewBox="0 0 16 16" aria-hidden="true" ${fill ? 'fill="#fff"' : 'fill="none" stroke="#fff" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"'}>${d}</svg>`;
+const KIND_ICON = {
+  best: SVG('<path d="M8 1.4l1.9 4.1 4.5.5-3.3 3.1.9 4.4L8 11.2 4 13.5l.9-4.4L1.6 6l4.5-.5z"/>', true),
+  excellent: SVG('<path d="M2.5 7h2.6v6.5H2.5zM6.2 7l2-4.1c1-.2 1.9.7 1.6 1.7L9.3 7h3.5c.9 0 1.5.8 1.3 1.6l-1.1 3.9c-.2.7-.8 1-1.4 1H6.2z"/>', true),
+  good: SVG('<path d="M3 8.5l3.2 3.2L13 4.8"/>'),
+  miss: SVG('<path d="M4 4l8 8M12 4l-8 8"/>'),
+};
+const badge = (kind, cls = "") => `<span class="bdg ${cls}${KIND_ICON[kind] ? " ico" : ""}" style="--bc:${KIND[kind].color}" title="${KIND[kind].name}">${KIND_ICON[kind] || KIND[kind].mark}</span>`;
 // Powód błędu (z engine.explainMove) po polsku.
 const PIECE_PL = { 1: "pion", 2: "dwa pionki", 3: "figurę", 4: "figurę i pionka", 5: "wieżę", 6: "wieżę i pionka", 8: "wieżę i figurę", 9: "hetmana" };
 function whyText(w) {
@@ -750,7 +759,8 @@ function sfViewer(panel, g, r, eng, onDeeper) {
         <div class="sf-nav">
           <button data-nav="first" aria-label="Początek">⏮</button><button data-nav="prev" aria-label="Poprzedni ruch">◀</button>
           <button data-nav="next" aria-label="Następny ruch">▶</button><button data-nav="last" aria-label="Koniec">⏭</button>
-          <button data-nav="err" class="err-btn">Następny błąd</button><button data-nav="flip" aria-label="Obróć planszę">⇅</button>
+          <button data-nav="err" class="err-btn">Następny błąd</button><button data-nav="flip" aria-label="Obróć planszę (R)">⇅</button><button data-nav="full" aria-label="Pełny ekran (F)" title="Pełny ekran (F)">⛶</button>
+          <button data-nav="train" class="train-btn" title="Znajdź właściwy ruch w swoich błędach">🎯 Ćwicz błędy z tej partii</button>
         </div>
       </div>
       <div class="sf-side">
@@ -797,7 +807,7 @@ function sfViewer(panel, g, r, eng, onDeeper) {
     if (last) arrows.push({ from: last.from, to: last.to, color: "#3aa655" });
     if (instead) arrows.push({ from: instead.slice(0, 2), to: instead.slice(2, 4), color: "#4a90d9" });
 
-    renderBoard(boardEl, { fen: r.fens[cur], flip, last: last ? [last.from, last.to] : null, lastColor: last && KIND[last.kind].list ? KIND[last.kind].color : "", arrows, badge: last ? { sq: last.to, html: badge(last.kind, "board") } : null });
+    renderBoard(boardEl, { fen: r.fens[cur], flip, anim: animate && last ? { from: last.from, to: last.to } : null, last: last ? [last.from, last.to] : null, lastColor: last && KIND[last.kind].list ? KIND[last.kind].color : "", arrows, badge: last ? { sq: last.to, html: badge(last.kind, "board") } : null });
 
     const ev = r.evals[cur];
     const white = eng.winChance(ev);
@@ -833,7 +843,15 @@ function sfViewer(panel, g, r, eng, onDeeper) {
     if (chart.layout) window.Plotly.relayout(chart, { shapes: cursor() });
     panel.querySelector('[data-nav="err"]').disabled = !bad.length;
   }
-  function go(i) { cur = Math.max(0, Math.min(N, i)); update(); }
+  let animate = false;
+  function go(i) { const n = Math.max(0, Math.min(N, i)); animate = n === cur + 1; cur = n; update(); animate = false; }
+  function toggleFull(on = !panel.classList.contains("full")) {
+    panel.classList.toggle("full", on);
+    document.body.classList.toggle("noscroll", on);
+    panel.querySelector('[data-nav="full"]').classList.toggle("on", on);
+    if (chart.layout) window.Plotly.Plots.resize(chart);
+  }
+  panel._closeFull = () => toggleFull(false);
 
   panel.addEventListener("click", (e) => {
     const b = e.target.closest("[data-nav], [data-p]");
@@ -845,13 +863,21 @@ function sfViewer(panel, g, r, eng, onDeeper) {
     else if (nav === "next") go(cur + 1);
     else if (nav === "last") go(N);
     else if (nav === "flip") { flip = !flip; update(); }
+    else if (nav === "full") toggleFull();
+    else if (nav === "train") startTrainer(panel, g, r, flip, () => update());
     else if (nav === "err" && bad.length) go((bad.find(({ i }) => i + 1 > cur) || bad[0]).i + 1);
   });
   panel.querySelector(".sf-deeper")?.addEventListener("click", onDeeper);
   panel.tabIndex = 0;
   panel.addEventListener("keydown", (e) => {
+    if (panel.classList.contains("training")) return;
     const map = { ArrowLeft: cur - 1, ArrowRight: cur + 1, Home: 0, End: N };
     if (e.key in map) { e.preventDefault(); go(map[e.key]); }
+    else if (e.key === "f" || e.key === "F") toggleFull();
+    else if (e.key === "r" || e.key === "R") { flip = !flip; update(); }
+    else if (e.key === "Escape" && panel.classList.contains("full")) toggleFull(false);
+    else if (e.key === "j" || e.key === "J") go((bad.find(({ i }) => i + 1 > cur) || bad[0])?.i + 1);
+    else if (e.key === "k" || e.key === "K") { const b = [...bad].reverse().find(({ i }) => i + 1 < cur) || bad[bad.length - 1]; if (b) go(b.i + 1); }
   });
   let tx = null;
   boardEl.addEventListener("touchstart", (e) => { tx = e.touches[0].clientX; }, { passive: true });

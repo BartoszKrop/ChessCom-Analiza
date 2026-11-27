@@ -1,17 +1,17 @@
-import { fetchPlayer, cachedPlayer, importToLichess, PlayerNotFound, ApiError, cacheGet, cacheSet } from "./api.js?v=76";
-import { renderBoard } from "./board.js?v=76";
-import { patterns } from "./insights.js?v=76";
-import { startTrainer } from "./trainer.js?v=76";
-import { initInstallPrompt } from "./install.js?v=76";
-import { disablePageZoom } from "./nozoom.js?v=76";
-import { countUp, enter, initSwipeTabs, initToTop } from "./polish.js?v=76";
-import { addLocalTime, DAYS, MODES, sanMoves } from "./parse.js?v=76";
-import { tOpening, tReason } from "./i18n.js?v=76";
+import { fetchPlayer, cachedPlayer, importToLichess, PlayerNotFound, ApiError, cacheGet, cacheSet } from "./api.js?v=77";
+import { renderBoard } from "./board.js?v=77";
+import { patterns } from "./insights.js?v=77";
+import { startTrainer } from "./trainer.js?v=77";
+import { initInstallPrompt } from "./install.js?v=77";
+import { disablePageZoom } from "./nozoom.js?v=77";
+import { countUp, enter, initSwipeTabs, initToTop } from "./polish.js?v=77";
+import { addLocalTime, DAYS, MODES, sanMoves } from "./parse.js?v=77";
+import { tOpening, tReason } from "./i18n.js?v=77";
 import {
   LENGTH_BINS, lengthBin, pct, filterGames, counts, groupWin, eloSummary, eloChange, totalHours,
   mostCommon, movePace, streakEffect, openingTable, reasonShares, dayHourGrid, monthGrid,
   sessionIndexWin, SESSION_ORDER, ratingDiffWin, DIFF_ORDER, timeResults, quickResigns, opponents, monthSummary, prevMonth, openingTree,
-} from "./stats.js?v=76";
+} from "./stats.js?v=77";
 
 const $ = (s) => document.querySelector(s);
 const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
@@ -748,12 +748,12 @@ function tabOpen(el, games) {
 let engineMod = null;
 async function engine() {
   if (!engineMod) {
-    engineMod = await import("./engine.js?v=76");
+    engineMod = await import("./engine.js?v=77");
     engineMod.useCache(cacheGet, cacheSet);
   }
   return engineMod;
 }
-const sfKey = (g) => `sf|v6|${g.link}`; // ten sam klucz co w engine.js
+const sfKey = (g) => `sf|v7|${g.link}`; // ten sam klucz co w engine.js
 // Kategorie ruchów jak na Chess.com: znaczek, nazwa i kolor.
 const KIND = {
   brilliant: { mark: "!!", name: "Genialny ruch", short: "Genialne", color: "#1baca6", list: true },

@@ -3,7 +3,7 @@
 // Pliki silnika leżą w docs/vendor/stockfish (GPLv3, https://github.com/nmrugg/stockfish.js).
 
 import { Chess } from "../vendor/chess.js";
-import { sanMoves } from "./parse.js?v=76";
+import { sanMoves } from "./parse.js?v=77";
 
 const engineUrl = (file) => new URL(`../vendor/stockfish/${file}`, import.meta.url).href;
 
@@ -59,15 +59,19 @@ export function classify(drop) {
 // Ocena jednego ruchu.
 // drop: utrata szansy wygranej (0–100), isBest: zagrany ruch == najlepszy silnika, gap: przewaga najlepszego
 // ruchu nad drugim (szansa wygranej, null gdy nieznana), winBefore/winAfter: szansa wygranej gracza przed/po ruchu,
-// sacrifice: ruch poświęca materiał, prevOppError: poprzedni ruch rywala był błędem.
-export function classifyMove({ drop, isBest, gap = null, winBefore = 50, winAfter = 50, sacrifice = false, prevOppError = false, recapture = false }) {
+// sacrifice: ruch poświęca materiał, prevOppError: poprzedni ruch rywala był błędem,
+// inCheck: gracz był szachowany przed ruchem, legal: liczba możliwych ruchów, kingMove: ruszał się król.
+export function classifyMove({ drop, isBest, gap = null, winBefore = 50, winAfter = 50, sacrifice = false, prevOppError = false, recapture = false, inCheck = false, legal = 99, kingMove = false }) {
   const err = classify(drop);
   if (err === "blunder") return "blunder";
   if (err === "mistake") return prevOppError ? "miss" : "mistake";
   if (err === "inaccuracy") return "inaccuracy";
-  if (sacrifice && drop < 3 && winAfter >= 40 && winBefore < 90) return "brilliant";
-  // Świetny: jedyny dobry ruch (nie zwykłe odbicie bierki) albo wyraźne wykorzystanie błędu rywala.
-  if (isBest && !recapture && gap !== null && winAfter >= 25 && ((gap >= 15 && winBefore < 75) || (prevOppError && gap >= 10 && winBefore < 90))) return "great";
+  // Genialny: dobrowolne poświęcenie w pozycji, która nie jest przegrana. Nie: ucieczka królem, odpowiedź na szach
+  // (strata jest wtedy wymuszona wcześniejszym ruchem, a nie poświęceniem) ani jedyny możliwy ruch.
+  if (sacrifice && !kingMove && !inCheck && legal > 1 && drop < 3 && winBefore >= 35 && winAfter >= 40 && winBefore < 90) return "brilliant";
+  if (legal <= 1) return isBest ? "best" : drop < 2 ? "excellent" : "good"; // jedyny ruch: bez pochwał
+  // Świetny: jedyny dobry ruch (nie zwykłe odbicie bierki ani ucieczka królem przed szachem) albo wyraźne wykorzystanie błędu rywala.
+  if (isBest && !recapture && !(inCheck && kingMove) && gap !== null && winAfter >= 25 && ((gap >= 15 && winBefore < 75) || (prevOppError && gap >= 10 && winBefore < 90))) return "great";
   if (isBest) return "best";
   if (drop < 2) return "excellent";
   return "good";
@@ -91,7 +95,10 @@ export function isSacrifice(fenBefore, fenAfter, line, moverWhite) {
   const k = Math.min(line.length, 4) - (Math.min(line.length, 4) % 2);
   try {
     const c = new Chess(fenAfter);
-    for (let i = 0; i < k; i++) c.move(line[i]);
+    for (let i = 0; i < k; i++) {
+      const mv = c.move(line[i]);
+      if (i === 0 && !mv.captured) return false; // poświęcony materiał rywal bierze od razu, inaczej to nie poświęcenie
+    }
     const sign = moverWhite ? 1 : -1;
     return sign * (materialDiff(c.fen()) - materialDiff(fenBefore)) <= -2;
   } catch { return false; }
@@ -198,7 +205,7 @@ const newToken = () => { cancelAnalysis(); current = { cancelled: false }; retur
 export const ANALYSIS_DEPTH = 16; // przy wielu wątkach: defaultDepth() = 18
 export const DEEP_DEPTH = 20; // przy wielu wątkach: deepDepth() = 22
 export const BATCH_DEPTH = 12;
-const CACHE_PREFIX = "sf|v6|";
+const CACHE_PREFIX = "sf|v7|";
 
 // Faza partii w pozycji: debiut do 12. ruchu, końcówka gdy zostało ≤ 6 figur (bez pionów i królów).
 export function phaseOf(fen, moveNo) {
@@ -274,7 +281,9 @@ export async function analyzeGame(game, { depth = defaultDepth(), onProgress, to
     const drop = isBest ? 0 : Math.max(0, winBefore - winAfter);
     const gap = isBest && second[i] !== null ? winBefore - winChance(second[i]) : null;
     const prev = plies[i - 1];
+    const pos = new Chess(fens[i]);
     const kind = classifyMove({
+      inCheck: pos.inCheck(), legal: pos.moves().length, kingMove: mv.piece === "k",
       drop, isBest, gap, winBefore, winAfter,
       sacrifice: isSacrifice(fens[i], fens[i + 1], pv[i + 1], white),
       prevOppError: !!prev && ERROR_KINDS.includes(prev.kind) && prev.kind !== "inaccuracy",

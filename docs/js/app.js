@@ -1,16 +1,16 @@
-import { fetchPlayer, importToLichess, PlayerNotFound, ApiError, cacheGet, cacheSet } from "./api.js?v=65";
-import { renderBoard } from "./board.js?v=65";
-import { patterns } from "./insights.js?v=65";
-import { startTrainer } from "./trainer.js?v=65";
-import { initInstallPrompt } from "./install.js?v=65";
-import { disablePageZoom } from "./nozoom.js?v=65";
-import { addLocalTime, DAYS, MODES, sanMoves } from "./parse.js?v=65";
-import { tOpening, tReason } from "./i18n.js?v=65";
+import { fetchPlayer, importToLichess, PlayerNotFound, ApiError, cacheGet, cacheSet } from "./api.js?v=66";
+import { renderBoard } from "./board.js?v=66";
+import { patterns } from "./insights.js?v=66";
+import { startTrainer } from "./trainer.js?v=66";
+import { initInstallPrompt } from "./install.js?v=66";
+import { disablePageZoom } from "./nozoom.js?v=66";
+import { addLocalTime, DAYS, MODES, sanMoves } from "./parse.js?v=66";
+import { tOpening, tReason } from "./i18n.js?v=66";
 import {
   LENGTH_BINS, lengthBin, pct, filterGames, counts, groupWin, eloSummary, totalHours,
   mostCommon, movePace, streakEffect, openingTable, reasonShares, dayHourGrid, monthGrid,
   sessionIndexWin, SESSION_ORDER, ratingDiffWin, DIFF_ORDER, timeResults, quickResigns, opponents, monthSummary, prevMonth, openingTree,
-} from "./stats.js?v=65";
+} from "./stats.js?v=66";
 
 const $ = (s) => document.querySelector(s);
 const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
@@ -728,7 +728,7 @@ function tabOpen(el, games) {
 let engineMod = null;
 async function engine() {
   if (!engineMod) {
-    engineMod = await import("./engine.js?v=65");
+    engineMod = await import("./engine.js?v=66");
     engineMod.useCache(cacheGet, cacheSet);
   }
   return engineMod;
@@ -795,7 +795,9 @@ async function runSf(panel, g, deep = false) {
   panel.querySelector(".sf-cancel").addEventListener("click", async () => { (await engine()).cancelAnalysis(); });
   try {
     const eng = await engine();
-    const res = await eng.analyzeGame(g, {
+    // Partia już przeanalizowana (np. zbiorczo na mniejszej głębokości): pokazujemy zapamiętany wynik, głębiej liczy przycisk „Głębsza analiza".
+    const saved = deep ? null : await eng.cachedAnalysis(g, 0);
+    const res = saved || await eng.analyzeGame(g, {
       depth: deep ? eng.deepDepth() : eng.defaultDepth(),
       onProgress: (d, t) => {
         panel.querySelector(".bar").style.width = `${(d / t) * 100}%`;
@@ -1032,6 +1034,8 @@ function batchBox(el, getList) {
 
 function renderBatch(out, results, eng) {
   out.innerHTML = "";
+  // Przeanalizowane partie od razu pokazują celność na przyciskach i otwierają się z zapamiętanym wynikiem.
+  results.forEach(({ game, res }) => game.link && document.querySelectorAll(`.gc-sf[data-link="${CSS.escape(game.link)}"]`).forEach((b) => (b.textContent = `🔍 ${Math.round(res.accuracy)}%`)));
   const rs = results.slice().sort((a, b) => a.game.endTs - b.game.endTs);
   const n = rs.length;
   const avg = (f) => Math.round((rs.reduce((s, x) => s + f(x), 0) / n) * 10) / 10;

@@ -328,8 +328,8 @@ button:active { transform: scale(.97); }
 .feats { list-style: none; display: flex; flex-wrap: wrap; justify-content: center; gap: 6px 14px; margin: 18px 0 4px; padding: 14px 0 0; border-top: 1px solid var(--grid); color: var(--muted); font-size: .85rem; }
 .start-card .hint { text-align: center; font-size: .8rem; color: var(--muted); margin: 8px 0 0; }
 @media (max-width: 480px) { .start-card { padding: 16px; } .hero h2 { font-size: 1.25rem; } }
-html, body { touch-action: manipulation; -webkit-text-size-adjust: 100%; }
-.chart, .js-plotly-plot { touch-action: pan-x pan-y pinch-zoom; }
+html, body { touch-action: pan-y; -webkit-text-size-adjust: 100%; overflow-x: hidden; overscroll-behavior-x: none; max-width: 100%; }
+.chart, .js-plotly-plot { touch-action: pan-y; }
 
 /* Dolny pasek szybkich filtrów */
 .quickbar { position: fixed; left: 0; right: 0; bottom: 0; z-index: 50; display: flex; justify-content: center; gap: 6px; padding: 6px 8px calc(6px + env(safe-area-inset-bottom)); background: var(--card); border-top: 1px solid var(--grid); box-shadow: 0 -4px 18px rgba(0, 0, 0, .3); }

@@ -1,17 +1,17 @@
-import { fetchPlayer, importToLichess, PlayerNotFound, ApiError, cacheGet, cacheSet } from "./api.js?v=68";
-import { renderBoard } from "./board.js?v=68";
-import { patterns } from "./insights.js?v=68";
-import { startTrainer } from "./trainer.js?v=68";
-import { initInstallPrompt } from "./install.js?v=68";
-import { disablePageZoom } from "./nozoom.js?v=68";
-import { countUp, enter, initSwipeTabs, initToTop } from "./polish.js?v=68";
-import { addLocalTime, DAYS, MODES, sanMoves } from "./parse.js?v=68";
-import { tOpening, tReason } from "./i18n.js?v=68";
+import { fetchPlayer, importToLichess, PlayerNotFound, ApiError, cacheGet, cacheSet } from "./api.js?v=69";
+import { renderBoard } from "./board.js?v=69";
+import { patterns } from "./insights.js?v=69";
+import { startTrainer } from "./trainer.js?v=69";
+import { initInstallPrompt } from "./install.js?v=69";
+import { disablePageZoom } from "./nozoom.js?v=69";
+import { countUp, enter, initSwipeTabs, initToTop } from "./polish.js?v=69";
+import { addLocalTime, DAYS, MODES, sanMoves } from "./parse.js?v=69";
+import { tOpening, tReason } from "./i18n.js?v=69";
 import {
   LENGTH_BINS, lengthBin, pct, filterGames, counts, groupWin, eloSummary, totalHours,
   mostCommon, movePace, streakEffect, openingTable, reasonShares, dayHourGrid, monthGrid,
   sessionIndexWin, SESSION_ORDER, ratingDiffWin, DIFF_ORDER, timeResults, quickResigns, opponents, monthSummary, prevMonth, openingTree,
-} from "./stats.js?v=68";
+} from "./stats.js?v=69";
 
 const $ = (s) => document.querySelector(s);
 const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
@@ -374,62 +374,9 @@ function readFilters(render = true) {
   if (!f.colors.length) parts.push("brak koloru!");
   if (f.hourMin > 0 || f.hourMax < 23) parts.push(`${f.hourMin}:00–${f.hourMax}:59`);
   $("#filter-summary").textContent = parts.length ? `· ${parts.join(" · ")}` : "";
-  syncQuickbar();
   if (render) renderTab();
 }
 
-// Dolny pasek szybkich filtrów: trzy przyciski (Tryb, Czas, Kolor) otwierające małe menu. Sterują tymi samymi polami co panel filtrów.
-const QB = {
-  mode: [["", "Wszystkie"], ["Bullet", "Bullet"], ["Blitz", "Blitz"], ["Rapid", "Rapid"]],
-  per: [["30", "30 dni"], ["90", "3 mies."], ["365", "Rok"], ["0", "Całość"]],
-  col: [["wb", "Oba kolory"], ["w", "Białe"], ["b", "Czarne"]],
-};
-function qbCurrent(menu) {
-  const f = state.filters;
-  if (menu === "mode") return f.mode || "";
-  if (menu === "col") return (f.colors || []).sort().join("") === "bw" || !(f.colors || []).length ? "wb" : f.colors[0];
-  const on = document.querySelector("#presets button.on");
-  return on ? on.dataset.days : "";
-}
-function syncQuickbar() {
-  document.querySelectorAll("#quickbar .qb-btn").forEach((btn) => {
-    const m = btn.dataset.menu, cur = qbCurrent(m);
-    const opt = QB[m].find(([v]) => v === cur);
-    btn.querySelector("b").textContent = opt ? opt[1] : "własny";
-    btn.classList.toggle("set", (m === "mode" && cur !== "") || (m === "per" && cur !== "0") || (m === "col" && cur !== "wb") || !opt);
-  });
-}
-function closeQbMenu() { $("#qb-menu").classList.add("hidden"); document.querySelectorAll("#quickbar .qb-btn").forEach((b) => b.classList.remove("open")); }
-function initQuickbar() {
-  const menu = $("#qb-menu");
-  $("#quickbar").addEventListener("click", (e) => {
-    const item = e.target.closest("[data-v]");
-    if (item) {
-      const m = menu.dataset.menu, v = item.dataset.v;
-      if (m === "mode") { $("#f-mode").value = v; }
-      else if (m === "per") { setPreset(Number(v)); }
-      else { $("#f-white").classList.toggle("on", v.includes("w")); $("#f-black").classList.toggle("on", v.includes("b")); }
-      closeQbMenu();
-      readFilters();
-      return;
-    }
-    const btn = e.target.closest(".qb-btn");
-    if (!btn) return;
-    const m = btn.dataset.menu;
-    if (!menu.classList.contains("hidden") && menu.dataset.menu === m) return closeQbMenu();
-    closeQbMenu();
-    const cur = qbCurrent(m);
-    menu.dataset.menu = m;
-    menu.innerHTML = QB[m].map(([v, l]) => `<button type="button" role="menuitem" data-v="${v}" class="${v === cur ? "on" : ""}">${l}</button>`).join("");
-    const bar = $("#quickbar").getBoundingClientRect(), br = btn.getBoundingClientRect();
-    menu.classList.remove("hidden");
-    btn.classList.add("open");
-    const w = menu.offsetWidth;
-    menu.style.left = `${Math.max(8, Math.min(br.left, innerWidth - w - 8)) - bar.left}px`;
-  });
-  document.addEventListener("click", (e) => { if (!e.target.closest("#quickbar")) closeQbMenu(); });
-  document.addEventListener("keydown", (e) => { if (e.key === "Escape") closeQbMenu(); });
-}
 
 // ---------------------------------------------------------------- widoki
 function showResults() {
@@ -731,7 +678,7 @@ function tabOpen(el, games) {
 let engineMod = null;
 async function engine() {
   if (!engineMod) {
-    engineMod = await import("./engine.js?v=68");
+    engineMod = await import("./engine.js?v=69");
     engineMod.useCache(cacheGet, cacheSet);
   }
   return engineMod;
@@ -1425,7 +1372,6 @@ function init() {
   $("#p1-nick").addEventListener("change", (e) => store.set("lastNick", e.target.value.trim()));
 }
 
-initQuickbar();
 initSwipeTabs();
 initToTop();
 init();

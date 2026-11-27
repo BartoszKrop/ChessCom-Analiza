@@ -30,3 +30,10 @@ test("gameAccuracy: partie z błędem dostają mniej niż średnia ruchów, czys
   const blunder = gameAccuracy(evals, drops.map((d, i) => (i === 8 ? 35 : d)), (i) => i % 2 === 0);
   assert.ok(blunder < 95, `${blunder} < 95`);
 });
+
+import { calibrateAccuracy } from "../../docs/js/engine.js";
+test("calibrateAccuracy: lekko ściska wyniki do środka, zachowuje kolejność", () => {
+  assert.equal(calibrateAccuracy(100), 94.5);
+  assert.ok(calibrateAccuracy(92.1) < 92.1 && calibrateAccuracy(60) > 60);
+  assert.ok(calibrateAccuracy(80) < calibrateAccuracy(81));
+});

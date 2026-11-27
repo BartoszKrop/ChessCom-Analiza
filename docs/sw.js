@@ -4,7 +4,7 @@
 // 2) zawsze najpierw sieć (nowa wersja strony od razu widoczna), pliki z cache tylko gdy nie ma internetu;
 // 3) Plotly z CDN trzyma w cache (duży plik, rzadko się zmienia).
 // Zapytań do API Chess.com i Lichess nie dotyka.
-const CACHE = "chessstats-v22";
+const CACHE = "chessstats-v23";
 const CDN_CACHE = "chessstats-cdn-v1";
 
 self.addEventListener("install", () => self.skipWaiting());

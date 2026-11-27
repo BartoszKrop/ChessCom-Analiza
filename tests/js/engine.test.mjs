@@ -26,7 +26,7 @@ test("phaseOf: debiut, gra środkowa, końcówka", () => {
 import { cachedAnalysis, useCache, ANALYSIS_DEPTH, DEEP_DEPTH, BATCH_DEPTH } from "../../docs/js/engine.js";
 
 test("cachedAnalysis zwraca zapis tylko gdy był wystarczająco głęboki", async () => {
-  const store = new Map([["sf|v2|g1", { depth: 16 }], ["sf|v2|old", { accuracy: 90 }]]);
+  const store = new Map([["sf|v3|g1", { depth: 16 }], ["sf|v3|old", { accuracy: 90 }]]);
   useCache(async (k) => store.get(k), async (k, v) => store.set(k, v));
   assert.ok(BATCH_DEPTH < ANALYSIS_DEPTH && ANALYSIS_DEPTH < DEEP_DEPTH);
   assert.deepEqual(await cachedAnalysis({ link: "g1" }, 12), { depth: 16 });

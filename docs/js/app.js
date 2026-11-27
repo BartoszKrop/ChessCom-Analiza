@@ -1,12 +1,13 @@
-import { fetchPlayer, importToLichess, PlayerNotFound, ApiError, cacheGet, cacheSet } from "./api.js?v=43";
-import { renderBoard } from "./board.js?v=43";
-import { addLocalTime, DAYS, MODES, sanMoves } from "./parse.js?v=43";
-import { tOpening, tReason } from "./i18n.js?v=43";
+import { fetchPlayer, importToLichess, PlayerNotFound, ApiError, cacheGet, cacheSet } from "./api.js?v=44";
+import { renderBoard } from "./board.js?v=44";
+import { patterns } from "./insights.js?v=44";
+import { addLocalTime, DAYS, MODES, sanMoves } from "./parse.js?v=44";
+import { tOpening, tReason } from "./i18n.js?v=44";
 import {
   LENGTH_BINS, lengthBin, pct, filterGames, counts, groupWin, eloSummary, totalHours,
   mostCommon, movePace, streakEffect, openingTable, reasonShares, dayHourGrid, monthGrid,
   sessionIndexWin, SESSION_ORDER, ratingDiffWin, DIFF_ORDER, timeResults, quickResigns, opponents, monthSummary, prevMonth, openingTree,
-} from "./stats.js?v=43";
+} from "./stats.js?v=44";
 
 const $ = (s) => document.querySelector(s);
 const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
@@ -653,12 +654,12 @@ function tabOpen(el, games) {
 let engineMod = null;
 async function engine() {
   if (!engineMod) {
-    engineMod = await import("./engine.js?v=43");
+    engineMod = await import("./engine.js?v=44");
     engineMod.useCache(cacheGet, cacheSet);
   }
   return engineMod;
 }
-const sfKey = (g) => `sf|v2|${g.link}`; // ten sam klucz co w engine.js
+const sfKey = (g) => `sf|v3|${g.link}`; // ten sam klucz co w engine.js
 // Kategorie ruchów jak na Chess.com: znaczek, nazwa i kolor.
 const KIND = {
   brilliant: { mark: "!!", name: "Genialny ruch", short: "Genialne", color: "#1baca6", list: true },
@@ -672,6 +673,16 @@ const KIND = {
   blunder: { mark: "??", name: "Błąd rażący", short: "Błędy rażące", color: "#ca3431", list: true, err: true },
 };
 const badge = (kind, cls = "") => `<span class="bdg ${cls}" style="--bc:${KIND[kind].color}" title="${KIND[kind].name}">${KIND[kind].mark}</span>`;
+// Powód błędu (z engine.explainMove) po polsku.
+const PIECE_PL = { 1: "pion", 2: "dwa pionki", 3: "figurę", 4: "figurę i pionka", 5: "wieżę", 6: "wieżę i pionka", 8: "wieżę i figurę", 9: "hetmana" };
+function whyText(w) {
+  if (!w) return "";
+  if (w.code === "missedMate") return `Przeoczony mat w ${w.n}`;
+  if (w.code === "allowedMate") return `Dopuszczony mat rywala w ${w.n}`;
+  if (w.code === "material") return `Strata materiału: ${PIECE_PL[w.pts] || `${w.pts} pkt`}`;
+  if (w.code === "wasted") return "Zmarnowana przewaga";
+  return "";
+}
 const isBadMove = (p) => p.mine && ["blunder", "mistake", "miss"].includes(p.kind);
 const PHASES = [["open", "Debiut"], ["middle", "Gra środkowa"], ["end", "Końcówka"]];
 const fmtEval = (v) => {
@@ -703,7 +714,7 @@ async function runSf(panel, g, deep = false) {
   try {
     const eng = await engine();
     const res = await eng.analyzeGame(g, {
-      depth: deep ? eng.DEEP_DEPTH : eng.ANALYSIS_DEPTH,
+      depth: deep ? eng.deepDepth() : eng.defaultDepth(),
       onProgress: (d, t) => {
         panel.querySelector(".bar").style.width = `${(d / t) * 100}%`;
         panel.querySelector(".progress span").textContent = `Analiza: pozycja ${d} z ${t}`;
@@ -774,7 +785,7 @@ function sfViewer(panel, g, r, eng, onDeeper) {
     { type: "scatter", mode: "markers", x: marks.map(({ i }) => (i + 1) / 2), y: marks.map(({ i }) => y[i + 1]), marker: { color: marks.map(({ p }) => KIND[p.kind].color), size: 10, line: { color: "#fff", width: 1 } }, text: marks.map(({ p, i }) => moveLabel(p, i) + KIND[p.kind].mark), hovertemplate: "%{text}<extra></extra>" },
   ], { showlegend: false, shapes: cursor(), yaxis: { range: [-6.3, 6.3], zeroline: true, title: { text: "pionki" } }, xaxis: { title: { text: "Ruch (kliknij, żeby przejść)" } }, margin: { l: 44, r: 10, t: 10, b: 40 } })
     .then(() => chart.on?.("plotly_click", (ev) => go(Math.round(ev.points[0].x * 2))));
-  panel.insertAdjacentHTML("beforeend", `<div class="info small">Stockfish 18 lite w Twojej przeglądarce, głębokość ${r.depth || 12}. ${r.depth < eng.DEEP_DEPTH ? `<button class="link-btn sf-deeper">🔬 Głębsza analiza (ok. 4× dłużej)</button> ` : ""}Zielona strzałka: ostatnio zagrany ruch, niebieska: ruch, który należało zagrać zamiast niego. Oceny jak na Chess.com: genialny to dobre poświęcenie, świetny to jedyny dobry ruch, reszta zależy od tego, ile ruch zyskuje albo traci. Strzałki ← → na klawiaturze albo przesunięcie palcem po planszy zmieniają ruch.</div>`);
+  panel.insertAdjacentHTML("beforeend", `<div class="info small">Stockfish 18 lite w Twojej przeglądarce, głębokość ${r.depth || 12}. ${r.depth < eng.deepDepth() ? `<button class="link-btn sf-deeper">🔬 Głębsza analiza (ok. 4× dłużej)</button> ` : ""}Zielona strzałka: ostatnio zagrany ruch, niebieska: ruch, który należało zagrać zamiast niego. Oceny jak na Chess.com: genialny to dobre poświęcenie, świetny to jedyny dobry ruch, reszta zależy od tego, ile ruch zyskuje albo traci. Strzałki ← → na klawiaturze albo przesunięcie palcem po planszy zmieniają ruch.</div>`);
 
   const bestSanAt = (i) => (i < N ? r.plies[i].bestSan || r.plies[i].san : null);
 
@@ -802,7 +813,8 @@ function sfViewer(panel, g, r, eng, onDeeper) {
     else {
       const k = KIND[last.kind];
       html = `<div class="sf-move">${badge(last.kind)} <b>${esc(moveLabel(last, cur - 1))}</b> <span class="muted">${last.mine ? "Twój ruch" : "ruch rywala"}</span></div>
-        <div class="sf-verdict" style="--k:${k.color}"><b>${k.name}</b>${last.drop >= 1 ? ` · −${Math.round(last.drop)}% szans na wygraną` : ""}</div>`;
+        <div class="sf-verdict" style="--k:${k.color}"><b>${k.name}</b>${last.drop >= 1 ? ` · −${Math.round(last.drop)}% szans na wygraną` : ""}</div>
+        ${whyText(last.why) ? `<div class="sf-why">${esc(whyText(last.why))}</div>` : ""}`;
       if (instead) html += `<div class="legend"><span><i style="background:#3aa655"></i>zagrany ruch</span><span><i style="background:#4a90d9"></i>ruch, który należało zagrać</span></div>`;
       if (last.bestSan && (k.err || last.kind === "good" || last.kind === "excellent")) {
         html += `<div class="${k.err ? "" : "muted"}">${k.err ? "Lepiej było" : "Najlepszy był"}: <b>${esc(k.err && last.line.length ? last.line.slice(0, 4).join(" ") : last.bestSan)}</b>${k.err ? ` <button class="link-btn" data-nav="prev">◀ pokaż</button>` : ""}</div>`;
@@ -858,7 +870,7 @@ function batchBox(el, getList) {
   el.insertAdjacentHTML("beforeend", `<details class="card sf-batch">
     <summary>📈 Analiza wielu partii naraz</summary>
     <div class="sf-batch-head">
-      <div class="sf-batch-ctl"><label>Ostatnie <select id="b-n"><option>10</option><option selected>20</option><option>50</option></select> partii</label>
+      <div class="sf-batch-ctl"><label>Ostatnie <select id="b-n"><option>10</option><option selected>20</option><option>50</option><option>100</option></select> partii</label>
       <button id="b-go" class="primary">Analizuj</button></div></div>
     <div class="info small">Bierze partie z listy poniżej (z jej filtrami), od najnowszej.</div>
     <div id="b-prog"></div><div id="b-out"></div>
@@ -931,6 +943,9 @@ function renderBatch(out, results, eng) {
     const worst = phases[phAcc.indexOf(Math.min(...phAcc))];
     info(out, `Najwięcej tracisz w fazie: ${worst[1].toLowerCase()} (celność ${Math.min(...phAcc)}%). Debiut = ruchy 1–12, końcówka = najwyżej 6 figur na planszy.`);
   }
+
+  const pats = patterns(rs);
+  if (pats.length) out.insertAdjacentHTML("beforeend", `<h3>Wzorce w Twojej grze</h3><ul class="patterns">${pats.map((x) => `<li>${esc(x.text)}</li>`).join("")}</ul>`);
 
   out.insertAdjacentHTML("beforeend", "<h3>Najsłabsze partie</h3>");
   const resName = RESULT_ICON;
@@ -1187,7 +1202,20 @@ function init() {
     catch { toast("Nie udało się skopiować. Skopiuj adres z paska przeglądarki."); }
   });
   renderRecent();
-  if ("serviceWorker" in navigator) navigator.serviceWorker.register("sw.js").catch(() => {});
+  if ("serviceWorker" in navigator) {
+    const controlled = !!navigator.serviceWorker.controller;
+    navigator.serviceWorker.register("sw.js").catch(() => {});
+    // Pierwsza wizyta na komputerze: gdy service worker przejmie stronę, przeładowujemy ją raz, żeby dostała
+    // nagłówki izolacji (wielowątkowy silnik). Pomijamy, gdy analiza już trwa albo to telefon.
+    const desktop = (navigator.hardwareConcurrency || 0) >= 4 && !/Mobi|Android|iPhone|iPad/i.test(navigator.userAgent);
+    if (!controlled && desktop && !self.crossOriginIsolated) {
+      navigator.serviceWorker.addEventListener("controllerchange", () => {
+        let done = false;
+        try { done = sessionStorage.getItem("coi-reload") === "1"; sessionStorage.setItem("coi-reload", "1"); } catch { done = true; }
+        if (!done && $("#results").classList.contains("hidden")) location.reload();
+      });
+    }
+  }
   ["#f-white", "#f-black"].forEach((s) => $(s).addEventListener("click", () => { $(s).classList.toggle("on"); readFilters(); }));
 
   // Link z nickiem (?user=...&platform=...) od razu uruchamia analizę i działa jako zakładka.

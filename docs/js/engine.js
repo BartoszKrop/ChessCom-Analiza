@@ -1,15 +1,49 @@
-// Analiza partii Stockfishem (wersja lite, jeden wątek) w Web Workerze, bez serwera.
+// Analiza partii Stockfishem (wersja lite) w Web Workerze, bez serwera.
+// Gdy strona jest „cross-origin isolated” (service worker dodaje nagłówki COOP/COEP), używamy wersji wielowątkowej.
 // Pliki silnika leżą w docs/vendor/stockfish (GPLv3, https://github.com/nmrugg/stockfish.js).
 
 import { Chess } from "../vendor/chess.js";
-import { sanMoves } from "./parse.js?v=43";
+import { sanMoves } from "./parse.js?v=44";
 
-const ENGINE_URL = new URL("../vendor/stockfish/stockfish-18-lite-single.js", import.meta.url).href;
+const engineUrl = (file) => new URL(`../vendor/stockfish/${file}`, import.meta.url).href;
+
+// Liczba wątków silnika: 1 bez izolacji (np. Safari, pierwsza wizyta), inaczej do 4 (zostawiamy rdzeń dla strony).
+export function pickThreads(isolated = typeof crossOriginIsolated !== "undefined" && crossOriginIsolated, cores = navigator.hardwareConcurrency || 2, mobile = /Mobi|Android|iPhone|iPad/i.test(navigator.userAgent || "")) {
+  if (!isolated || mobile || typeof SharedArrayBuffer === "undefined") return 1;
+  return Math.max(1, Math.min(4, cores - 1));
+}
+export let engineThreads = 1;
+export const defaultDepth = () => (pickThreads() >= 3 ? 18 : 16);
+export const deepDepth = () => (pickThreads() >= 3 ? 22 : 20);
 
 // Szansa wygranej (0–100) z oceny w centypionach, wzór jak na Lichess.
 export const winChance = (cp) => 50 + 50 * (2 / (1 + Math.exp(-0.00368208 * cp)) - 1);
 // Celność ruchu z utraty szansy wygranej (wzór Lichess).
 export const moveAccuracy = (drop) => Math.max(0, Math.min(100, 103.1668 * Math.exp(-0.04354 * Math.max(0, drop)) - 3.1669));
+
+// Celność całej partii wzorem Lichess (zbliżonym do CAPS z Chess.com): średnia z (a) średniej ważonej zmiennością pozycji
+// i (b) średniej harmonicznej celności ruchów. Harmoniczna mocno karze pojedyncze poważne błędy, zwykła średnia je „rozmywa”.
+// evals: ocena białych w każdej pozycji (n+1), drops: utrata szansy wygranej w każdym z n ruchów, whiteMoves: czy ruch i to ruch białych.
+export function gameAccuracy(evals, drops, isMine) {
+  const n = drops.length;
+  const wins = evals.map(winChance);
+  const w = Math.min(8, Math.max(2, Math.floor(n / 10)));
+  const sd = (a) => { const m = a.reduce((x, y) => x + y, 0) / a.length; return Math.sqrt(a.reduce((x, y) => x + (y - m) ** 2, 0) / a.length); };
+  const windows = [];
+  for (let i = 0; i < Math.min(w, wins.length) - 2; i++) windows.push(wins.slice(0, w));
+  for (let i = 0; i + w <= wins.length; i++) windows.push(wins.slice(i, i + w));
+  const acc = [], wt = [];
+  for (let i = 0; i < n; i++) {
+    if (!isMine(i)) continue;
+    // Ruch bez straty (najlepszy lub poprawiający pozycję) = 100; inaczej wzór + 1 pkt „premii za niepewność analizy”.
+    acc.push(drops[i] <= 0 ? 100 : Math.min(100, Math.max(0, moveAccuracy(drops[i]) + 1)));
+    wt.push(Math.min(12, Math.max(0.5, sd(windows[Math.min(i, windows.length - 1)] || [50]))));
+  }
+  if (!acc.length) return 0;
+  const weighted = acc.reduce((x, a, i) => x + a * wt[i], 0) / wt.reduce((x, y) => x + y, 0);
+  const harmonic = acc.length / acc.reduce((x, a) => x + 1 / Math.max(a, 0.5), 0);
+  return Math.round(((weighted + harmonic) / 2) * 10) / 10;
+}
 // Kategorie ruchów jak na Chess.com. Utrata szansy wygranej: >= 20 błąd rażący, >= 10 błąd, >= 5 niedokładność.
 export const ERROR_KINDS = ["inaccuracy", "mistake", "miss", "blunder"];
 export const KIND_ORDER = ["brilliant", "great", "best", "excellent", "good", "inaccuracy", "mistake", "miss", "blunder"];
@@ -63,23 +97,63 @@ export function isSacrifice(fenBefore, fenAfter, line, moverWhite) {
 const MATE_CP = 10000;
 export const evalToCp = (e) => (e.mate != null ? Math.sign(e.mate || 1) * (MATE_CP - Math.abs(e.mate) * 10) : e.cp);
 
+// Zmiana materiału (z perspektywy grającego) po odegraniu `sans` z pozycji `fen`.
+export function materialDelta(fen, sans, moverWhite) {
+  try {
+    const c = new Chess(fen);
+    for (const san of sans) c.move(san);
+    return (moverWhite ? 1 : -1) * (materialDiff(c.fen()) - materialDiff(fen));
+  } catch { return 0; }
+}
+
+// Dlaczego ruch był błędem? Oceny w centypionach z perspektywy grającego.
+// Zwraca {code: "missedMate" | "allowedMate" | "material" | "wasted" | "position", n?, pts?}.
+export function explainMove({ fenBefore, san, bestLine = [], afterLine = [], evalBefore, evalAfter, moverWhite }) {
+  const MATE = MATE_CP - 500;
+  const mateIn = (cp) => Math.max(1, Math.round((MATE_CP - Math.abs(cp)) / 10));
+  if (evalBefore >= MATE && evalAfter < MATE) return { code: "missedMate", n: mateIn(evalBefore) };
+  if (evalAfter <= -MATE && evalBefore > -MATE) return { code: "allowedMate", n: mateIn(evalAfter) };
+  const played = materialDelta(fenBefore, [san, ...afterLine.slice(0, 3)], moverWhite);
+  const best = bestLine.length ? materialDelta(fenBefore, bestLine.slice(0, 4), moverWhite) : 0;
+  if (best - played >= 2) return { code: "material", pts: best - played };
+  if (winChance(evalBefore) >= 75 && winChance(evalAfter) < 60) return { code: "wasted" };
+  return { code: "position" };
+}
+
 let worker = null, ready = null, queue = Promise.resolve();
 const listeners = new Set();
 
+function spawn(file, threads) {
+  return new Promise((resolve, reject) => {
+    const w = new Worker(engineUrl(file));
+    const t = setTimeout(() => { w.terminate(); reject(new Error("Silnik nie odpowiada.")); }, 30000);
+    w.onerror = () => { clearTimeout(t); w.terminate(); reject(new Error("Nie udało się uruchomić silnika.")); };
+    w.onmessage = (e) => {
+      const line = String(e.data);
+      if (line === "uciok") {
+        if (threads > 1) w.postMessage(`setoption name Threads value ${threads}`);
+        w.postMessage(`setoption name Hash value ${threads > 1 ? 64 : 32}`);
+        w.postMessage("isready");
+      } else if (line === "readyok") {
+        clearTimeout(t);
+        w.onmessage = (ev) => { const l = String(ev.data); listeners.forEach((fn) => fn(l)); };
+        resolve(w);
+      }
+    };
+    w.postMessage("uci");
+  });
+}
+
 function start() {
   if (ready) return ready;
-  worker = new Worker(ENGINE_URL);
-  worker.onmessage = (e) => { const line = String(e.data); listeners.forEach((fn) => fn(line)); };
-  ready = new Promise((resolve, reject) => {
-    const t = setTimeout(() => reject(new Error("Silnik nie odpowiada.")), 30000);
-    const on = (line) => {
-      if (line === "uciok") worker.postMessage("isready");
-      if (line === "readyok") { clearTimeout(t); listeners.delete(on); resolve(); }
-    };
-    listeners.add(on);
-    worker.onerror = () => { clearTimeout(t); reject(new Error("Nie udało się uruchomić silnika.")); };
-    worker.postMessage("uci");
-  });
+  ready = (async () => {
+    const threads = pickThreads();
+    if (threads > 1) {
+      try { worker = await spawn("stockfish-18-lite.js", threads); engineThreads = threads; return; } catch { /* wracamy do jednego wątku */ }
+    }
+    worker = await spawn("stockfish-18-lite-single.js", 1);
+    engineThreads = 1;
+  })();
   ready.catch(() => { ready = null; worker?.terminate(); worker = null; });
   return ready;
 }
@@ -118,10 +192,10 @@ export const cancelAnalysis = () => { if (current) current.cancelled = true; };
 const newToken = () => { cancelAnalysis(); current = { cancelled: false }; return current; };
 
 // Głębokość 16 to ok. 12 s na partię z 30 ruchów (desktop), 20 to ok. minuta. Seria partii liczy się szybciej (12).
-export const ANALYSIS_DEPTH = 16;
-export const DEEP_DEPTH = 20;
+export const ANALYSIS_DEPTH = 16; // przy wielu wątkach: defaultDepth() = 18
+export const DEEP_DEPTH = 20; // przy wielu wątkach: deepDepth() = 22
 export const BATCH_DEPTH = 12;
-const CACHE_PREFIX = "sf|v2|";
+const CACHE_PREFIX = "sf|v3|";
 
 // Faza partii w pozycji: debiut do 12. ruchu, końcówka gdy zostało ≤ 6 figur (bez pionów i królów).
 export function phaseOf(fen, moveNo) {
@@ -151,7 +225,7 @@ let cacheGet = null, cacheSet = null;
 export function useCache(get, set) { cacheGet = get; cacheSet = set; }
 
 // Analiza całej partii. onProgress(done, total). Zwraca null, gdy przerwano.
-export async function analyzeGame(game, { depth = ANALYSIS_DEPTH, onProgress, token, multipv = 2 } = {}) {
+export async function analyzeGame(game, { depth = defaultDepth(), onProgress, token, multipv = 2 } = {}) {
   const cached = await cachedAnalysis(game, depth);
   if (cached) return cached;
   const my = token || newToken();
@@ -202,8 +276,11 @@ export async function analyzeGame(game, { depth = ANALYSIS_DEPTH, onProgress, to
       sacrifice: isSacrifice(fens[i], fens[i + 1], pv[i + 1], white),
       prevOppError: !!prev && ERROR_KINDS.includes(prev.kind) && prev.kind !== "inaccuracy",
     });
+    const why = ERROR_KINDS.includes(kind)
+      ? explainMove({ fenBefore: fens[i], san: mv.san, bestLine: pv[i], afterLine: pv[i + 1] || [], evalBefore: sign * evals[i], evalAfter: sign * evals[i + 1], moverWhite: white })
+      : null;
     plies.push({
-      no: Math.floor(i / 2) + 1, san: mv.san, lan: mv.lan, from: mv.from, to: mv.to,
+      why, no: Math.floor(i / 2) + 1, san: mv.san, lan: mv.lan, from: mv.from, to: mv.to,
       mine: white === meWhite, drop: Math.round(drop * 10) / 10, kind,
       bestSan: isBest ? null : pv[i][0] || null, line: isBest ? [] : pv[i], phase: phaseOf(fens[i], Math.floor(i / 2) + 1),
     });
@@ -212,8 +289,8 @@ export async function analyzeGame(game, { depth = ANALYSIS_DEPTH, onProgress, to
     const list = plies.filter((p) => p.mine === mine);
     const counts = Object.fromEntries(KIND_ORDER.map((k) => [k, 0]));
     list.forEach((p) => counts[p.kind]++);
-    const acc = list.length ? list.reduce((s, p) => s + moveAccuracy(p.drop), 0) / list.length : 0;
-    return { counts, accuracy: Math.round(acc * 10) / 10 };
+    const accuracy = gameAccuracy(evals, plies.map((p) => p.drop), (i) => plies[i].mine === mine);
+    return { counts, accuracy };
   };
   const me = sideStats(true), opp = sideStats(false);
   const res = {

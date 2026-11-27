@@ -264,3 +264,5 @@ tr.clickable:hover td { background: rgba(127, 127, 127, .12); }
 .sf-info .legend { display: flex; flex-wrap: wrap; gap: 2px 14px; font-size: .78rem; color: var(--muted); }
 .sf-info .legend span { display: inline-flex; align-items: center; gap: 6px; white-space: nowrap; }
 .sf-info .legend i { display: inline-block; width: 18px; height: 5px; border-radius: 3px; }
+.sf-why { font-weight: 600; }
+.patterns{margin:.4rem 0 1rem;padding-left:1.2rem}.patterns li{margin:.3rem 0}

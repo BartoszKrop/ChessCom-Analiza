@@ -1,17 +1,17 @@
-import { fetchPlayer, cachedPlayer, importToLichess, PlayerNotFound, ApiError, cacheGet, cacheSet } from "./api.js?v=74";
-import { renderBoard } from "./board.js?v=74";
-import { patterns } from "./insights.js?v=74";
-import { startTrainer } from "./trainer.js?v=74";
-import { initInstallPrompt } from "./install.js?v=74";
-import { disablePageZoom } from "./nozoom.js?v=74";
-import { countUp, enter, initSwipeTabs, initToTop } from "./polish.js?v=74";
-import { addLocalTime, DAYS, MODES, sanMoves } from "./parse.js?v=74";
-import { tOpening, tReason } from "./i18n.js?v=74";
+import { fetchPlayer, cachedPlayer, importToLichess, PlayerNotFound, ApiError, cacheGet, cacheSet } from "./api.js?v=75";
+import { renderBoard } from "./board.js?v=75";
+import { patterns } from "./insights.js?v=75";
+import { startTrainer } from "./trainer.js?v=75";
+import { initInstallPrompt } from "./install.js?v=75";
+import { disablePageZoom } from "./nozoom.js?v=75";
+import { countUp, enter, initSwipeTabs, initToTop } from "./polish.js?v=75";
+import { addLocalTime, DAYS, MODES, sanMoves } from "./parse.js?v=75";
+import { tOpening, tReason } from "./i18n.js?v=75";
 import {
   LENGTH_BINS, lengthBin, pct, filterGames, counts, groupWin, eloSummary, eloChange, totalHours,
   mostCommon, movePace, streakEffect, openingTable, reasonShares, dayHourGrid, monthGrid,
   sessionIndexWin, SESSION_ORDER, ratingDiffWin, DIFF_ORDER, timeResults, quickResigns, opponents, monthSummary, prevMonth, openingTree,
-} from "./stats.js?v=74";
+} from "./stats.js?v=75";
 
 const $ = (s) => document.querySelector(s);
 const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
@@ -748,7 +748,7 @@ function tabOpen(el, games) {
 let engineMod = null;
 async function engine() {
   if (!engineMod) {
-    engineMod = await import("./engine.js?v=74");
+    engineMod = await import("./engine.js?v=75");
     engineMod.useCache(cacheGet, cacheSet);
   }
   return engineMod;
@@ -869,8 +869,8 @@ function sfViewer(panel, g, r, eng, onDeeper) {
           <button data-nav="next" class="big" aria-label="Następny ruch">▶</button><button data-nav="last" aria-label="Koniec">⏭</button>
         </div>
         <div class="sf-tools">
-          <button data-nav="flip" aria-label="Obróć planszę (R)" title="Obróć planszę (R)">⇅</button><button data-nav="full" aria-label="Pełny ekran (F)" title="Pełny ekran (F)">⛶</button>
-          <button data-nav="train" class="train-btn" title="Znajdź właściwy ruch w swoich błędach">🎯 Ćwicz błędy</button><button data-nav="err" class="err-btn">Następny błąd ›</button>
+          <button data-nav="flip" aria-label="Obróć planszę (R)" title="Obróć planszę (R)">⇅</button>
+          <button data-nav="train" class="train-btn" title="Znajdź właściwy ruch w swoich błędach">🎯 Ćwicz błędy</button><button data-nav="err" class="err-btn">Następny błąd ›</button><button data-nav="full" aria-label="Pełny ekran (F)" title="Pełny ekran (F)">⛶</button>
         </div>
       </div>
       <div class="sf-side">

@@ -3,7 +3,7 @@
 // Pliki silnika leżą w docs/vendor/stockfish (GPLv3, https://github.com/nmrugg/stockfish.js).
 
 import { Chess } from "../vendor/chess.js";
-import { sanMoves } from "./parse.js?v=74";
+import { sanMoves } from "./parse.js?v=75";
 
 const engineUrl = (file) => new URL(`../vendor/stockfish/${file}`, import.meta.url).href;
 

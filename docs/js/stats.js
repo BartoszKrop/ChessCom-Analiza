@@ -132,36 +132,21 @@ export function dayHourGrid(games, minGames = 3) {
   return { z, n };
 }
 
-// Liczba partii w każdym tygodniu (od poniedziałku): wiersz = rok, kolumna = tydzień roku (0–52).
-// Tygodnie przed pierwszą i po ostatniej partii są puste (null).
-export function weekGrid(games) {
-  if (!games.length) return { years: [], z: [], text: [] };
-  const DAY = 86400000;
-  const mondayOf = (day) => {
-    const d = new Date(`${day}T12:00:00`);
-    d.setDate(d.getDate() - ((d.getDay() + 6) % 7));
-    return d;
-  };
-  const pad = (n) => String(n).padStart(2, "0");
-  const cell = (d) => {
-    const y = d.getFullYear();
-    return [y, Math.floor(Math.round((d - new Date(y, 0, 1, 12)) / DAY) / 7)];
-  };
-  const perWeek = new Map();
-  for (const g of games) {
-    const k = cell(mondayOf(g.day)).join("|");
-    perWeek.set(k, (perWeek.get(k) || 0) + 1);
+// Liczba partii w miesiącach: wiersz = rok, kolumna = miesiąc (0–11).
+// Miesiące przed pierwszą i po ostatniej partii są puste (null).
+export function monthGrid(games) {
+  if (!games.length) return { years: [], z: [] };
+  const per = new Map();
+  for (const g of games) per.set(g.month, (per.get(g.month) || 0) + 1);
+  const first = games[0].month, last = games[games.length - 1].month;
+  const y0 = Number(first.slice(0, 4)), y1 = Number(last.slice(0, 4));
+  const years = [], z = [];
+  for (let y = y0; y <= y1; y++) {
+    years.push(y);
+    z.push(Array.from({ length: 12 }, (_, m) => {
+      const k = `${y}-${String(m + 1).padStart(2, "0")}`;
+      return k < first || k > last ? null : per.get(k) || 0;
+    }));
   }
-  const first = mondayOf(games[0].day), last = mondayOf(games[games.length - 1].day);
-  const years = [];
-  for (let y = first.getFullYear(); y <= last.getFullYear(); y++) years.push(y);
-  const z = years.map(() => new Array(53).fill(null));
-  const text = years.map(() => new Array(53).fill(""));
-  for (let d = new Date(first); d <= last; d.setDate(d.getDate() + 7)) {
-    const [y, w] = cell(d);
-    const r = y - years[0];
-    z[r][w] = perWeek.get(`${y}|${w}`) || 0;
-    text[r][w] = `${pad(d.getDate())}.${pad(d.getMonth() + 1)}.${y}`;
-  }
-  return { years, z, text };
+  return { years, z };
 }

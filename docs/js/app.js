@@ -1,10 +1,10 @@
-import { fetchPlayer, importToLichess, PlayerNotFound, ApiError } from "./api.js?v=32";
-import { addLocalTime, DAYS, MODES } from "./parse.js?v=32";
-import { tOpening, tReason } from "./i18n.js?v=32";
+import { fetchPlayer, importToLichess, PlayerNotFound, ApiError } from "./api.js?v=33";
+import { addLocalTime, DAYS, MODES } from "./parse.js?v=33";
+import { tOpening, tReason } from "./i18n.js?v=33";
 import {
   LENGTH_BINS, lengthBin, pct, filterGames, counts, groupWin, eloSummary, totalHours,
-  mostCommon, movePace, streakEffect, openingTable, reasonShares, dayHourGrid, weekGrid,
-} from "./stats.js?v=32";
+  mostCommon, movePace, streakEffect, openingTable, reasonShares, dayHourGrid, monthGrid,
+} from "./stats.js?v=33";
 
 const $ = (s) => document.querySelector(s);
 const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
@@ -457,20 +457,21 @@ function tabStats(el, games) {
 }
 
 const MONTHS_PL = ["sty", "lut", "mar", "kwi", "maj", "cze", "lip", "sie", "wrz", "paź", "lis", "gru"];
-const MONTH_WEEK = [0, 31, 59, 90, 120, 151, 181, 212, 243, 273, 304, 334].map((d) => d / 7);
 
 function tabHist(el, games) {
-  const cal = weekGrid(games);
-  const calBox = chartBox(el, "Kalendarz aktywności (partie w tygodniu)");
-  calBox.style.height = `${Math.max(cal.years.length * 30 + 40, 110)}px`;
+  const cal = monthGrid(games);
+  const calBox = chartBox(el, "Kalendarz aktywności (partie w miesiącu)");
+  calBox.style.height = `${Math.max(cal.years.length * 34 + 40, 110)}px`;
   plot(calBox, [{
-    type: "heatmap", x: Array.from({ length: 53 }, (_, i) => i), y: cal.years.map(String), z: cal.z, text: cal.text, xgap: 2, ygap: 3,
+    type: "heatmap", x: MONTHS_PL, y: cal.years.map(String), z: cal.z, xgap: 3, ygap: 3,
+    text: cal.z.map((row) => row.map((v) => (v ? String(v) : ""))), texttemplate: "%{text}",
+    textfont: { color: css("--text"), size: isNarrow() ? 9 : 11 },
     colorscale: [[0, css("--bg")], [0.0001, css("--grid")], [1, css("--accent")]], zmin: 0,
-    hovertemplate: "tydzień od %{text}: %{z} partii<extra></extra>", hoverongaps: false, showscale: false,
+    hovertemplate: "%{x} %{y}: %{z} partii<extra></extra>", hoverongaps: false, showscale: false,
   }], {
     yaxis: { type: "category", autorange: "reversed", showgrid: false, fixedrange: true },
-    xaxis: { showgrid: false, fixedrange: true, zeroline: false, tickvals: MONTH_WEEK, ticktext: MONTHS_PL, range: [-0.5, 52.5] },
-    margin: { l: 44, r: 10, t: 10, b: 24 },
+    xaxis: { type: "category", showgrid: false, fixedrange: true, side: "top" },
+    margin: { l: 44, r: 10, t: 24, b: 10 },
   });
 
   const b = activityBucket(games);

@@ -236,3 +236,16 @@ export function openingTree(games, path, movesOf) {
   }
   return [...m.values()].map((e) => ({ ...e, winPct: pct(e.w, e.n) })).sort((a, b) => b.n - a.n);
 }
+
+// Szybkie poddania: porażki przez poddanie lub porzucenie przed `maxMoves` ruchem.
+const RESIGN = new Set(["resigned", "resign", "abandoned"]);
+export function quickResigns(games, maxMoves = 20) {
+  const losses = games.filter((g) => g.result === "L");
+  const quick = losses.filter((g) => RESIGN.has(g.reason) && g.moves < maxMoves);
+  const byGroup = [...groupWin(quick, (g) => g.group)].map(([name, e]) => ({ name, n: e.n })).sort((a, b) => b.n - a.n).slice(0, 5);
+  const byMode = ["Bullet", "Blitz", "Rapid"].map((mode) => {
+    const l = losses.filter((g) => g.mode === mode), q = quick.filter((g) => g.mode === mode);
+    return { mode, n: q.length, losses: l.length, pct: pct(q.length, l.length) };
+  }).filter((r) => r.losses);
+  return { n: quick.length, losses: losses.length, pct: pct(quick.length, losses.length), byGroup, byMode };
+}

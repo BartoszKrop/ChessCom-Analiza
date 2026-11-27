@@ -58,3 +58,14 @@ test("openingTree liczy kolejne ruchy po ścieżce", () => {
   const r = openingTree(games, ["e4"], (g) => g.m);
   assert.deepEqual(r.map((x) => [x.move, x.n, x.winPct]), [["c5", 2, 100], ["e5", 1, 0]]);
 });
+
+import { quickResigns } from "../../docs/js/stats.js";
+
+test("quickResigns liczy poddania przed 20. ruchem", () => {
+  const g = (reason, moves, result = "L", group = "Sicilian Defense", mode = "Blitz") => ({ reason, moves, result, group, mode });
+  const r = quickResigns([g("resigned", 12), g("resign", 15, "L", "French Defense"), g("resigned", 30), g("timeout", 10), g("resigned", 10, "W")]);
+  assert.equal(r.n, 2);
+  assert.equal(r.losses, 4);
+  assert.equal(r.pct, 50);
+  assert.deepEqual(r.byMode, [{ mode: "Blitz", n: 2, losses: 4, pct: 50 }]);
+});

@@ -1,12 +1,12 @@
-import { fetchPlayer, importToLichess, PlayerNotFound, ApiError, cacheGet, cacheSet } from "./api.js?v=42";
-import { renderBoard } from "./board.js?v=42";
-import { addLocalTime, DAYS, MODES, sanMoves } from "./parse.js?v=42";
-import { tOpening, tReason } from "./i18n.js?v=42";
+import { fetchPlayer, importToLichess, PlayerNotFound, ApiError, cacheGet, cacheSet } from "./api.js?v=43";
+import { renderBoard } from "./board.js?v=43";
+import { addLocalTime, DAYS, MODES, sanMoves } from "./parse.js?v=43";
+import { tOpening, tReason } from "./i18n.js?v=43";
 import {
   LENGTH_BINS, lengthBin, pct, filterGames, counts, groupWin, eloSummary, totalHours,
   mostCommon, movePace, streakEffect, openingTable, reasonShares, dayHourGrid, monthGrid,
   sessionIndexWin, SESSION_ORDER, ratingDiffWin, DIFF_ORDER, timeResults, quickResigns, opponents, monthSummary, prevMonth, openingTree,
-} from "./stats.js?v=42";
+} from "./stats.js?v=43";
 
 const $ = (s) => document.querySelector(s);
 const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
@@ -653,7 +653,7 @@ function tabOpen(el, games) {
 let engineMod = null;
 async function engine() {
   if (!engineMod) {
-    engineMod = await import("./engine.js?v=42");
+    engineMod = await import("./engine.js?v=43");
     engineMod.useCache(cacheGet, cacheSet);
   }
   return engineMod;
@@ -774,19 +774,18 @@ function sfViewer(panel, g, r, eng, onDeeper) {
     { type: "scatter", mode: "markers", x: marks.map(({ i }) => (i + 1) / 2), y: marks.map(({ i }) => y[i + 1]), marker: { color: marks.map(({ p }) => KIND[p.kind].color), size: 10, line: { color: "#fff", width: 1 } }, text: marks.map(({ p, i }) => moveLabel(p, i) + KIND[p.kind].mark), hovertemplate: "%{text}<extra></extra>" },
   ], { showlegend: false, shapes: cursor(), yaxis: { range: [-6.3, 6.3], zeroline: true, title: { text: "pionki" } }, xaxis: { title: { text: "Ruch (kliknij, żeby przejść)" } }, margin: { l: 44, r: 10, t: 10, b: 40 } })
     .then(() => chart.on?.("plotly_click", (ev) => go(Math.round(ev.points[0].x * 2))));
-  panel.insertAdjacentHTML("beforeend", `<div class="info small">Stockfish 18 lite w Twojej przeglądarce, głębokość ${r.depth || 12}. ${r.depth < eng.DEEP_DEPTH ? `<button class="link-btn sf-deeper">🔬 Głębsza analiza (ok. 4× dłużej)</button> ` : ""}Zielona strzałka: lepszy ruch zamiast zagranego, niebieska: najlepszy ruch w pokazanej pozycji. Oceny jak na Chess.com: genialny to dobre poświęcenie, świetny to jedyny dobry ruch, reszta zależy od tego, ile ruch zyskuje albo traci. Strzałki ← → na klawiaturze albo przesunięcie palcem po planszy zmieniają ruch.</div>`);
+  panel.insertAdjacentHTML("beforeend", `<div class="info small">Stockfish 18 lite w Twojej przeglądarce, głębokość ${r.depth || 12}. ${r.depth < eng.DEEP_DEPTH ? `<button class="link-btn sf-deeper">🔬 Głębsza analiza (ok. 4× dłużej)</button> ` : ""}Zielona strzałka: ostatnio zagrany ruch, niebieska: ruch, który należało zagrać zamiast niego. Oceny jak na Chess.com: genialny to dobre poświęcenie, świetny to jedyny dobry ruch, reszta zależy od tego, ile ruch zyskuje albo traci. Strzałki ← → na klawiaturze albo przesunięcie palcem po planszy zmieniają ruch.</div>`);
 
   const bestSanAt = (i) => (i < N ? r.plies[i].bestSan || r.plies[i].san : null);
 
   function update() {
     const last = cur ? r.plies[cur - 1] : null;
+    // Zielona strzałka: ruch właśnie zagrany. Niebieska: ruch, który należało zagrać zamiast niego (z pozycji przed nim).
     const arrows = [];
-    // Zielona strzałka: ruch, który należało zagrać zamiast ostatniego (z pozycji przed nim).
     const instead = last && last.bestSan && (KIND[last.kind].err || last.drop >= 3) ? r.best?.[cur - 1] : null;
-    if (instead) arrows.push({ from: instead.slice(0, 2), to: instead.slice(2, 4), color: "#3aa655" });
-    // Niebieska strzałka: najlepszy ruch w pokazanej pozycji (dla strony, która teraz ruszy).
-    const best = r.best?.[cur];
-    if (best && cur < N) arrows.push({ from: best.slice(0, 2), to: best.slice(2, 4), color: "#4a90d9" });
+    if (last) arrows.push({ from: last.from, to: last.to, color: "#3aa655" });
+    if (instead) arrows.push({ from: instead.slice(0, 2), to: instead.slice(2, 4), color: "#4a90d9" });
+
     renderBoard(boardEl, { fen: r.fens[cur], flip, last: last ? [last.from, last.to] : null, lastColor: last && KIND[last.kind].list ? KIND[last.kind].color : "", arrows, badge: last ? { sq: last.to, html: badge(last.kind, "board") } : null });
 
     const ev = r.evals[cur];
@@ -804,7 +803,7 @@ function sfViewer(panel, g, r, eng, onDeeper) {
       const k = KIND[last.kind];
       html = `<div class="sf-move">${badge(last.kind)} <b>${esc(moveLabel(last, cur - 1))}</b> <span class="muted">${last.mine ? "Twój ruch" : "ruch rywala"}</span></div>
         <div class="sf-verdict" style="--k:${k.color}"><b>${k.name}</b>${last.drop >= 1 ? ` · −${Math.round(last.drop)}% szans na wygraną` : ""}</div>`;
-      if (instead) html += `<div class="legend"><span><i style="background:#3aa655"></i>lepszy ruch zamiast zagranego</span><span><i style="background:#4a90d9"></i>najlepszy ruch teraz</span></div>`;
+      if (instead) html += `<div class="legend"><span><i style="background:#3aa655"></i>zagrany ruch</span><span><i style="background:#4a90d9"></i>ruch, który należało zagrać</span></div>`;
       if (last.bestSan && (k.err || last.kind === "good" || last.kind === "excellent")) {
         html += `<div class="${k.err ? "" : "muted"}">${k.err ? "Lepiej było" : "Najlepszy był"}: <b>${esc(k.err && last.line.length ? last.line.slice(0, 4).join(" ") : last.bestSan)}</b>${k.err ? ` <button class="link-btn" data-nav="prev">◀ pokaż</button>` : ""}</div>`;
       }

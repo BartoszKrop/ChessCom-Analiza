@@ -2,7 +2,7 @@
 // Zakończone miesiące Chess.com trzymamy w IndexedDB, bo się nie zmieniają:
 // drugie wejście na profil pobiera tylko bieżący miesiąc.
 
-import { parseChesscomGame, parseLichessGame, MODES } from "./parse.js?v=72";
+import { parseChesscomGame, parseLichessGame, MODES } from "./parse.js?v=73";
 
 export class PlayerNotFound extends Error {}
 export class ApiError extends Error {}
@@ -112,14 +112,17 @@ async function fetchChesscom(user, onProgress) {
       let rows = finished ? await cacheGet(key) : undefined;
       if (!rows) {
         rows = await chesscomMonth(url, user);
-        if (finished) cacheSet(key, rows);
+        // Bieżący miesiąc też zapisujemy (osobno), żeby następne wejście mogło od razu pokazać dane z pamięci.
+        cacheSet(finished ? key : `cur|${key}`, rows);
       }
       months[i] = rows;
       onProgress?.(++done, archives.length, `Chess.com: archiwum ${done}/${archives.length}`);
     }
   }
   await Promise.all(Array.from({ length: CHESSCOM_WORKERS }, worker));
-  return { profile: { avatar: profile.avatar || "", name: profile.username || user }, games: months.flat() };
+  const prof = { avatar: profile.avatar || "", name: profile.username || user };
+  cacheSet(`cc|${user.toLowerCase()}`, { profile: prof, archives, fetchedAt: Date.now() });
+  return { profile: prof, games: months.flat() };
 }
 
 // ---------------------------------------------------------------- Lichess
@@ -169,16 +172,48 @@ async function fetchLichess(user, onProgress) {
   }
   handle(buf);
   const games = [...known.values()];
-  cacheSet(key, { fetchedAt: startedAt, games });
-  return { profile: { avatar: profile.profile?.avatar || "", name: profile.username || user }, games };
+  const prof = { avatar: profile.profile?.avatar || "", name: profile.username || user };
+  cacheSet(key, { fetchedAt: startedAt, games, profile: prof });
+  return { profile: prof, games };
+}
+
+// ---------------------------------------------------------------- dane z pamięci
+// Ostatnio pobrane dane gracza bez sieci (albo null, gdy czegoś brakuje). Pozwala pokazać statystyki od razu,
+// a nowe partie dociągnąć w tle.
+async function cachedChesscom(user) {
+  const u = user.toLowerCase();
+  const meta = await cacheGet(`cc|${u}`);
+  if (!meta?.archives?.length) return null;
+  const months = await Promise.all(meta.archives.map(async (url) => (await cacheGet(`${url}|${u}`)) || cacheGet(`cur|${url}|${u}`)));
+  if (months.some((m) => !m)) return null;
+  return { profile: meta.profile, games: months.flat(), fetchedAt: meta.fetchedAt };
+}
+
+async function cachedLichess(user) {
+  const c = await cacheGet(`lichess|${user.toLowerCase()}`);
+  if (!c?.profile || !c.games) return null;
+  return { profile: c.profile, games: c.games, fetchedAt: c.fetchedAt };
+}
+
+export async function cachedPlayer(user, platform) {
+  user = user.trim();
+  try {
+    const out = platform === "Lichess" ? await cachedLichess(user) : await cachedChesscom(user);
+    return out && out.games.length ? finish(out) : null;
+  } catch {
+    return null;
+  }
 }
 
 // ---------------------------------------------------------------- API publiczne
-export async function fetchPlayer(user, platform, onProgress) {
-  user = user.trim();
-  const out = platform === "Lichess" ? await fetchLichess(user, onProgress) : await fetchChesscom(user, onProgress);
+function finish(out) {
   out.games = out.games.filter((g) => MODES.includes(g.mode)).sort((a, b) => a.endTs - b.endTs);
   return out;
+}
+
+export async function fetchPlayer(user, platform, onProgress) {
+  user = user.trim();
+  return finish(platform === "Lichess" ? await fetchLichess(user, onProgress) : await fetchChesscom(user, onProgress));
 }
 
 export async function importToLichess(pgn) {

@@ -49,6 +49,18 @@ export function eloSummary(games, mode) {
   return { peak, current };
 }
 
+// Zmiana rankingu w ostatnich `days` dniach (konto z najnowszą partią w danym trybie). null, gdy brak danych.
+export function eloChange(games, mode, days = 30) {
+  const list = games.filter((g) => g.mode === mode);
+  if (list.length < 2) return null;
+  const last = list[list.length - 1];
+  const acc = list.filter((g) => g.account === last.account);
+  const cut = last.endTs - days * 86400;
+  let base = acc[0];
+  for (const g of acc) { if (g.endTs <= cut) base = g; else break; }
+  return base === last ? null : last.elo - base.elo;
+}
+
 export function totalHours(games) {
   let sec = 0;
   for (const g of games) for (const t of g.moveTimes) sec += t;

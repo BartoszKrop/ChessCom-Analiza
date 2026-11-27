@@ -363,3 +363,13 @@ body.noscroll #to-top { display: none; }
 
 /* Zakładki i tabele przewijają się w bok same, strona nie. */
 .tabs, .table-wrap { touch-action: pan-x pan-y; overscroll-behavior-x: contain; }
+
+/* Szkielet wykresu, zanim się narysuje (delikatny połysk zamiast pustego prostokąta). */
+.chart:empty { background: linear-gradient(100deg, transparent 35%, rgba(127, 127, 127, .09) 50%, transparent 65%) var(--card); background-size: 250% 100%; animation: shimmer 1.3s linear infinite; }
+@keyframes shimmer { from { background-position: 100% 0; } to { background-position: -150% 0; } }
+
+/* Kafelki rankingu: obecny ranking, pod nim peak i zmiana z 30 dni. */
+.trend { font-weight: 700; white-space: nowrap; }
+.trend.up { color: var(--win); }
+.trend.down { color: var(--loss); }
+#elo-cards .metric .sub { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }

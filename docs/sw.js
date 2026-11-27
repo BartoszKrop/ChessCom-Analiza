@@ -1,10 +1,13 @@
 // Service worker:
 // 1) dodaje nagłówki COOP/COEP, żeby strona była „cross-origin isolated”: bez tego przeglądarka nie da silnikowi
 //    szachowemu wielu wątków (SharedArrayBuffer), a GitHub Pages nie pozwala ustawiać nagłówków;
-// 2) zawsze najpierw sieć (nowa wersja strony od razu widoczna), pliki z cache tylko gdy nie ma internetu;
+// 2) najpierw sieć (nowa wersja strony od razu widoczna); pliki z cache, gdy nie ma internetu
+//    albo sieć nie odpowiada przez 3 s (słaby zasięg), wtedy nowa wersja zapisuje się w tle na następny raz;
 // 3) Plotly z CDN trzyma w cache (duży plik, rzadko się zmienia).
 // Zapytań do API Chess.com i Lichess nie dotyka.
-const CACHE = "chessstats-v28";
+const CACHE = "chessstats-v29";
+const SLOW_MS = 3000;
+let slowUntil = 0; // po jednym wolnym pliku kolejne przez chwilę od razu z cache (strona to kilka fal plików)
 const CDN_CACHE = "chessstats-cdn-v1";
 
 self.addEventListener("install", () => self.skipWaiting());
@@ -42,16 +45,21 @@ self.addEventListener("fetch", (e) => {
 
   // only-if-cached bez trybu same-origin psuje fetch w niektórych przeglądarkach.
   if (req.cache === "only-if-cached" && req.mode !== "same-origin") return;
-  e.respondWith(
-    fetch(req.url, { cache: "no-cache", credentials: "same-origin" })
-      .then((res) => {
-        const copy = res.clone();
-        caches.open(CACHE).then((c) => c.put(req, copy)).catch(() => {});
-        return isolate(res);
-      })
-      .catch(async () => {
-        const hit = await caches.match(req);
-        return hit ? isolate(hit) : Response.error();
-      })
-  );
+  const net = fetch(req.url, { cache: "no-cache", credentials: "same-origin" }).then((res) => {
+    if (res.ok) {
+      const copy = res.clone();
+      caches.open(CACHE).then((c) => c.put(req, copy)).catch(() => {});
+    }
+    return res;
+  });
+  e.waitUntil(net.catch(() => {})); // pobieranie kończy się w tle, nawet gdy odpowiedział cache
+  e.respondWith((async () => {
+    const wait = Date.now() < slowUntil ? 0 : SLOW_MS;
+    const slow = new Promise((resolve) => setTimeout(resolve, wait, "slow"));
+    const first = await Promise.race([net.catch(() => "fail"), slow]);
+    if (first instanceof Response) return isolate(first);
+    const hit = await caches.match(req);
+    if (hit) { slowUntil = Date.now() + 30000; return isolate(hit); }
+    try { return isolate(await net); } catch { return Response.error(); }
+  })());
 });

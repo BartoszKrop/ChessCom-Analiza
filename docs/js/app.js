@@ -94,6 +94,17 @@ function applyTheme(theme) {
 // ---------------------------------------------------------------- wykresy
 const css = (v) => getComputedStyle(document.documentElement).getPropertyValue(v).trim();
 
+// Wykresy rysujemy dopiero, gdy są blisko ekranu: zakładka z kilkoma wykresami otwiera się od razu,
+// a te niżej powstają w trakcie przewijania.
+const chartObserver = "IntersectionObserver" in window
+  ? new IntersectionObserver((entries) => entries.forEach((e) => {
+    if (!e.isIntersecting) return;
+    chartObserver.unobserve(e.target);
+    e.target._show?.();
+  }), { rootMargin: "500px 0px" })
+  : null;
+const whenVisible = (el) => (chartObserver ? new Promise((resolve) => { el._show = resolve; chartObserver.observe(el); }) : Promise.resolve());
+
 function plot(el, traces, layout = {}) {
   const base = {
     paper_bgcolor: css("--card"), plot_bgcolor: "rgba(0,0,0,0)",
@@ -105,7 +116,8 @@ function plot(el, traces, layout = {}) {
   };
   const merged = { ...base, ...layout, xaxis: { ...base.xaxis, ...layout.xaxis }, yaxis: { ...base.yaxis, ...layout.yaxis } };
   // Rysujemy w następnej klatce, gdy siatka (np. dwa wykresy obok siebie) ma już docelowe szerokości.
-  return ensurePlotly().then((P) => new Promise((resolve) => requestAnimationFrame(() => resolve(P.react(el, traces, merged, { displayModeBar: false, responsive: true }))))).catch((e) => { el.innerHTML = `<div class="info">${esc(e.message)}</div>`; });
+  ensurePlotly().catch(() => {});
+  return whenVisible(el).then(ensurePlotly).then((P) => new Promise((resolve) => requestAnimationFrame(() => resolve(P.react(el, traces, merged, { displayModeBar: false, responsive: true }))))).catch((e) => { el.innerHTML = `<div class="info">${esc(e.message)}</div>`; });
 }
 
 const isNarrow = () => window.innerWidth < 640;
@@ -476,6 +488,7 @@ function renderResults() {
 function renderTab() {
   if (!state.data || $("#results").classList.contains("hidden")) return;
   const el = $("#tab-content");
+  if (chartObserver) el.querySelectorAll(".chart").forEach((c) => chartObserver.unobserve(c));
   el.innerHTML = "";
   const f = state.filters;
   const g1 = filterGames(state.data.games, f);

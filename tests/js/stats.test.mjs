@@ -1,18 +1,13 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { weekGrid } from "../../docs/js/stats.js";
+import { monthGrid } from "../../docs/js/stats.js";
 
-test("weekGrid sumuje partie po tygodniach i lata w wierszach", () => {
-  const games = ["2024-12-30", "2025-01-01", "2025-01-05", "2025-01-06", "2025-01-20"].map((day) => ({ day }));
-  const g = weekGrid(games);
+test("monthGrid sumuje partie po miesiącach", () => {
+  const g = monthGrid(["2024-11-03", "2024-11-20", "2025-02-01"].map((day) => ({ month: day.slice(0, 7) })));
   assert.deepEqual(g.years, [2024, 2025]);
-  assert.equal(g.z[0][52], 3);           // pon 30.12.2024 – nd 05.01.2025
-  assert.equal(g.text[0][52], "30.12.2024");
-  assert.equal(g.z[1][0], 1);            // 06.01.2025
-  assert.equal(g.z[1][1], 0);            // tydzień bez partii
-  assert.equal(g.z[1][2], 1);            // 20.01.2025
-  assert.equal(g.z[1][3], null);         // po ostatniej partii
-  assert.equal(g.z[0][0], null);         // przed pierwszą partią
+  assert.equal(g.z[0][9], null);
+  assert.equal(g.z[0][10], 2);
+  assert.equal(g.z[0][11], 0);
+  assert.equal(g.z[1][1], 1);
+  assert.equal(g.z[1][2], null);
 });
-
-test("weekGrid bez partii", () => assert.deepEqual(weekGrid([]).years, []));

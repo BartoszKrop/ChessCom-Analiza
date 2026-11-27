@@ -26,7 +26,7 @@ test("phaseOf: debiut, gra środkowa, końcówka", () => {
 import { cachedAnalysis, useCache, ANALYSIS_DEPTH, DEEP_DEPTH, BATCH_DEPTH } from "../../docs/js/engine.js";
 
 test("cachedAnalysis zwraca zapis tylko gdy był wystarczająco głęboki", async () => {
-  const store = new Map([["sf|v6|g1", { depth: 16 }], ["sf|v3|old", { accuracy: 90 }]]);
+  const store = new Map([["sf|v7|g1", { depth: 16 }], ["sf|v3|old", { accuracy: 90 }]]);
   useCache(async (k) => store.get(k), async (k, v) => store.set(k, v));
   assert.ok(BATCH_DEPTH < ANALYSIS_DEPTH && ANALYSIS_DEPTH < DEEP_DEPTH);
   assert.deepEqual(await cachedAnalysis({ link: "g1" }, 12), { depth: 16 });
@@ -52,6 +52,14 @@ test("classifyMove: kategorie jak na Chess.com", () => {
   assert.equal(classifyMove({ ...base, isBest: false, drop: 12, prevOppError: true }), "miss");
   assert.equal(classifyMove({ ...base, isBest: false, drop: 25, prevOppError: true }), "blunder");
   assert.equal(KIND_ORDER.length, 9);
+  // Strata wymuszona wcześniejszym ruchem: ucieczka królem / odpowiedź na szach / jedyny ruch to nie „!!”.
+  const sac = { ...base, sacrifice: true };
+  assert.equal(classifyMove({ ...sac, kingMove: true }), "best");
+  assert.equal(classifyMove({ ...sac, inCheck: true }), "best");
+  assert.equal(classifyMove({ ...sac, legal: 1 }), "best");
+  assert.equal(classifyMove({ ...base, gap: 40, legal: 1 }), "best"); // jedyny możliwy ruch: nie „świetny”
+  assert.equal(classifyMove({ ...base, gap: 40, inCheck: true, kingMove: true }), "best"); // ucieczka królem przed szachem
+  assert.equal(classifyMove({ ...sac, winBefore: 30, winAfter: 41 }), "best"); // pozycja już przegrana
 });
 
 test("materialDiff i isSacrifice", () => {
@@ -64,4 +72,6 @@ test("materialDiff i isSacrifice", () => {
   assert.equal(isSacrifice(before, after, ["Bxd1", "Bxf7+"], true), true);
   assert.equal(isSacrifice("rnbqkbnr/pppp1ppp/8/4p3/4P3/8/PPPP1PPP/RNBQKBNR w KQkq - 0 2", "rnbqkbnr/pppp1ppp/8/4p3/4P3/5N2/PPPP1PPP/RNBQKB1R b KQkq - 1 2", ["Nc6", "Bb5"], true), false); // zwykły rozwój
   assert.equal(isSacrifice(before, after, ["Bxd1"], true), false);                        // za krótka linia
+  // Rywal nie bierze od razu (materiał traci się później, np. przez wcześniejszy błąd): to nie poświęcenie.
+  assert.equal(isSacrifice(before, after, ["Nf6", "Nxg4", "Nxe4", "Nxe4"], true), false);
 });

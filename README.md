@@ -5,7 +5,7 @@ Statystyki partii z Chess.com i Lichess: ranking, skuteczność wg godzin/dni/d�
 ## Wersja na GitHub Pages (`docs/`)
 
 Statyczna strona (HTML + JS + Plotly), dane pobierane prosto z przeglądarki z publicznych API.
-Zakończone miesiące Chess.com zapisują się w IndexedDB, więc kolejne wejścia pobierają tylko bieżący miesiąc.
+Zakończone miesiące Chess.com i partie Lichess zapisują się w IndexedDB, więc kolejne wejścia pobierają tylko nowe partie.
 
 - Włączenie: **Settings → Pages → Deploy from a branch → `main` / `/docs`**.
 - Link z nickiem od razu uruchamia analizę: `.../?user=NICK&platform=Chess.com` (albo `Lichess`).

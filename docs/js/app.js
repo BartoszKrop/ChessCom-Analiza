@@ -102,11 +102,11 @@ function progressUI(el) {
   };
 }
 
-async function load(user, plat, progressEl, opts) {
+async function load(user, plat, progressEl) {
   const p = progressUI(progressEl);
   p.update(0, 0, `Pobieranie ${user} (${plat})...`);
   try {
-    const out = await fetchPlayer(user, plat, (d, t, txt) => p.update(d, t, txt), opts);
+    const out = await fetchPlayer(user, plat, (d, t, txt) => p.update(d, t, txt));
     if (!out.games.length) throw new ApiError(`Gracz ${user} nie ma partii bullet/blitz/rapid na ${plat}.`);
     out.games.forEach(addLocalTime);
     return out;
@@ -172,9 +172,9 @@ async function refresh() {
   showError($("#results-error"), null);
   try {
     const parts = [];
-    for (const [u, p] of state.data.sources) parts.push(await load(u, p, $("#progress2"), { force: true }));
+    for (const [u, p] of state.data.sources) parts.push(await load(u, p, $("#progress2")));
     state.data.games = mergeGames(...parts.map((x) => x.games));
-    if (state.rival) state.rival.games = (await load(state.rival.user, state.rival.plat, $("#progress2"), { force: true })).games;
+    if (state.rival) state.rival.games = (await load(state.rival.user, state.rival.plat, $("#progress2"))).games;
     renderResults();
   } catch (err) {
     showError($("#results-error"), err);

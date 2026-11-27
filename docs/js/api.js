@@ -8,7 +8,7 @@ export class PlayerNotFound extends Error {}
 export class ApiError extends Error {}
 
 const CHESSCOM_WORKERS = 3; // Chess.com prosi o zapytania sekwencyjne; 3 równolegle to bezpieczny kompromis
-const CACHE_VERSION = 1; // zmień, gdy zmieni się format sparsowanych partii
+const CACHE_VERSION = 2; // zmień, gdy zmieni się format sparsowanych partii
 
 // ---------------------------------------------------------------- IndexedDB
 let dbPromise = null;
@@ -82,7 +82,7 @@ async function chesscomMonth(url, user) {
   return (data.games || []).map((g) => parseChesscomGame(g, user, account)).filter(Boolean);
 }
 
-async function fetchChesscom(user, onProgress, force) {
+async function fetchChesscom(user, onProgress) {
   const base = `https://api.chess.com/pub/player/${encodeURIComponent(user.toLowerCase())}`;
   const p = await get(base);
   if (p.status === 404 || p.status === 410) throw new PlayerNotFound(user);
@@ -103,7 +103,7 @@ async function fetchChesscom(user, onProgress, force) {
       const url = archives[i];
       const finished = !url.endsWith(current) && i !== archives.length - 1;
       const key = `${url}|${user.toLowerCase()}`;
-      let rows = finished && !force ? await cacheGet(key) : undefined;
+      let rows = finished ? await cacheGet(key) : undefined;
       if (!rows) {
         rows = await chesscomMonth(url, user);
         if (finished) cacheSet(key, rows);
@@ -117,21 +117,30 @@ async function fetchChesscom(user, onProgress, force) {
 }
 
 // ---------------------------------------------------------------- Lichess
+// Partie Lichess trzymamy w IndexedDB i przy kolejnych wejściach dociągamy tylko nowe (parametr since).
+const LICHESS_OVERLAP_MS = 6 * 3600 * 1000; // zapas na partie trwające w chwili poprzedniego pobrania
+
 async function fetchLichess(user, onProgress) {
   const p = await get(`https://lichess.org/api/user/${encodeURIComponent(user)}`);
   if (p.status === 404) throw new PlayerNotFound(user);
   if (!p.ok) throw new ApiError(`Lichess zwrócił błąd ${p.status}.`);
   const profile = await p.json();
   if (profile.disabled || profile.closed) throw new PlayerNotFound(user);
-  const expected = ["bullet", "blitz", "rapid"].reduce((s, k) => s + (profile.perfs?.[k]?.games || 0), 0);
+  const total = ["bullet", "blitz", "rapid"].reduce((s, k) => s + (profile.perfs?.[k]?.games || 0), 0);
+
+  const key = `lichess|${user.toLowerCase()}`;
+  const cached = await cacheGet(key);
+  const known = new Map((cached?.games || []).map((g) => [g.link, g]));
+  const startedAt = Date.now();
 
   // Tylko standardowe szachy w trybach, które pokazuje aplikacja: mniej danych = szybciej.
-  const url = `https://lichess.org/api/games/user/${encodeURIComponent(user)}?opening=true&clocks=true&perfType=bullet,blitz,rapid`;
+  let url = `https://lichess.org/api/games/user/${encodeURIComponent(user)}?opening=true&clocks=true&perfType=bullet,blitz,rapid`;
+  if (cached?.fetchedAt) url += `&since=${cached.fetchedAt - LICHESS_OVERLAP_MS}`;
   const res = await get(url, { headers: { Accept: "application/x-ndjson" } });
   if (!res.ok) throw new ApiError(`Lichess zwrócił błąd ${res.status} (eksport partii).`);
 
   const account = `${user} (L)`;
-  const games = [];
+  const expected = Math.max(total - known.size, 1);
   const reader = res.body.getReader();
   const decoder = new TextDecoder();
   let buf = "", seen = 0;
@@ -140,7 +149,7 @@ async function fetchLichess(user, onProgress) {
     seen++;
     try {
       const row = parseLichessGame(JSON.parse(line), user, account);
-      if (row) games.push(row);
+      if (row) known.set(row.link, row);
     } catch { /* pomijamy uszkodzoną linię */ }
   };
   for (;;) {
@@ -150,16 +159,18 @@ async function fetchLichess(user, onProgress) {
     const lines = buf.split("\n");
     buf = lines.pop();
     lines.forEach(handle);
-    onProgress?.(seen, Math.max(expected, seen), `Lichess: ${seen} partii`);
+    onProgress?.(seen, Math.max(expected, seen), cached ? `Lichess: ${seen} nowych partii` : `Lichess: ${seen} partii`);
   }
   handle(buf);
+  const games = [...known.values()];
+  cacheSet(key, { fetchedAt: startedAt, games });
   return { profile: { avatar: profile.profile?.avatar || "", name: profile.username || user }, games };
 }
 
 // ---------------------------------------------------------------- API publiczne
-export async function fetchPlayer(user, platform, onProgress, { force = false } = {}) {
+export async function fetchPlayer(user, platform, onProgress) {
   user = user.trim();
-  const out = platform === "Lichess" ? await fetchLichess(user, onProgress) : await fetchChesscom(user, onProgress, force);
+  const out = platform === "Lichess" ? await fetchLichess(user, onProgress) : await fetchChesscom(user, onProgress);
   out.games = out.games.filter((g) => MODES.includes(g.mode)).sort((a, b) => a.endTs - b.endTs);
   return out;
 }

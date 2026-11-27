@@ -1,14 +1,14 @@
-import { fetchPlayer, importToLichess, PlayerNotFound, ApiError, cacheGet, cacheSet } from "./api.js?v=48";
-import { renderBoard } from "./board.js?v=48";
-import { patterns } from "./insights.js?v=48";
-import { startTrainer } from "./trainer.js?v=48";
-import { addLocalTime, DAYS, MODES, sanMoves } from "./parse.js?v=48";
-import { tOpening, tReason } from "./i18n.js?v=48";
+import { fetchPlayer, importToLichess, PlayerNotFound, ApiError, cacheGet, cacheSet } from "./api.js?v=49";
+import { renderBoard } from "./board.js?v=49";
+import { patterns } from "./insights.js?v=49";
+import { startTrainer } from "./trainer.js?v=49";
+import { addLocalTime, DAYS, MODES, sanMoves } from "./parse.js?v=49";
+import { tOpening, tReason } from "./i18n.js?v=49";
 import {
   LENGTH_BINS, lengthBin, pct, filterGames, counts, groupWin, eloSummary, totalHours,
   mostCommon, movePace, streakEffect, openingTable, reasonShares, dayHourGrid, monthGrid,
   sessionIndexWin, SESSION_ORDER, ratingDiffWin, DIFF_ORDER, timeResults, quickResigns, opponents, monthSummary, prevMonth, openingTree,
-} from "./stats.js?v=48";
+} from "./stats.js?v=49";
 
 const $ = (s) => document.querySelector(s);
 const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
@@ -672,7 +672,7 @@ function tabOpen(el, games) {
 let engineMod = null;
 async function engine() {
   if (!engineMod) {
-    engineMod = await import("./engine.js?v=48");
+    engineMod = await import("./engine.js?v=49");
     engineMod.useCache(cacheGet, cacheSet);
   }
   return engineMod;
@@ -865,10 +865,16 @@ function sfViewer(panel, g, r, eng, onDeeper) {
   function toggleFull(on = !panel.classList.contains("full")) {
     panel.classList.toggle("full", on);
     document.body.classList.toggle("noscroll", on);
+    // Prawdziwy pełny ekran przeglądarki (jeśli dostępny; iPhone go nie ma dla zwykłych elementów, wtedy zostaje nakładka).
+    try {
+      if (on && !document.fullscreenElement) panel.requestFullscreen?.()?.catch(() => {});
+      else if (!on && document.fullscreenElement) document.exitFullscreen();
+    } catch { /* bez API pełnego ekranu */ }
     panel.querySelector('[data-nav="full"]').classList.toggle("on", on);
     if (chart.layout) window.Plotly.Plots.resize(chart);
   }
   panel._closeFull = () => toggleFull(false);
+  panel.onfullscreenchange = () => { if (!document.fullscreenElement && panel.classList.contains("full")) toggleFull(false); };
 
   panel.addEventListener("click", (e) => {
     const b = e.target.closest("[data-nav], [data-p]");

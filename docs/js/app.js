@@ -1,16 +1,16 @@
-import { fetchPlayer, importToLichess, PlayerNotFound, ApiError, cacheGet, cacheSet } from "./api.js?v=59";
-import { renderBoard } from "./board.js?v=59";
-import { patterns } from "./insights.js?v=59";
-import { startTrainer } from "./trainer.js?v=59";
-import { initInstallPrompt } from "./install.js?v=59";
-import { disablePageZoom } from "./nozoom.js?v=59";
-import { addLocalTime, DAYS, MODES, sanMoves } from "./parse.js?v=59";
-import { tOpening, tReason } from "./i18n.js?v=59";
+import { fetchPlayer, importToLichess, PlayerNotFound, ApiError, cacheGet, cacheSet } from "./api.js?v=60";
+import { renderBoard } from "./board.js?v=60";
+import { patterns } from "./insights.js?v=60";
+import { startTrainer } from "./trainer.js?v=60";
+import { initInstallPrompt } from "./install.js?v=60";
+import { disablePageZoom } from "./nozoom.js?v=60";
+import { addLocalTime, DAYS, MODES, sanMoves } from "./parse.js?v=60";
+import { tOpening, tReason } from "./i18n.js?v=60";
 import {
   LENGTH_BINS, lengthBin, pct, filterGames, counts, groupWin, eloSummary, totalHours,
   mostCommon, movePace, streakEffect, openingTable, reasonShares, dayHourGrid, monthGrid,
   sessionIndexWin, SESSION_ORDER, ratingDiffWin, DIFF_ORDER, timeResults, quickResigns, opponents, monthSummary, prevMonth, openingTree,
-} from "./stats.js?v=59";
+} from "./stats.js?v=60";
 
 const $ = (s) => document.querySelector(s);
 const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
@@ -696,7 +696,7 @@ function tabOpen(el, games) {
 let engineMod = null;
 async function engine() {
   if (!engineMod) {
-    engineMod = await import("./engine.js?v=59");
+    engineMod = await import("./engine.js?v=60");
     engineMod.useCache(cacheGet, cacheSet);
   }
   return engineMod;
@@ -706,9 +706,9 @@ const sfKey = (g) => `sf|v6|${g.link}`; // ten sam klucz co w engine.js
 const KIND = {
   brilliant: { mark: "!!", name: "Genialny ruch", short: "Genialne", color: "#1baca6", list: true },
   great: { mark: "!", name: "Świetny ruch", short: "Świetne", color: "#5c8bb0", list: true },
-  best: { mark: "★", name: "Najlepszy ruch", short: "Najlepsze", color: "#81b64c" },
-  excellent: { mark: "✓✓", name: "Znakomity ruch", short: "Znakomite", color: "#96bc4b" },
-  good: { mark: "✓", name: "Dobry ruch", short: "Dobre", color: "#97af8b" },
+  best: { mark: "★", name: "Najlepszy ruch", short: "Najlepsze", color: "#81b64c", list: true },
+  excellent: { mark: "✓✓", name: "Znakomity ruch", short: "Znakomite", color: "#96bc4b", list: true },
+  good: { mark: "✓", name: "Dobry ruch", short: "Dobre", color: "#97af8b", list: true },
   inaccuracy: { mark: "?!", name: "Niedokładność", short: "Niedokładności", color: "#e6b800", list: true, err: true },
   mistake: { mark: "?", name: "Błąd", short: "Błędy", color: "#e58f2a", list: true, err: true },
   miss: { mark: "✕", name: "Przeoczenie", short: "Przeoczenia", color: "#ff7769", list: true, err: true },
@@ -779,11 +779,24 @@ async function runSf(panel, g, deep = false) {
 }
 
 // Tabela ocen ruchów: Ty kontra rywal, jak podsumowanie partii na Chess.com.
+// Co oznacza każda ocena ruchu (pokazywane po kliknięciu w wiersz podsumowania).
+const KIND_HELP = {
+  brilliant: "Dobre poświęcenie materiału, które mimo to nie psuje pozycji. Silnik uznaje je za najlepszy lub prawie najlepszy ruch.",
+  great: "Jedyny dobry ruch w pozycji albo wyraźne wykorzystanie błędu rywala. Inne ruchy byłyby wyraźnie słabsze.",
+  best: "Ruch, który wybrał silnik (nie tracisz nic).",
+  excellent: "Prawie tak dobry jak najlepszy: strata poniżej 2% szans na wygraną.",
+  good: "Solidny ruch, który traci mniej niż 5% szans na wygraną.",
+  inaccuracy: "Ruch słabszy od najlepszego: strata 5–10% szans na wygraną.",
+  mistake: "Wyraźnie pogarsza pozycję: strata 10–20% szans na wygraną.",
+  miss: "Błąd zagrany tuż po błędzie rywala, czyli przegapiona okazja na wykorzystanie jego pomyłki.",
+  blunder: "Ciężki błąd: strata co najmniej 20% szans na wygraną, często materiał albo mat.",
+};
+
 function summaryTable(r) {
   const rows = KIND_LIST.filter((k) => r.counts[k] || r.countsOpp[k]).map((k) =>
-    `<tr><td>${badge(k, "sm")} ${KIND[k].short}</td><td class="num${r.counts[k] ? "" : " zero"}">${r.counts[k]}</td><td class="num${r.countsOpp[k] ? "" : " zero"}">${r.countsOpp[k]}</td></tr>`).join("");
+    `<tr class="kr" data-kind="${k}" tabindex="0" title="Kliknij, żeby zobaczyć, co to znaczy i gdzie te ruchy są w partii"><td>${badge(k, "sm")} ${KIND[k].short}</td><td class="num${r.counts[k] ? "" : " zero"}">${r.counts[k]}</td><td class="num${r.countsOpp[k] ? "" : " zero"}">${r.countsOpp[k]}</td></tr>`).join("");
   return `<table class="sf-sum"><thead><tr><th></th><th class="num">Ty</th><th class="num">Rywal</th></tr></thead>
-    <tbody><tr class="acc"><td>Celność</td><td class="num">${r.accuracy}%</td><td class="num">${r.accuracyOpp}%</td></tr>${rows}</tbody></table>`;
+    <tbody><tr class="acc"><td>Celność</td><td class="num">${r.accuracy}%</td><td class="num">${r.accuracyOpp}%</td></tr>${rows}</tbody></table><div class="sf-kindhelp hidden"></div>`;
 }
 const KIND_LIST = ["brilliant", "great", "best", "excellent", "good", "inaccuracy", "mistake", "miss", "blunder"];
 
@@ -884,6 +897,15 @@ function sfViewer(panel, g, r, eng, onDeeper) {
     if (chart.layout) window.Plotly.relayout(chart, { shapes: cursor() });
     panel.querySelector('[data-nav="err"]').disabled = !bad.length;
   }
+  let selKind = null;
+  function toggleKind(k) {
+    selKind = selKind === k ? null : k;
+    panel.querySelectorAll("tr.kr").forEach((tr) => tr.classList.toggle("on", tr.dataset.kind === selKind));
+    panel.querySelectorAll(".mv").forEach((b) => b.classList.toggle("kh", !!selKind && r.plies[Number(b.dataset.p) - 1]?.kind === selKind));
+    const box = panel.querySelector(".sf-kindhelp");
+    box.classList.toggle("hidden", !selKind);
+    if (selKind) box.innerHTML = `<div>${badge(selKind)} <b>${KIND[selKind].name}</b></div><div>${KIND_HELP[selKind]}</div><div class="muted">Ty: ${r.counts[selKind]} · rywal: ${r.countsOpp[selKind]}. Te ruchy są podświetlone na liście. Kliknij wiersz jeszcze raz, żeby wyłączyć.</div>`;
+  }
   let animate = false;
   function go(i) { const n = Math.max(0, Math.min(N, i)); animate = n === cur + 1; cur = n; update(); animate = false; }
   function toggleFull(on = !panel.classList.contains("full")) {
@@ -901,6 +923,8 @@ function sfViewer(panel, g, r, eng, onDeeper) {
   panel.onfullscreenchange = () => { if (!document.fullscreenElement && panel.classList.contains("full")) toggleFull(false); };
 
   panel.addEventListener("click", (e) => {
+    const kr = e.target.closest("tr[data-kind]");
+    if (kr) return toggleKind(kr.dataset.kind);
     const b = e.target.closest("[data-nav], [data-p]");
     if (!b) return;
     if (b.dataset.p) return go(Number(b.dataset.p));

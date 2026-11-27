@@ -132,25 +132,36 @@ export function dayHourGrid(games, minGames = 3) {
   return { z, n };
 }
 
-// Liczba partii na dzień w ostatnich 53 tygodniach przed `endDay` (YYYY-MM-DD), w układzie kalendarza.
-export function calendarGrid(games, endDay) {
-  const end = new Date(`${endDay}T12:00:00`);
-  const endDow = (end.getDay() + 6) % 7;
-  const start = new Date(end); start.setDate(end.getDate() - endDow - 52 * 7);
-  const key = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
-  const perDay = new Map();
-  for (const g of games) perDay.set(g.day, (perDay.get(g.day) || 0) + 1);
-  const weeks = [], z = Array.from({ length: 7 }, () => []), text = Array.from({ length: 7 }, () => []);
-  for (let wk = 0; wk < 53; wk++) {
-    const ws = new Date(start); ws.setDate(start.getDate() + wk * 7);
-    weeks.push(key(ws));
-    for (let d = 0; d < 7; d++) {
-      const day = new Date(ws); day.setDate(ws.getDate() + d);
-      const k = key(day);
-      const future = day > end;
-      z[d].push(future ? null : perDay.get(k) || 0);
-      text[d].push(k);
-    }
+// Liczba partii w każdym tygodniu (od poniedziałku): wiersz = rok, kolumna = tydzień roku (0–52).
+// Tygodnie przed pierwszą i po ostatniej partii są puste (null).
+export function weekGrid(games) {
+  if (!games.length) return { years: [], z: [], text: [] };
+  const DAY = 86400000;
+  const mondayOf = (day) => {
+    const d = new Date(`${day}T12:00:00`);
+    d.setDate(d.getDate() - ((d.getDay() + 6) % 7));
+    return d;
+  };
+  const pad = (n) => String(n).padStart(2, "0");
+  const cell = (d) => {
+    const y = d.getFullYear();
+    return [y, Math.floor(Math.round((d - new Date(y, 0, 1, 12)) / DAY) / 7)];
+  };
+  const perWeek = new Map();
+  for (const g of games) {
+    const k = cell(mondayOf(g.day)).join("|");
+    perWeek.set(k, (perWeek.get(k) || 0) + 1);
   }
-  return { weeks, z, text };
+  const first = mondayOf(games[0].day), last = mondayOf(games[games.length - 1].day);
+  const years = [];
+  for (let y = first.getFullYear(); y <= last.getFullYear(); y++) years.push(y);
+  const z = years.map(() => new Array(53).fill(null));
+  const text = years.map(() => new Array(53).fill(""));
+  for (let d = new Date(first); d <= last; d.setDate(d.getDate() + 7)) {
+    const [y, w] = cell(d);
+    const r = y - years[0];
+    z[r][w] = perWeek.get(`${y}|${w}`) || 0;
+    text[r][w] = `${pad(d.getDate())}.${pad(d.getMonth() + 1)}.${y}`;
+  }
+  return { years, z, text };
 }

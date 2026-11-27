@@ -1,4 +1,4 @@
-import { fetchPlayer, importToLichess, PlayerNotFound, ApiError, cacheGet, cacheSet } from "./api.js?v=72";
+import { fetchPlayer, cachedPlayer, importToLichess, PlayerNotFound, ApiError, cacheGet, cacheSet } from "./api.js?v=72";
 import { renderBoard } from "./board.js?v=72";
 import { patterns } from "./insights.js?v=72";
 import { startTrainer } from "./trainer.js?v=72";
@@ -220,7 +220,7 @@ function progressUI(el) {
 }
 
 async function load(user, plat, progressEl) {
-  const p = progressUI(progressEl);
+  const p = progressEl ? progressUI(progressEl) : { update() {}, hide() {} };
   p.update(0, 0, `Pobieranie ${user} (${plat})...`);
   try {
     const out = await fetchPlayer(user, plat, (d, t, txt) => p.update(d, t, txt));
@@ -242,6 +242,32 @@ function showError(el, err) {
   el.classList.toggle("hidden", !err);
 }
 
+// Ustawia stan po wczytaniu gracza (a) i ewentualnie drugiego konta / rywala (b).
+function applyLoaded(a, b, [n1, p1], [n2, p2]) {
+  if (state.scope === "single") {
+    state.data = { name: a.profile.name, profile: a.profile, games: a.games, platforms: [p1], sources: [[n1, p1]] };
+    state.rival = null;
+    state.view = "my";
+  } else if (state.scope === "merge") {
+    state.data = { name: `${a.profile.name} + ${b.profile.name}`, profile: a.profile, games: mergeGames(a.games, b.games), platforms: [...new Set([p1, p2])], sources: [[n1, p1], [n2, p2]] };
+    state.rival = null;
+    state.view = "my";
+  } else {
+    state.data = { name: a.profile.name, profile: a.profile, games: a.games, platforms: [p1], sources: [[n1, p1]] };
+    state.rival = { name: b.profile.name, user: n2, plat: p2, games: b.games };
+    state.view = "compare";
+  }
+  const url = new URL(location.href);
+  url.search = "";
+  url.searchParams.set("user", n1);
+  url.searchParams.set("platform", p1);
+  if (state.scope !== "single") { url.searchParams.set("user2", n2); url.searchParams.set("platform2", p2); url.searchParams.set("mode", state.scope); }
+  history.replaceState(null, "", url);
+  saveRecent({ scope: state.scope, user: n1, plat: p1, user2: state.scope === "single" ? "" : n2, plat2: p2 });
+  resetFilters();
+  showResults();
+}
+
 async function startAnalysis(e) {
   e?.preventDefault();
   const btn = $("#start-btn");
@@ -250,33 +276,20 @@ async function startAnalysis(e) {
   if (!n1 || (state.scope !== "single" && !n2)) return;
   btn.disabled = true;
   showError($("#start-error"), null);
+  ensurePlotly().catch(() => {}); // biblioteka wykresów ładuje się równolegle z partiami
+  const srcs = state.scope === "single" ? [[n1, p1]] : [[n1, p1], [n2, p2]];
   try {
-    const a = await load(n1, p1, $("#progress"));
-    if (state.scope === "single") {
-      state.data = { name: a.profile.name, profile: a.profile, games: a.games, platforms: [p1], sources: [[n1, p1]] };
-      state.rival = null;
-      state.view = "my";
-    } else {
-      const b = await load(n2, p2, $("#progress"));
-      if (state.scope === "merge") {
-        state.data = { name: `${a.profile.name} + ${b.profile.name}`, profile: a.profile, games: mergeGames(a.games, b.games), platforms: [...new Set([p1, p2])], sources: [[n1, p1], [n2, p2]] };
-        state.rival = null;
-        state.view = "my";
-      } else {
-        state.data = { name: a.profile.name, profile: a.profile, games: a.games, platforms: [p1], sources: [[n1, p1]] };
-        state.rival = { name: b.profile.name, user: n2, plat: p2, games: b.games };
-        state.view = "compare";
-      }
+    // Gracz był już oglądany: od razu pokazujemy dane z pamięci, a nowe partie dociągamy w tle.
+    const snaps = await Promise.all(srcs.map(([u, p]) => cachedPlayer(u, p)));
+    if (snaps.every(Boolean)) {
+      snaps.forEach((x) => x.games.forEach(addLocalTime));
+      applyLoaded(snaps[0], snaps[1], [n1, p1], [n2, p2]);
+      sync({ silent: true });
+      return;
     }
-    const url = new URL(location.href);
-    url.search = "";
-    url.searchParams.set("user", n1);
-    url.searchParams.set("platform", p1);
-    if (state.scope !== "single") { url.searchParams.set("user2", n2); url.searchParams.set("platform2", p2); url.searchParams.set("mode", state.scope); }
-    history.replaceState(null, "", url);
-    saveRecent({ scope: state.scope, user: n1, plat: p1, user2: state.scope === "single" ? "" : n2, plat2: p2 });
-    resetFilters();
-    showResults();
+    const a = await load(n1, p1, $("#progress"));
+    const b = state.scope === "single" ? null : await load(n2, p2, $("#progress"));
+    applyLoaded(a, b, [n1, p1], [n2, p2]);
   } catch (err) {
     showError($("#start-error"), err);
   } finally {
@@ -284,21 +297,52 @@ async function startAnalysis(e) {
   }
 }
 
-async function refresh() {
+// Pobiera nowe partie i odświeża widok. silent: w tle, bez paska postępu i bez komunikatu „brak nowych”.
+let syncing = null; // { data, promise }: trwające pobieranie dla danego gracza
+function sync({ silent = false } = {}) {
+  if (!state.data) return null;
+  if (syncing?.data === state.data) return syncing.promise;
   const btn = $("#refresh-btn");
   btn.disabled = true;
-  showError($("#results-error"), null);
-  try {
-    const parts = [];
-    for (const [u, p] of state.data.sources) parts.push(await load(u, p, $("#progress2")));
-    state.data.games = mergeGames(...parts.map((x) => x.games));
-    if (state.rival) state.rival.games = (await load(state.rival.user, state.rival.plat, $("#progress2"))).games;
-    renderResults();
-  } catch (err) {
-    showError($("#results-error"), err);
-  } finally {
-    btn.disabled = false;
-  }
+  if (!silent) showError($("#results-error"), null);
+  const data = state.data, rival = state.rival;
+  const before = data.games.length + (rival?.games.length || 0);
+  const prog = silent ? null : $("#progress2");
+  const promise = (async () => {
+    try {
+      const parts = [];
+      for (const [u, p] of data.sources) parts.push(await load(u, p, prog));
+      const r = rival ? (await load(rival.user, rival.plat, prog)).games : null;
+      if (state.data !== data) return; // w międzyczasie wybrano innego gracza
+      data.games = mergeGames(...parts.map((x) => x.games));
+      if (r && state.rival === rival) rival.games = r;
+      const added = data.games.length + (state.rival?.games.length || 0) - before;
+      if (added > 0 || !silent) applyNewGames(added);
+      lastSync = Date.now();
+    } catch (err) {
+      if (state.data !== data) return;
+      if (silent) toast("Brak połączenia: pokazuję zapisane partie");
+      else showError($("#results-error"), err);
+    } finally {
+      if (syncing?.promise === promise) { syncing = null; btn.disabled = false; }
+    }
+  })();
+  syncing = { data, promise };
+  return promise;
+}
+let lastSync = 0;
+
+// Po dociągnięciu partii: przesuwamy zakres dat (gdy wybrany jest gotowy okres) i rysujemy widok od nowa.
+// Gdy ktoś właśnie ogląda partię na szachownicy albo listę partii, nie ruszamy zakładki (nowe dane pokażą się przy jej zmianie).
+function applyNewGames(added) {
+  const preset = document.querySelector("#presets button.on");
+  if (preset) setPreset(Number(preset.dataset.days));
+  readFilters(false);
+  const busy = $("#tab-content .sf-panel") || ["ana", "cana", "h2h"].includes(state.tab);
+  if (busy) renderHeader();
+  else renderResults();
+  if (added > 0) toast(added === 1 ? "1 nowa partia" : `Nowe partie: ${added}`);
+  else toast("Brak nowych partii");
 }
 
 async function loadRival(e) {
@@ -389,7 +433,8 @@ function showResults() {
 const MY_TABS = [["stats", "📊 Statystyki"], ["ins", "💡 Wnioski"], ["hist", "📅 Historia"], ["time", "⏳ Czas"], ["open", "🔬 Debiuty"], ["ana", "🧠 Analiza"]];
 const CMP_TABS = [["cstats", "📊 Ogólne"], ["cins", "💡 Wnioski"], ["chist", "📅 Historia"], ["ctime", "⏳ Czas"], ["copen", "🔬 Debiuty"], ["cana", "🧠 Analiza"], ["h2h", "🥊 H2H"]];
 
-function renderResults() {
+// Nagłówek wyników: nick, awatar, kafelki rankingu.
+function renderHeader() {
   const d = state.data;
   $("#player-name").textContent = d.name;
   const av = $("#avatar");
@@ -406,6 +451,12 @@ function renderResults() {
     const r = eloSummary(state.rival.games, m);
     return metric(`${m}: obecne`, `${s?.current ?? "–"} / ${r?.current ?? "–"}`, `Peak: ${s?.peak ?? "–"} / ${r?.peak ?? "–"}`);
   }).join("");
+}
+
+function renderResults() {
+  renderHeader();
+  const d = state.data;
+  const cmp = state.view === "compare";
 
   const showContent = !cmp || state.rival;
   $("#filters").classList.toggle("hidden", !showContent);
@@ -1311,7 +1362,7 @@ function init() {
 
   document.querySelectorAll("#scope button").forEach((b) => b.addEventListener("click", () => setScope(b.dataset.scope)));
   $("#start-form").addEventListener("submit", startAnalysis);
-  $("#refresh-btn").addEventListener("click", refresh);
+  $("#refresh-btn").addEventListener("click", () => sync());
   $("#change-btn").addEventListener("click", changePlayer);
   $("#rival-form").addEventListener("submit", loadRival);
   document.querySelectorAll("#view button").forEach((b) => b.addEventListener("click", () => { state.view = b.dataset.view; state.tab = null; renderResults(); }));

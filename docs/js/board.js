@@ -33,8 +33,8 @@ function arrowSvg({ from, to, color }, flip, i) {
     <polygon points="${x2},${y2} ${ex + px},${ey + py} ${ex - px},${ey - py}" stroke="none"/></g>`;
 }
 
-// opts: { fen, flip, last: [from, to], lastClass, arrows: [{from, to, color}] }
-export function renderBoard(el, { fen, flip = false, last = null, lastClass = "", arrows = [] }) {
+// opts: { fen, flip, last: [from, to], lastColor, arrows: [{from, to, color}], badge: {sq, html} }
+export function renderBoard(el, { fen, flip = false, last = null, lastColor = "", arrows = [], badge = null }) {
   const pos = parseFen(fen);
   let squares = "";
   for (let row = 0; row < 8; row++) {
@@ -42,10 +42,11 @@ export function renderBoard(el, { fen, flip = false, last = null, lastClass = ""
       const f = flip ? 7 - col : col, r = flip ? row : 7 - row;
       const sq = `${FILES[f]}${r + 1}`;
       const dark = (f + r) % 2 === 0;
-      const hl = last && (sq === last[0] || sq === last[1]) ? ` hl ${lastClass}` : "";
+      const isHl = last && (sq === last[0] || sq === last[1]);
+      const hl = isHl ? " hl" : "", hlStyle = isHl && lastColor ? ` style="--hl:${lastColor}"` : "";
       const coordFile = row === 7 ? `<span class="cf">${FILES[f]}</span>` : "";
       const coordRank = col === 0 ? `<span class="cr">${r + 1}</span>` : "";
-      squares += `<div class="sq ${dark ? "d" : "l"}${hl}">${coordRank}${coordFile}${pos[sq] ? `<div class="pc ${pos[sq]}"></div>` : ""}</div>`;
+      squares += `<div class="sq ${dark ? "d" : "l"}${hl}"${hlStyle}>${coordRank}${coordFile}${pos[sq] ? `<div class="pc ${pos[sq]}"></div>` : ""}${badge && badge.sq === sq ? badge.html : ""}</div>`;
     }
   }
   el.innerHTML = `<div class="bd">${squares}<svg class="arrows" viewBox="0 0 8 8">${arrows.map((a, i) => arrowSvg(a, flip, i)).join("")}</svg></div>`;

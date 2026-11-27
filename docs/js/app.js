@@ -1,12 +1,12 @@
-import { fetchPlayer, importToLichess, PlayerNotFound, ApiError, cacheGet, cacheSet } from "./api.js?v=37";
-import { renderBoard } from "./board.js?v=37";
-import { addLocalTime, DAYS, MODES, sanMoves } from "./parse.js?v=37";
-import { tOpening, tReason } from "./i18n.js?v=37";
+import { fetchPlayer, importToLichess, PlayerNotFound, ApiError, cacheGet, cacheSet } from "./api.js?v=42";
+import { renderBoard } from "./board.js?v=42";
+import { addLocalTime, DAYS, MODES, sanMoves } from "./parse.js?v=42";
+import { tOpening, tReason } from "./i18n.js?v=42";
 import {
   LENGTH_BINS, lengthBin, pct, filterGames, counts, groupWin, eloSummary, totalHours,
   mostCommon, movePace, streakEffect, openingTable, reasonShares, dayHourGrid, monthGrid,
   sessionIndexWin, SESSION_ORDER, ratingDiffWin, DIFF_ORDER, timeResults, quickResigns, opponents, monthSummary, prevMonth, openingTree,
-} from "./stats.js?v=37";
+} from "./stats.js?v=42";
 
 const $ = (s) => document.querySelector(s);
 const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
@@ -653,17 +653,26 @@ function tabOpen(el, games) {
 let engineMod = null;
 async function engine() {
   if (!engineMod) {
-    engineMod = await import("./engine.js?v=37");
+    engineMod = await import("./engine.js?v=42");
     engineMod.useCache(cacheGet, cacheSet);
   }
   return engineMod;
 }
-const sfKey = (g) => `sf|v1|${g.link}`; // ten sam klucz co w engine.js
+const sfKey = (g) => `sf|v2|${g.link}`; // ten sam klucz co w engine.js
+// Kategorie ruchów jak na Chess.com: znaczek, nazwa i kolor.
 const KIND = {
-  blunder: { mark: "??", name: "Błąd rażący", color: "--loss" },
-  mistake: { mark: "?", name: "Błąd", color: "--mistake" },
-  inaccuracy: { mark: "?!", name: "Niedokładność", color: "--inacc" },
+  brilliant: { mark: "!!", name: "Genialny ruch", short: "Genialne", color: "#1baca6", list: true },
+  great: { mark: "!", name: "Świetny ruch", short: "Świetne", color: "#5c8bb0", list: true },
+  best: { mark: "★", name: "Najlepszy ruch", short: "Najlepsze", color: "#81b64c" },
+  excellent: { mark: "👍", name: "Znakomity ruch", short: "Znakomite", color: "#96bc4b" },
+  good: { mark: "✓", name: "Dobry ruch", short: "Dobre", color: "#97af8b" },
+  inaccuracy: { mark: "?!", name: "Niedokładność", short: "Niedokładności", color: "#e6b800", list: true, err: true },
+  mistake: { mark: "?", name: "Błąd", short: "Błędy", color: "#e58f2a", list: true, err: true },
+  miss: { mark: "✕", name: "Przeoczenie", short: "Przeoczenia", color: "#ff7769", list: true, err: true },
+  blunder: { mark: "??", name: "Błąd rażący", short: "Błędy rażące", color: "#ca3431", list: true, err: true },
 };
+const badge = (kind, cls = "") => `<span class="bdg ${cls}" style="--bc:${KIND[kind].color}" title="${KIND[kind].name}">${KIND[kind].mark}</span>`;
+const isBadMove = (p) => p.mine && ["blunder", "mistake", "miss"].includes(p.kind);
 const PHASES = [["open", "Debiut"], ["middle", "Gra środkowa"], ["end", "Końcówka"]];
 const fmtEval = (v) => {
   if (Math.abs(v) > 9000) return `${v < 0 ? "−" : ""}M${Math.max(1, Math.round((10000 - Math.abs(v)) / 10))}`;
@@ -683,34 +692,47 @@ async function openSfPanel(anchor, g) {
   const panel = document.createElement("div");
   panel.className = "sf-panel card";
   panel.dataset.link = g.link;
-  panel.innerHTML = `<div class="progress"><div class="bar"></div><span>Uruchamiam silnik…</span></div>`;
   anchor.after(panel);
+  runSf(panel, g);
+}
+
+async function runSf(panel, g, deep = false) {
+  panel.innerHTML = `<div class="progress"><div class="bar"></div><span>Uruchamiam silnik…</span></div>
+    <button class="link-btn sf-cancel">Anuluj</button>`;
+  panel.querySelector(".sf-cancel").addEventListener("click", async () => { (await engine()).cancelAnalysis(); });
   try {
     const eng = await engine();
     const res = await eng.analyzeGame(g, {
+      depth: deep ? eng.DEEP_DEPTH : eng.ANALYSIS_DEPTH,
       onProgress: (d, t) => {
         panel.querySelector(".bar").style.width = `${(d / t) * 100}%`;
         panel.querySelector(".progress span").textContent = `Analiza: pozycja ${d} z ${t}`;
       },
     });
     if (!res) return panel.remove();
-    sfViewer(panel, g, res, eng);
+    sfViewer(panel, g, res, eng, () => runSf(panel, g, true));
     document.querySelectorAll(`.gc-sf[data-link="${CSS.escape(g.link)}"]`).forEach((b) => (b.textContent = `🔍 ${Math.round(res.accuracy)}%`));
   } catch (err) {
     panel.innerHTML = `<div class="error">${esc(err.message || "Analiza się nie udała.")}</div>`;
   }
 }
 
-function sfViewer(panel, g, r, eng) {
+// Tabela ocen ruchów: Ty kontra rywal, jak podsumowanie partii na Chess.com.
+function summaryTable(r) {
+  const rows = KIND_LIST.filter((k) => r.counts[k] || r.countsOpp[k]).map((k) =>
+    `<tr><td>${badge(k, "sm")} ${KIND[k].short}</td><td class="num${r.counts[k] ? "" : " zero"}">${r.counts[k]}</td><td class="num${r.countsOpp[k] ? "" : " zero"}">${r.countsOpp[k]}</td></tr>`).join("");
+  return `<table class="sf-sum"><thead><tr><th></th><th class="num">Ty</th><th class="num">Rywal</th></tr></thead>
+    <tbody><tr class="acc"><td>Celność</td><td class="num">${r.accuracy}%</td><td class="num">${r.accuracyOpp}%</td></tr>${rows}</tbody></table>`;
+}
+const KIND_LIST = ["brilliant", "great", "best", "excellent", "good", "inaccuracy", "mistake", "miss", "blunder"];
+
+function sfViewer(panel, g, r, eng, onDeeper) {
   const N = r.plies.length;
   let flip = g.color === "b";
-  const bad = r.plies.map((p, i) => ({ p, i })).filter(({ p }) => p.mine && (p.kind === "blunder" || p.kind === "mistake"));
+  const bad = r.plies.map((p, i) => ({ p, i })).filter(({ p }) => isBadMove(p));
   let cur = bad.length ? bad[0].i + 1 : N;
 
   panel.innerHTML = `
-    <div class="metrics sf-metrics">
-      ${metric("Celność", `${r.accuracy}%`)}${metric("?? rażące", r.blunders)}${metric("? błędy", r.mistakes)}${metric("?! niedokładności", r.inaccuracies)}
-    </div>
     <div class="sf-main">
       <div class="sf-boardcol">
         <div class="sf-boardwrap"><div class="evalbar"><div class="fill"></div><span></span></div><div class="board"></div></div>
@@ -722,6 +744,7 @@ function sfViewer(panel, g, r, eng) {
       </div>
       <div class="sf-side">
         <div class="sf-info"></div>
+        ${summaryTable(r)}
         <div class="sf-movelist"></div>
       </div>
     </div>`;
@@ -733,8 +756,8 @@ function sfViewer(panel, g, r, eng) {
     const cell = (j) => {
       const p = r.plies[j];
       if (!p) return "<span></span>";
-      const k = p.kind ? KIND[p.kind] : null;
-      return `<button class="mv${p.mine ? "" : " opp"}" data-p="${j + 1}"${k ? ` style="--k:var(${k.color})"` : ""}>${esc(p.san)}${k ? `<i>${k.mark}</i>` : ""}</button>`;
+      const k = KIND[p.kind];
+      return `<button class="mv${p.mine ? "" : " opp"}" data-p="${j + 1}">${esc(p.san)}${k.list ? badge(p.kind, "sm") : ""}</button>`;
     };
     rows += `<span class="no">${i / 2 + 1}.</span>${cell(i)}${cell(i + 1)}`;
   }
@@ -744,23 +767,27 @@ function sfViewer(panel, g, r, eng) {
   const chart = chartBox(panel, "Ocena pozycji (dla białych)");
   chart.classList.add("short");
   const y = r.evals.map((v) => Math.max(-6, Math.min(6, v / 100)));
-  const marks = r.plies.map((p, i) => ({ p, i })).filter(({ p }) => p.mine && p.kind && p.kind !== "inaccuracy");
+  const marks = r.plies.map((p, i) => ({ p, i })).filter(({ p }) => p.mine && ["brilliant", "great", "mistake", "miss", "blunder"].includes(p.kind));
   const cursor = () => [{ type: "line", x0: cur / 2, x1: cur / 2, yref: "paper", y0: 0, y1: 1, line: { color: css("--muted"), width: 1, dash: "dot" } }];
   plot(chart, [
     { type: "scatter", mode: "lines", x: y.map((_, i) => i / 2), y, fill: "tozeroy", line: { color: css("--accent"), width: 1.5 }, fillcolor: "rgba(129,182,76,.22)", hovertemplate: "ruch %{x:.1f}: %{y:+.1f}<extra></extra>" },
-    { type: "scatter", mode: "markers", x: marks.map(({ i }) => (i + 1) / 2), y: marks.map(({ i }) => y[i + 1]), marker: { color: marks.map(({ p }) => css(KIND[p.kind].color)), size: 9 }, text: marks.map(({ p, i }) => moveLabel(p, i) + KIND[p.kind].mark), hovertemplate: "%{text}<extra></extra>" },
+    { type: "scatter", mode: "markers", x: marks.map(({ i }) => (i + 1) / 2), y: marks.map(({ i }) => y[i + 1]), marker: { color: marks.map(({ p }) => KIND[p.kind].color), size: 10, line: { color: "#fff", width: 1 } }, text: marks.map(({ p, i }) => moveLabel(p, i) + KIND[p.kind].mark), hovertemplate: "%{text}<extra></extra>" },
   ], { showlegend: false, shapes: cursor(), yaxis: { range: [-6.3, 6.3], zeroline: true, title: { text: "pionki" } }, xaxis: { title: { text: "Ruch (kliknij, żeby przejść)" } }, margin: { l: 44, r: 10, t: 10, b: 40 } })
     .then(() => chart.on?.("plotly_click", (ev) => go(Math.round(ev.points[0].x * 2))));
-  panel.insertAdjacentHTML("beforeend", `<div class="info small">Stockfish 18 lite w Twojej przeglądarce, głębokość ${r.depth || 12}. Zielona strzałka: najlepszy ruch w pokazanej pozycji. Strzałki ← → na klawiaturze albo przesunięcie palcem po planszy zmieniają ruch.</div>`);
+  panel.insertAdjacentHTML("beforeend", `<div class="info small">Stockfish 18 lite w Twojej przeglądarce, głębokość ${r.depth || 12}. ${r.depth < eng.DEEP_DEPTH ? `<button class="link-btn sf-deeper">🔬 Głębsza analiza (ok. 4× dłużej)</button> ` : ""}Zielona strzałka: lepszy ruch zamiast zagranego, niebieska: najlepszy ruch w pokazanej pozycji. Oceny jak na Chess.com: genialny to dobre poświęcenie, świetny to jedyny dobry ruch, reszta zależy od tego, ile ruch zyskuje albo traci. Strzałki ← → na klawiaturze albo przesunięcie palcem po planszy zmieniają ruch.</div>`);
 
-  const bestSanAt = (i) => (i < N ? (r.plies[i].kind === null && !r.plies[i].bestSan ? r.plies[i].san : r.plies[i].bestSan) : null);
+  const bestSanAt = (i) => (i < N ? r.plies[i].bestSan || r.plies[i].san : null);
 
   function update() {
     const last = cur ? r.plies[cur - 1] : null;
     const arrows = [];
+    // Zielona strzałka: ruch, który należało zagrać zamiast ostatniego (z pozycji przed nim).
+    const instead = last && last.bestSan && (KIND[last.kind].err || last.drop >= 3) ? r.best?.[cur - 1] : null;
+    if (instead) arrows.push({ from: instead.slice(0, 2), to: instead.slice(2, 4), color: "#3aa655" });
+    // Niebieska strzałka: najlepszy ruch w pokazanej pozycji (dla strony, która teraz ruszy).
     const best = r.best?.[cur];
-    if (best && cur < N) arrows.push({ from: best.slice(0, 2), to: best.slice(2, 4), color: "#3aa655" });
-    renderBoard(boardEl, { fen: r.fens[cur], flip, last: last ? [last.from, last.to] : null, lastClass: last?.kind || "", arrows });
+    if (best && cur < N) arrows.push({ from: best.slice(0, 2), to: best.slice(2, 4), color: "#4a90d9" });
+    renderBoard(boardEl, { fen: r.fens[cur], flip, last: last ? [last.from, last.to] : null, lastColor: last && KIND[last.kind].list ? KIND[last.kind].color : "", arrows, badge: last ? { sq: last.to, html: badge(last.kind, "board") } : null });
 
     const ev = r.evals[cur];
     const white = eng.winChance(ev);
@@ -774,13 +801,13 @@ function sfViewer(panel, g, r, eng) {
     let html = "";
     if (!last) html = `<div class="sf-move">Pozycja początkowa</div>`;
     else {
-      const k = last.kind ? KIND[last.kind] : null;
-      html = `<div class="sf-move"><b>${esc(moveLabel(last, cur - 1))}${k ? k.mark : ""}</b> <span class="muted">${last.mine ? "Twój ruch" : "ruch rywala"}</span></div>`;
-      if (k) {
-        html += `<div class="sf-verdict" style="--k:var(${k.color})"><b>${k.name}</b> · −${Math.round(last.drop)}% szans na wygraną</div>`;
-        if (last.bestSan) html += `<div>Lepiej było: <b>${esc(last.line.length ? last.line.slice(0, 4).join(" ") : last.bestSan)}</b> <button class="link-btn" data-nav="prev">◀ pokaż</button></div>`;
-      } else if (!last.bestSan) html += `<div class="sf-verdict good">Najlepszy ruch ✓</div>`;
-      else html += `<div class="sf-verdict good">Dobry ruch</div>`;
+      const k = KIND[last.kind];
+      html = `<div class="sf-move">${badge(last.kind)} <b>${esc(moveLabel(last, cur - 1))}</b> <span class="muted">${last.mine ? "Twój ruch" : "ruch rywala"}</span></div>
+        <div class="sf-verdict" style="--k:${k.color}"><b>${k.name}</b>${last.drop >= 1 ? ` · −${Math.round(last.drop)}% szans na wygraną` : ""}</div>`;
+      if (instead) html += `<div class="legend"><span><i style="background:#3aa655"></i>lepszy ruch zamiast zagranego</span><span><i style="background:#4a90d9"></i>najlepszy ruch teraz</span></div>`;
+      if (last.bestSan && (k.err || last.kind === "good" || last.kind === "excellent")) {
+        html += `<div class="${k.err ? "" : "muted"}">${k.err ? "Lepiej było" : "Najlepszy był"}: <b>${esc(k.err && last.line.length ? last.line.slice(0, 4).join(" ") : last.bestSan)}</b>${k.err ? ` <button class="link-btn" data-nav="prev">◀ pokaż</button>` : ""}</div>`;
+      }
     }
     html += `<div class="muted">Ocena: <b>${fmtEval(ev)}</b>${bestSanAt(cur) ? ` · najlepsze teraz: <b>${esc(bestSanAt(cur))}</b>` : ""}</div>`;
     info.innerHTML = html;
@@ -809,6 +836,7 @@ function sfViewer(panel, g, r, eng) {
     else if (nav === "flip") { flip = !flip; update(); }
     else if (nav === "err" && bad.length) go((bad.find(({ i }) => i + 1 > cur) || bad[0]).i + 1);
   });
+  panel.querySelector(".sf-deeper")?.addEventListener("click", onDeeper);
   panel.tabIndex = 0;
   panel.addEventListener("keydown", (e) => {
     const map = { ArrowLeft: cur - 1, ArrowRight: cur + 1, Home: 0, End: N };
@@ -828,14 +856,15 @@ function sfViewer(panel, g, r, eng) {
 
 // ----- Analiza wielu partii
 function batchBox(el, getList) {
-  el.insertAdjacentHTML("beforeend", `<div class="card sf-batch">
-    <div class="sf-batch-head"><b>📈 Analiza Stockfishem wielu partii</b>
+  el.insertAdjacentHTML("beforeend", `<details class="card sf-batch">
+    <summary>📈 Analiza wielu partii naraz</summary>
+    <div class="sf-batch-head">
       <div class="sf-batch-ctl"><label>Ostatnie <select id="b-n"><option>10</option><option selected>20</option><option>50</option></select> partii</label>
       <button id="b-go" class="primary">Analizuj</button></div></div>
     <div class="info small">Bierze partie z listy poniżej (z jej filtrami), od najnowszej.</div>
     <div id="b-prog"></div><div id="b-out"></div>
     <div class="info small">Partie już przeanalizowane są zapamiętane w przeglądarce, więc liczą się tylko nowe. Na telefonie jedna partia to kilka–kilkanaście sekund.</div>
-  </div>`);
+  </details>`);
   let running = false;
   $("#b-go").addEventListener("click", async () => {
     const eng = await engine();
@@ -884,7 +913,7 @@ function renderBatch(out, results, eng) {
     if (!p.mine || !ph[p.phase]) continue;
     const e = ph[p.phase];
     e.moves++; e.acc += eng.moveAccuracy(p.drop);
-    if (p.kind) e[p.kind]++;
+    if (KIND[p.kind].err) e[p.kind === "miss" ? "mistake" : p.kind]++;
   }
   const phases = PHASES.filter(([k]) => ph[k].moves);
   const grid = document.createElement("div");
@@ -897,7 +926,7 @@ function renderBatch(out, results, eng) {
     { yaxis: { range: [0, 110], title: { text: "Celność %" } } });
   const per100 = (k, kind) => Math.round((ph[k][kind] / ph[k].moves) * 1000) / 10;
   plot(chartBox(b2, "Błędy na 100 Twoich ruchów"), ["blunder", "mistake", "inaccuracy"].map((kind) => ({
-    type: "bar", name: KIND[kind].mark + " " + KIND[kind].name.toLowerCase(), x: phases.map(([, l]) => l), y: phases.map(([k]) => per100(k, kind)), marker: { color: css(KIND[kind].color) },
+    type: "bar", name: KIND[kind].mark + " " + KIND[kind].name.toLowerCase(), x: phases.map(([, l]) => l), y: phases.map(([k]) => per100(k, kind)), marker: { color: KIND[kind].color },
   })), { barmode: "stack" });
   if (phases.length > 1) {
     const worst = phases[phAcc.indexOf(Math.min(...phAcc))];
@@ -924,7 +953,6 @@ function tabAnalysis(el, games) {
   const preset = state.anaPreset || {};
   state.anaPreset = null;
   const groups = [...new Set(games.map((g) => g.group))].sort((a, b) => tOpening(a, state.opLang).localeCompare(tOpening(b, state.opLang)));
-  batchBox(el, () => list);
   el.insertAdjacentHTML("beforeend", `<div class="game-pick">
     <label>Rywal <input id="a-opp" autocomplete="off" placeholder="Szukaj po nicku"></label>
     <label>Debiut <select id="a-group"><option value="">Wszystkie</option>${groups.map((g) => `<option value="${esc(g)}">${esc(tOpening(g, state.opLang))}</option>`).join("")}</select></label>
@@ -934,6 +962,7 @@ function tabAnalysis(el, games) {
   <div id="a-count" class="info small"></div>
   <div id="a-list" class="game-list"></div>
   <button id="a-more" class="more hidden">Pokaż więcej</button>`);
+  batchBox(el, () => list);
   if (preset.group) $("#a-group").value = preset.group;
   if (preset.opp) $("#a-opp").value = preset.opp;
 

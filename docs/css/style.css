@@ -199,19 +199,15 @@ tr.clickable:hover td { background: rgba(127, 127, 127, .12); }
 /* Analiza Stockfishem */
 :root { --mistake: #f08c00; --inacc: #d9b400; --sq-light: #ebecd0; --sq-dark: #739552; }
 .sf-panel { margin: -4px 0 8px; padding: 12px; outline: none; }
-.sf-metrics { grid-template-columns: repeat(4, 1fr); }
 .chart.short { height: 220px; }
 .sf-main { display: grid; grid-template-columns: minmax(0, 440px) minmax(0, 1fr); gap: 16px; margin-top: 12px; align-items: start; }
 .sf-boardwrap { display: flex; gap: 6px; }
 .board { flex: 1; min-width: 0; touch-action: pan-y; }
-.bd { position: relative; display: grid; grid-template-columns: repeat(8, 1fr); aspect-ratio: 1; border-radius: 4px; overflow: hidden; user-select: none; }
+.bd { container-type: inline-size; position: relative; display: grid; grid-template-columns: repeat(8, 1fr); aspect-ratio: 1; border-radius: 4px; overflow: hidden; user-select: none; }
 .bd .sq { position: relative; aspect-ratio: 1; }
 .bd .sq.l { background: var(--sq-light); }
 .bd .sq.d { background: var(--sq-dark); }
-.bd .sq.hl::after { content: ""; position: absolute; inset: 0; background: rgba(255, 235, 59, .45); }
-.bd .sq.hl.blunder::after { background: rgba(220, 38, 38, .5); }
-.bd .sq.hl.mistake::after { background: rgba(240, 140, 0, .5); }
-.bd .sq.hl.inaccuracy::after { background: rgba(217, 180, 0, .45); }
+.bd .sq.hl::after { content: ""; position: absolute; inset: 0; background: var(--hl, #ffeb3b); opacity: .45; }
 .bd .pc { position: absolute; inset: 0; background-size: cover; z-index: 1; }
 .bd .cf, .bd .cr { position: absolute; font-size: 10px; font-weight: 700; z-index: 1; line-height: 1; }
 .bd .cf { right: 3px; bottom: 2px; }
@@ -237,11 +233,13 @@ tr.clickable:hover td { background: rgba(127, 127, 127, .12); }
 .mvgrid .no { color: var(--muted); padding: 4px 0; text-align: right; }
 .mv { min-height: 0; padding: 4px 8px; text-align: left; border: none; background: transparent; border-radius: 4px; color: var(--text); }
 .mv.opp { color: var(--muted); }
-.mv i { font-style: normal; font-weight: 700; color: var(--k); margin-left: 2px; }
+
 .mv.on { background: var(--accent); color: #fff; }
-.mv.on i { color: #fff; }
-.sf-batch { margin-bottom: 14px; }
-.sf-batch-head { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 14px; }
+
+.sf-batch { margin-top: 18px; padding: 10px 14px; }
+.sf-batch > summary { cursor: pointer; color: var(--muted); font-weight: 600; }
+.sf-batch[open] > summary { color: var(--text); margin-bottom: 10px; }
+.sf-batch-head { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 14px; margin-bottom: 6px; }
 .sf-batch-ctl { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
 .sf-batch-ctl label { white-space: nowrap; }
 .sf-batch-head select { min-height: 34px; padding: 4px 8px; }
@@ -251,4 +249,18 @@ tr.clickable:hover td { background: rgba(127, 127, 127, .12); }
   .sf-nav button { flex: 1; padding: 4px 6px; }
   .sf-nav .err-btn { flex-basis: 100%; order: 10; }
 }
-@media (max-width: 640px) { .sf-metrics { grid-template-columns: repeat(2, 1fr); } }
+
+/* Znaczki ocen ruchów (jak na Chess.com) */
+.bdg { display: inline-flex; align-items: center; justify-content: center; min-width: 1.45em; height: 1.45em; padding: 0 .25em; box-sizing: border-box; border-radius: 999px; background: var(--bc); color: #fff; font-size: .8rem; font-weight: 800; line-height: 1; vertical-align: middle; box-shadow: 0 1px 2px rgba(0, 0, 0, .35); font-style: normal; white-space: nowrap; }
+.bdg.sm { font-size: .68rem; margin-left: 3px; }
+.bd .sq .bdg.board { position: absolute; top: 2%; right: 2%; z-index: 3; width: 44%; height: 44%; min-width: 0; padding: 0; font-size: 3.4cqw; box-shadow: 0 1px 3px rgba(0, 0, 0, .5); }
+.sf-sum { width: 100%; margin-top: 10px; border-collapse: collapse; font-size: .9rem; }
+.sf-sum th { font-weight: 600; color: var(--muted); text-align: left; padding: 4px 6px; }
+.sf-sum td { padding: 3px 6px; border-top: 1px solid var(--grid); }
+.sf-sum td.num, .sf-sum th.num { text-align: right; width: 4.5em; }
+.sf-sum td.zero { color: var(--muted); opacity: .6; }
+.sf-sum tr.acc td { font-weight: 700; border-top: none; padding-bottom: 6px; }
+.sf-move { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.sf-info .legend { display: flex; flex-wrap: wrap; gap: 2px 14px; font-size: .78rem; color: var(--muted); }
+.sf-info .legend span { display: inline-flex; align-items: center; gap: 6px; white-space: nowrap; }
+.sf-info .legend i { display: inline-block; width: 18px; height: 5px; border-radius: 3px; }

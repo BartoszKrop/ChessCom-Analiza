@@ -57,3 +57,11 @@ test("filtry", () => {
   const f = { from: "", to: "", mode: "", colors: ["b"], hourMin: 0, hourMax: 23 };
   assert.equal(filterGames([mk(1, "W")], f).length, 0);
 });
+
+import { sanMoves } from "../../docs/js/parse.js";
+
+test("sanMoves czyta ruchy z PGN Chess.com i z listy Lichess", () => {
+  const pgn = '[Event "x"]\n\n1. e4 {[%clk 0:02:59.9]} 1... c5 {[%clk 0:02:58]} 2. Nf3 2... d6?! 3. d4 1-0';
+  assert.deepEqual(sanMoves(pgn), ["e4", "c5", "Nf3", "d6", "d4"]);
+  assert.deepEqual(sanMoves("e4 e5 Nf3 Nc6 Bb5", 3), ["e4", "e5", "Nf3"]);
+});

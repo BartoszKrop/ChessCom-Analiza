@@ -91,6 +91,17 @@ export function movesCount(pgn) {
   return max;
 }
 
+// Pierwsze `limit` półruchów w notacji SAN (działa dla PGN z Chess.com i listy ruchów z Lichess).
+export function sanMoves(pgn, limit = 12) {
+  const out = [];
+  for (const t of pgnMovetext(pgn).replace(/\([^)]*\)/g, " ").split(/\s+/)) {
+    if (!t || /^\d+\.+$/.test(t) || /^(1-0|0-1|1\/2-1\/2|\*)$/.test(t) || t.startsWith("$")) continue;
+    out.push(t.replace(/^\d+\.+/, "").replace(/[!?]+$/, ""));
+    if (out.length >= limit) break;
+  }
+  return out.filter(Boolean);
+}
+
 function clockToSeconds(text) {
   const p = String(text).split(":").map(Number);
   if (p.some(Number.isNaN)) return 0;

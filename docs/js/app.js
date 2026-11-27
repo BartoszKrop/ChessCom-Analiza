@@ -1,10 +1,11 @@
-import { fetchPlayer, importToLichess, PlayerNotFound, ApiError } from "./api.js?v=33";
-import { addLocalTime, DAYS, MODES } from "./parse.js?v=33";
-import { tOpening, tReason } from "./i18n.js?v=33";
+import { fetchPlayer, importToLichess, PlayerNotFound, ApiError } from "./api.js?v=34";
+import { addLocalTime, DAYS, MODES, sanMoves } from "./parse.js?v=34";
+import { tOpening, tReason } from "./i18n.js?v=34";
 import {
   LENGTH_BINS, lengthBin, pct, filterGames, counts, groupWin, eloSummary, totalHours,
   mostCommon, movePace, streakEffect, openingTable, reasonShares, dayHourGrid, monthGrid,
-} from "./stats.js?v=33";
+  sessionIndexWin, SESSION_ORDER, ratingDiffWin, DIFF_ORDER, timeResults, opponents, monthSummary, prevMonth, openingTree,
+} from "./stats.js?v=34";
 
 const $ = (s) => document.querySelector(s);
 const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
@@ -363,7 +364,7 @@ function showResults() {
   renderResults();
 }
 
-const MY_TABS = [["stats", "📊 Statystyki"], ["hist", "📅 Historia"], ["time", "⏳ Czas"], ["open", "🔬 Debiuty"], ["ana", "🧠 Analiza"]];
+const MY_TABS = [["stats", "📊 Statystyki"], ["ins", "💡 Wnioski"], ["hist", "📅 Historia"], ["time", "⏳ Czas"], ["open", "🔬 Debiuty"], ["ana", "🧠 Analiza"]];
 const CMP_TABS = [["cstats", "📊 Ogólne"], ["chist", "📅 Historia"], ["ctime", "⏳ Czas"], ["copen", "🔬 Debiuty"], ["h2h", "🥊 H2H"]];
 
 function renderResults() {
@@ -412,7 +413,7 @@ function renderTab() {
     return;
   }
   if (!g1.length) return info(el, "Brak partii dla wybranych filtrów.");
-  ({ stats: tabStats, hist: tabHist, time: tabTime, open: tabOpen, ana: tabAnalysis })[state.tab](el, g1);
+  ({ stats: tabStats, ins: tabInsights, hist: tabHist, time: tabTime, open: tabOpen, ana: tabAnalysis })[state.tab](el, g1);
   fitCharts();
 }
 
@@ -429,6 +430,95 @@ function fitCharts() {
 }
 
 // ----- Moja analiza
+const MONTHS_FULL = ["styczeń", "luty", "marzec", "kwiecień", "maj", "czerwiec", "lipiec", "sierpień", "wrzesień", "październik", "listopad", "grudzień"];
+const monthName = (ym) => `${MONTHS_FULL[Number(ym.slice(5, 7)) - 1]} ${ym.slice(0, 4)}`;
+const signed = (v) => (v > 0 ? `+${v}` : String(v));
+const wdlBar = (r) => `<div class="wdl" title="W ${r.w} / R ${r.d} / P ${r.l}"><i style="width:${(r.w / r.n) * 100}%;background:var(--win)"></i><i style="width:${(r.d / r.n) * 100}%;background:var(--draw)"></i><i style="width:${(r.l / r.n) * 100}%;background:var(--loss)"></i></div>`;
+
+// ----- Wnioski
+function tabInsights(el, games) {
+  const overall = pct(counts(games).W, games.length);
+
+  // Podsumowanie miesiąca
+  const month = games[games.length - 1].month;
+  const cur = monthSummary(games, month), prev = monthSummary(games, prevMonth(month));
+  el.insertAdjacentHTML("beforeend", `<h3>Podsumowanie: ${monthName(month)}</h3>`);
+  const delta = (a, b, unit = "") => (prev.n ? `${signed(a - b)}${unit} vs ${monthName(prev.month).split(" ")[0]}` : "brak partii miesiąc wcześniej");
+  const eloCards = Object.entries(cur.elo).map(([m, e]) => metric(`${m}`, e.end, `${signed(e.change)} w tym miesiącu`)).join("");
+  el.insertAdjacentHTML("beforeend", `<div class="metrics">
+    ${metric("Partie", cur.n, delta(cur.n, prev.n))}${metric("Win%", `${cur.winPct}%`, delta(cur.winPct, prev.winPct, " pp"))}${eloCards}</div>`);
+  const op = (o) => `<b>${esc(tOpening(o.name, state.opLang))}</b> (${o.winPct}% z ${o.n})`;
+  if (cur.best) el.insertAdjacentHTML("beforeend", `<div class="callout">Najlepszy debiut: ${op(cur.best)}${cur.worst ? `<br>Najsłabszy: ${op(cur.worst)}` : ""}</div>`);
+
+  // Numer partii w sesji
+  const ses = sessionIndexWin(games);
+  plot(chartBox(el, "Win% wg numeru partii w sesji"), [winBar(ses, SESSION_ORDER, "Win%")], { ...LINE50, yaxis: { range: [0, 100], title: { text: "Win %" } }, xaxis: { type: "category", title: { text: "Która partia w sesji (przerwa > 2 h = nowa sesja)" } } });
+  const drop = SESSION_ORDER.slice(1).find((k) => ses.get(k)?.n >= SMALL_SAMPLE && ses.get(k).winPct <= overall - 5);
+  info(el, drop
+    ? `Od ${drop}. partii w sesji wygrywasz wyraźnie rzadziej (${ses.get(drop).winPct}% przy średniej ${overall}%). Dobry moment na przerwę.`
+    : `Liczba partii w sesji nie obniża wyraźnie Twoich wyników (średnio ${overall}%).`);
+
+  // Siła rywala
+  const diff = ratingDiffWin(games);
+  plot(chartBox(el, "Win% wg siły rywala"), [winBar(diff, DIFF_ORDER, "Win%")], { ...LINE50, yaxis: { range: [0, 100], title: { text: "Win %" } }, xaxis: { type: "category", title: { text: "Ranking rywala minus Twój" } } });
+  const weak = [DIFF_ORDER[0], DIFF_ORDER[1]].map((k) => diff.get(k)).filter(Boolean);
+  const wn = weak.reduce((s, e) => s + e.n, 0), ww = weak.reduce((s, e) => s + e.w, 0);
+  if (wn >= SMALL_SAMPLE) info(el, `Z rywalami słabszymi o ponad 100 pkt wygrywasz ${pct(ww, wn)}% (${wn} partii).`);
+
+  // Na czas
+  el.insertAdjacentHTML("beforeend", "<h3>Partie rozstrzygnięte na czas</h3>");
+  table(el, [
+    { key: "mode", label: "Tryb" },
+    { key: "lossPct", label: "Porażki na czas", num: true, nowrap: true, html: (r) => `${r.lossPct}% <span class="muted">(${r.lostOnTime}/${r.losses})</span>` },
+    { key: "winPct", label: "Wygrane na czas", num: true, nowrap: true, html: (r) => `${r.winPct}% <span class="muted">(${r.wonOnTime}/${r.wins})</span>` },
+  ], timeResults(games));
+
+  // Rywale
+  const opps = opponents(games);
+  el.insertAdjacentHTML("beforeend", "<h3>Najczęstsi rywale</h3>");
+  if (!opps.length) return info(el, "Brak rywali z co najmniej 3 partiami.");
+  const nem = opps.filter((o) => o.n >= 5).sort((a, b) => a.score - b.score || b.n - a.n)[0];
+  if (nem && nem.score < 0) el.insertAdjacentHTML("beforeend", `<div class="callout">😈 Nemezis: <b>${esc(nem.opp)}</b>, bilans ${nem.w}–${nem.d}–${nem.l}</div>`);
+  table(el, [
+    { key: "opp", label: "Rywal" }, { key: "n", label: "Gry", num: true }, { key: "winPct", label: "Win%", num: true, fmt: (v) => `${v}%` },
+    { key: "bar", label: "W / R / P", html: wdlBar }, { key: "last", label: "Ostatnio", nowrap: true },
+  ], opps.slice(0, 20), { onRow: (r) => { state.anaPreset = { opp: r.opp }; switchTab("ana"); } });
+  el.insertAdjacentHTML("beforeend", `<div class="info small">Kliknij rywala, żeby zobaczyć wasze partie.</div>`);
+}
+
+// Drzewko debiutów: kolejne ruchy z Win%, klik schodzi głębiej.
+const movesCache = new WeakMap();
+const movesOf = (g) => {
+  let m = movesCache.get(g);
+  if (!m) { m = sanMoves(g.pgn, 12); movesCache.set(g, m); }
+  return m;
+};
+function openingTreeBox(el, games) {
+  el.insertAdjacentHTML("beforeend", `<h3>🌳 Drzewko debiutów</h3>`);
+  const box = document.createElement("div");
+  el.appendChild(box);
+  let color = "w", path = [];
+  const fmtPath = (p) => p.map((m, i) => (i % 2 === 0 ? `${i / 2 + 1}. ${m}` : m)).join(" ");
+  const draw = () => {
+    const sub = games.filter((g) => g.color === color);
+    const rows = openingTree(sub, path, movesOf);
+    const total = rows.reduce((s, r) => s + r.n, 0);
+    box.innerHTML = `<div class="tree-head">
+        <div class="seg small"><button data-c="w" class="${color === "w" ? "on" : ""}">⚪ Białe</button><button data-c="b" class="${color === "b" ? "on" : ""}">⚫ Czarne</button></div>
+        <div class="crumbs"><button data-d="0">Start</button>${path.map((m, i) => `<span>›</span><button data-d="${i + 1}">${esc(i % 2 === 0 ? `${i / 2 + 1}. ${m}` : m)}</button>`).join("")}</div>
+      </div>
+      <div class="info small">${path.length ? `Po ${esc(fmtPath(path))}: ${total} partii.` : `${total} partii.`} ${path.length % 2 === (color === "w" ? 0 : 1) ? "Twój ruch." : "Ruch rywala."} Kliknij ruch, żeby zejść głębiej.</div>`;
+    box.querySelectorAll("[data-c]").forEach((b) => b.addEventListener("click", () => { color = b.dataset.c; path = []; draw(); }));
+    box.querySelectorAll("[data-d]").forEach((b) => b.addEventListener("click", () => { path = path.slice(0, Number(b.dataset.d)); draw(); }));
+    if (!rows.length) return info(box, "Brak dalszych ruchów w zapisanych partiach.");
+    table(box, [
+      { key: "move", label: "Ruch", nowrap: true }, { key: "n", label: "Gry", num: true },
+      { key: "winPct", label: "Win%", num: true, fmt: (v) => `${v}%` }, { key: "bar", label: "W / R / P", html: wdlBar },
+    ], rows.slice(0, 12), { onRow: (r) => { if (path.length < 11) { path = [...path, r.move]; draw(); } } });
+  };
+  draw();
+}
+
 function tabStats(el, games) {
   const c = counts(games);
   el.insertAdjacentHTML("beforeend", `<div class="metrics">
@@ -530,8 +620,7 @@ function tabOpen(el, games) {
   const grid = document.createElement("div");
   grid.className = "grid2";
   el.appendChild(grid);
-  const wdl = (r) => `<div class="wdl" title="W ${r.w} / R ${r.d} / P ${r.l}"><i style="width:${(r.w / r.n) * 100}%;background:var(--win)"></i><i style="width:${(r.d / r.n) * 100}%;background:var(--draw)"></i><i style="width:${(r.l / r.n) * 100}%;background:var(--loss)"></i></div>`;
-  const cols = [{ key: "name", label: "Debiut" }, { key: "n", label: "Gry", num: true }, { key: "winPct", label: "Win%", num: true, fmt: (v) => `${v}%` }, { key: "bar", label: "W / R / P", html: wdl }];
+  const cols = [{ key: "name", label: "Debiut" }, { key: "n", label: "Gry", num: true }, { key: "winPct", label: "Win%", num: true, fmt: (v) => `${v}%` }, { key: "bar", label: "W / R / P", html: wdlBar }];
   const openGames = (group, color) => { state.anaPreset = { group, color }; switchTab("ana"); };
   for (const [c, label] of [["w", "⚪ Białe"], ["b", "⚫ Czarne"]]) {
     const box = document.createElement("div");
@@ -547,6 +636,7 @@ function tabOpen(el, games) {
     table(det, cols, openingTable(sub, (g) => g.opening, 20));
     box.insertAdjacentHTML("beforeend", `<div class="info small">Kliknij debiut, żeby zobaczyć jego partie.</div>`);
   }
+  openingTreeBox(el, games);
 }
 
 const RESULT_ICON = { W: "🟢", L: "🔴", D: "⚪️" };
@@ -566,6 +656,7 @@ function tabAnalysis(el, games) {
   <div id="a-list" class="game-list"></div>
   <button id="a-more" class="more hidden">Pokaż więcej</button>`);
   if (preset.group) $("#a-group").value = preset.group;
+  if (preset.opp) $("#a-opp").value = preset.opp;
 
   const PAGE = 25;
   let list = [], shown = 0;

@@ -186,3 +186,12 @@ tr.clickable:hover td { background: rgba(127, 127, 127, .12); }
   .gc-actions > * { flex: 1; }
   .chart.tall { height: 260px; }
 }
+
+/* Drzewko debiutów */
+.tree-head { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 14px; margin-bottom: 6px; }
+.seg.small { margin: 0; }
+.seg.small button { min-height: 32px; padding: 4px 12px; font-size: .9rem; }
+.crumbs { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; font-size: .9rem; }
+.crumbs button { min-height: 28px; padding: 2px 8px; background: transparent; border: none; color: var(--accent); font-weight: 600; }
+.crumbs button:last-child { color: var(--text); }
+.crumbs span { color: var(--muted); }

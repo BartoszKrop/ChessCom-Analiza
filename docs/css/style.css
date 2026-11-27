@@ -220,9 +220,6 @@ tr.clickable:hover td { background: rgba(127, 127, 127, .12); }
 .evalbar span { position: absolute; left: 0; right: 0; text-align: center; font-size: 9px; font-weight: 700; z-index: 1; }
 .evalbar span.low { bottom: 3px; color: #403d39; }
 .evalbar span.high { top: 3px; color: #f1f1f1; }
-.sf-nav { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
-.sf-nav button { min-height: 36px; padding: 4px 12px; }
-.sf-nav .err-btn { flex: 1; color: var(--loss); font-weight: 600; }
 .sf-info { display: grid; gap: 4px; padding: 10px 12px; background: var(--bg); border-radius: 6px; min-height: 92px; font-size: .95rem; }
 .sf-move { font-size: 1.05rem; }
 .sf-verdict { color: var(--k, var(--text)); }
@@ -246,7 +243,6 @@ tr.clickable:hover td { background: rgba(127, 127, 127, .12); }
 @media (max-width: 760px) {
   .sf-main { grid-template-columns: 1fr; }
   .sf-movelist { max-height: 220px; }
-  .sf-nav button { flex: 1; padding: 4px 6px; }
 }
 
 /* Znaczki ocen ruchów (jak na Chess.com) */
@@ -272,11 +268,7 @@ body.noscroll { overflow: hidden; }
 .sf-panel.full .sf-main { grid-template-columns: minmax(0, min(calc(100dvh - 130px), 68vw)) minmax(0, 1fr); margin-top: 0; justify-content: center; }
 .sf-panel.full .sf-boardwrap { width: 100%; }
 .sf-panel.full .sf-movelist { max-height: 46vh; }
-.sf-nav [data-nav=full].on { background: var(--accent); color: #fff; }
-.sf-nav2 { flex-basis: 100%; display: flex; gap: 6px; }
-.sf-nav2 button { flex: 1; min-height: 36px; font-weight: 600; }
-.sf-nav2 .err-btn { color: var(--loss); }
-.sf-panel.training .sf-nav, .sf-panel.training .sf-sum, .sf-panel.training .sf-movelist { display: none; }
+.sf-panel.training .sf-nav, .sf-panel.training .sf-tools, .sf-panel.training .sf-sum, .sf-panel.training .sf-movelist { display: none; }
 .tr-btns { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; }
 .sf-verdict.ok { color: var(--win); }
 .sf-verdict.bad { color: var(--loss); }
@@ -373,3 +365,16 @@ body.noscroll #to-top { display: none; }
 .trend.up { color: var(--win); }
 .trend.down { color: var(--loss); }
 #elo-cards .metric .sub { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+/* Nawigacja w analizie: duże strzałki w jednej linii, narzędzia osobno niżej (żeby nie trafiać w nie przy przewijaniu ruchów). */
+.sf-nav { display: flex; gap: 6px; margin-top: 8px; }
+.sf-nav button { flex: 1; min-width: 0; min-height: 50px; padding: 0; font-size: 1.2rem; }
+.sf-nav button.big { flex: 2; font-size: 1.35rem; }
+.sf-tools { display: flex; gap: 6px; margin-top: 16px; padding-top: 12px; border-top: 1px solid var(--grid); }
+.sf-tools button { min-height: 38px; padding: 4px 12px; font-size: .9rem; }
+.sf-tools .train-btn, .sf-tools .err-btn { flex: 1; min-width: 0; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.sf-tools .err-btn { color: var(--loss); }
+.sf-tools [data-nav=full].on { background: var(--accent); color: #fff; }
+.sf-panel.full .sf-nav button { min-height: 58px; }
+.sf-tools [data-nav=flip], .sf-tools [data-nav=full] { flex: none; width: 44px; padding: 0; font-size: 1.05rem; }
+@media (max-width: 400px) { .sf-tools button { padding: 4px 8px; } }

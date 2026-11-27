@@ -1,11 +1,11 @@
-import { fetchPlayer, importToLichess, PlayerNotFound, ApiError } from "./api.js?v=35";
-import { addLocalTime, DAYS, MODES, sanMoves } from "./parse.js?v=35";
-import { tOpening, tReason } from "./i18n.js?v=35";
+import { fetchPlayer, importToLichess, PlayerNotFound, ApiError } from "./api.js?v=36";
+import { addLocalTime, DAYS, MODES, sanMoves } from "./parse.js?v=36";
+import { tOpening, tReason } from "./i18n.js?v=36";
 import {
   LENGTH_BINS, lengthBin, pct, filterGames, counts, groupWin, eloSummary, totalHours,
   mostCommon, movePace, streakEffect, openingTable, reasonShares, dayHourGrid, monthGrid,
   sessionIndexWin, SESSION_ORDER, ratingDiffWin, DIFF_ORDER, timeResults, quickResigns, opponents, monthSummary, prevMonth, openingTree,
-} from "./stats.js?v=35";
+} from "./stats.js?v=36";
 
 const $ = (s) => document.querySelector(s);
 const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
@@ -487,10 +487,10 @@ function tabInsights(el, games) {
   el.insertAdjacentHTML("beforeend", "<h3>Najczęstsi rywale</h3>");
   if (!opps.length) return info(el, "Brak rywali z co najmniej 3 partiami.");
   const nem = opps.filter((o) => o.n >= 5).sort((a, b) => a.score - b.score || b.n - a.n)[0];
-  if (nem && nem.score < 0) el.insertAdjacentHTML("beforeend", `<div class="callout">😈 Nemezis: <b>${esc(nem.opp)}</b>, bilans ${nem.w}–${nem.d}–${nem.l}</div>`);
+  if (nem && nem.score < 0) el.insertAdjacentHTML("beforeend", `<div class="callout">Nemezis: <b>${esc(nem.opp)}</b> · ${nem.n} partii · W ${nem.w} / R ${nem.d} / P ${nem.l} · Win ${nem.winPct}% · Lose ${nem.lossPct}%</div>`);
   table(el, [
-    { key: "opp", label: "Rywal" }, { key: "n", label: "Gry", num: true }, { key: "winPct", label: "Win%", num: true, fmt: (v) => `${v}%` },
-    { key: "bar", label: "W / R / P", html: wdlBar }, { key: "last", label: "Ostatnio", nowrap: true },
+    { key: "opp", label: "Rywal" }, { key: "n", label: "Gry", num: true }, { key: "winPct", label: "Win%", num: true, fmt: (v) => `${v}%` }, { key: "lossPct", label: "Lose%", num: true, fmt: (v) => `${v}%` },
+    { key: "bar", label: "W / R / P", html: wdlBar }, { key: "last", label: "Ostatnio", nowrap: true, fmt: (d) => `${d.slice(8, 10)}.${d.slice(5, 7)}.${d.slice(2, 4)}` },
   ], opps.slice(0, 20), { onRow: (r) => { state.anaPreset = { opp: r.opp }; switchTab("ana"); } });
   el.insertAdjacentHTML("beforeend", `<div class="info small">Kliknij rywala, żeby zobaczyć wasze partie.</div>`);
 }
@@ -661,7 +661,7 @@ async function stockfishPanel(btn, g) {
   panel.innerHTML = `<div class="progress"><div class="bar"></div><span>Uruchamiam silnik…</span></div>`;
   cardEl.after(panel);
   try {
-    const eng = await import("./engine.js?v=35");
+    const eng = await import("./engine.js?v=36");
     let res = sfCache.get(g.link);
     if (!res) {
       res = await eng.analyzeGame(g, {

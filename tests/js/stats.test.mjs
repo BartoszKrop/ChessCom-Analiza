@@ -39,7 +39,7 @@ test("opponents zwraca rywali z min. 3 partiami", () => {
   const g = (opp, result) => ({ opp, platform: "Lichess", result, day: "2025-01-01" });
   const r = opponents([g("a", "W"), g("a", "L"), g("a", "L"), g("b", "W"), g("Anonim", "W"), g("Anonim", "W"), g("Anonim", "W")]);
   assert.equal(r.length, 1);
-  assert.deepEqual([r[0].opp, r[0].n, r[0].score], ["a", 3, -1]);
+  assert.deepEqual([r[0].opp, r[0].n, r[0].score, r[0].winPct, r[0].lossPct], ["a", 3, -1, 33, 67]);
 });
 
 test("monthSummary i prevMonth", () => {

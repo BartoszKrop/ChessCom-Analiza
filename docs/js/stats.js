@@ -195,7 +195,7 @@ export function opponents(games, minGames = 3) {
     m.set(k, e);
   }
   return [...m.values()].filter((e) => e.n >= minGames && e.opp !== "Anonim")
-    .map((e) => ({ ...e, winPct: pct(e.w, e.n), score: e.w - e.l }))
+    .map((e) => ({ ...e, winPct: pct(e.w, e.n), lossPct: pct(e.l, e.n), score: e.w - e.l }))
     .sort((a, b) => b.n - a.n);
 }
 

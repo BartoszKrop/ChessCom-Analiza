@@ -4,6 +4,8 @@ export const LENGTH_BINS = ["0-20", "21-30", "31-40", "41-50", "51-60", "61-70",
 export const lengthBin = (m) =>
   m <= 20 ? "0-20" : m <= 30 ? "21-30" : m <= 40 ? "31-40" : m <= 50 ? "41-50" : m <= 60 ? "51-60" : m <= 70 ? "61-70" : "71+";
 
+export const SESSION_GAP = 7200; // przerwa (s), po której zaczyna się nowa sesja
+
 export const pct = (a, b) => (b ? Math.round((a / b) * 100) : 0);
 
 export function filterGames(games, f) {
@@ -85,7 +87,6 @@ export function movePace(games) {
 
 // Wynik po serii W/L w obrębie sesji (przerwa < 2 h).
 export function streakEffect(games) {
-  const SESSION_GAP = 7200;
   const buckets = new Map();
   let type = null, count = 0, lastTs = null;
   for (const g of games) {
@@ -149,4 +150,89 @@ export function monthGrid(games) {
     }));
   }
   return { years, z };
+}
+
+// Numer partii w sesji (przerwa > 2 h zaczyna nową sesję). Zwraca Map: "1".."9", "10+" → {n, w, winPct}.
+export const SESSION_ORDER = ["1", "2", "3", "4", "5", "6", "7", "8", "9", "10+"];
+export function sessionIndexWin(games) {
+  let idx = 0, lastTs = null;
+  const keyed = games.map((g) => {
+    idx = lastTs !== null && g.endTs - lastTs <= SESSION_GAP ? idx + 1 : 1;
+    lastTs = g.endTs;
+    return { result: g.result, k: idx >= 10 ? "10+" : String(idx) };
+  });
+  return groupWin(keyed, (x) => x.k);
+}
+
+// Różnica rankingu (rywal − ja) w przedziałach co 100.
+export const DIFF_ORDER = ["≤ −200", "−200…−101", "−100…−1", "0…99", "100…199", "≥ 200"];
+export const diffBin = (d) => (d <= -200 ? DIFF_ORDER[0] : d <= -101 ? DIFF_ORDER[1] : d < 0 ? DIFF_ORDER[2] : d < 100 ? DIFF_ORDER[3] : d < 200 ? DIFF_ORDER[4] : DIFF_ORDER[5]);
+export function ratingDiffWin(games) {
+  return groupWin(games.filter((g) => g.elo && g.oppElo), (g) => diffBin(g.oppElo - g.elo));
+}
+
+// Porażki i wygrane na czas (Chess.com: timeout, Lichess: outoftime).
+const ON_TIME = new Set(["timeout", "outoftime"]);
+export function timeResults(games) {
+  const out = [];
+  for (const mode of [null, "Bullet", "Blitz", "Rapid"]) {
+    const sub = mode ? games.filter((g) => g.mode === mode) : games;
+    const losses = sub.filter((g) => g.result === "L"), wins = sub.filter((g) => g.result === "W");
+    if (!sub.length) continue;
+    const lt = losses.filter((g) => ON_TIME.has(g.reason)).length, wt = wins.filter((g) => ON_TIME.has(g.reason)).length;
+    out.push({ mode: mode || "Wszystkie", losses: losses.length, lostOnTime: lt, lossPct: pct(lt, losses.length), wins: wins.length, wonOnTime: wt, winPct: pct(wt, wins.length) });
+  }
+  return out;
+}
+
+// Najczęstsi rywale (min. `minGames` partii).
+export function opponents(games, minGames = 3) {
+  const m = new Map();
+  for (const g of games) {
+    const k = `${g.opp}|${g.platform}`;
+    const e = m.get(k) || { opp: g.opp, platform: g.platform, n: 0, w: 0, d: 0, l: 0, last: "" };
+    e.n++; e[g.result === "W" ? "w" : g.result === "D" ? "d" : "l"]++; e.last = g.day;
+    m.set(k, e);
+  }
+  return [...m.values()].filter((e) => e.n >= minGames && e.opp !== "Anonim")
+    .map((e) => ({ ...e, winPct: pct(e.w, e.n), score: e.w - e.l }))
+    .sort((a, b) => b.n - a.n);
+}
+
+// Podsumowanie miesiąca `month` (YYYY-MM) wobec poprzedniego.
+export function prevMonth(month) {
+  const [y, m] = month.split("-").map(Number);
+  return m === 1 ? `${y - 1}-12` : `${y}-${String(m - 1).padStart(2, "0")}`;
+}
+export function monthSummary(games, month) {
+  const sub = games.filter((g) => g.month === month);
+  const c = counts(sub);
+  const elo = {};
+  for (const mode of ["Bullet", "Blitz", "Rapid"]) {
+    const list = sub.filter((g) => g.mode === mode);
+    if (!list.length) continue;
+    const before = games.filter((g) => g.mode === mode && g.month < month && g.account === list[0].account);
+    const start = before.length ? before[before.length - 1].elo : list[0].elo;
+    elo[mode] = { end: list[list.length - 1].elo, change: list[list.length - 1].elo - start, n: list.length };
+  }
+  const ops = openingTable(sub, (g) => g.group, 1000).filter((o) => o.n >= 3);
+  const byWin = ops.slice().sort((a, b) => b.winPct - a.winPct || b.n - a.n);
+  return { month, n: c.n, w: c.W, d: c.D, l: c.L, winPct: pct(c.W, c.n), elo, best: byWin[0] || null, worst: byWin.length > 1 ? byWin[byWin.length - 1] : null };
+}
+
+// Drzewko debiutów: statystyki kolejnych ruchów po ścieżce `path` (lista posunięć SAN).
+export function openingTree(games, path, movesOf) {
+  const m = new Map();
+  for (const g of games) {
+    const mv = movesOf(g);
+    if (mv.length <= path.length) continue;
+    let ok = true;
+    for (let i = 0; i < path.length; i++) if (mv[i] !== path[i]) { ok = false; break; }
+    if (!ok) continue;
+    const k = mv[path.length];
+    const e = m.get(k) || { move: k, n: 0, w: 0, d: 0, l: 0 };
+    e.n++; e[g.result === "W" ? "w" : g.result === "D" ? "d" : "l"]++;
+    m.set(k, e);
+  }
+  return [...m.values()].map((e) => ({ ...e, winPct: pct(e.w, e.n) })).sort((a, b) => b.n - a.n);
 }

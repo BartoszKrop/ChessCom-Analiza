@@ -330,3 +330,14 @@ button:active { transform: scale(.97); }
 @media (max-width: 480px) { .start-card { padding: 16px; } .hero h2 { font-size: 1.25rem; } }
 html, body { touch-action: manipulation; -webkit-text-size-adjust: 100%; }
 .chart, .js-plotly-plot { touch-action: pan-x pan-y pinch-zoom; }
+
+/* Dolny pasek szybkich filtrów */
+.quickbar { position: fixed; left: 0; right: 0; bottom: 0; z-index: 50; display: flex; flex-wrap: wrap; justify-content: center; gap: 6px 14px; padding: 8px 10px calc(8px + env(safe-area-inset-bottom)); background: var(--card); border-top: 1px solid var(--grid); box-shadow: 0 -4px 18px rgba(0, 0, 0, .3); }
+.qb-group { display: flex; gap: 2px; padding: 3px; background: var(--bg); border-radius: 999px; }
+.qb-group button { min-height: 30px; padding: 2px 11px; font-size: .82rem; border: none; background: transparent; border-radius: 999px; color: var(--muted); white-space: nowrap; }
+.qb-group button.on { background: var(--accent); color: #fff; font-weight: 600; }
+[data-theme="neon"] .qb-group button.on { color: #0a0a14; }
+#results:not(.hidden) { padding-bottom: 76px; }
+body:has(#results:not(.hidden)) #install-banner { bottom: 90px; }
+body.noscroll .quickbar { display: none; }
+.sf-panel.full { z-index: 100; }

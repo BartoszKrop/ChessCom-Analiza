@@ -1,21 +1,16 @@
-import streamlit as st  
+import streamlit as st
 import requests
 import pandas as pd
 import plotly.express as px
 from datetime import datetime, date
 import re
-import json
 from html import escape
-from urllib.parse import quote
-from io import BytesIO
 import streamlit.components.v1 as components
-from reportlab.lib import colors
-from reportlab.lib.pagesizes import A4
-from reportlab.lib.styles import getSampleStyleSheet
-from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle
 
-API_TIMEOUT = 10  # seconds for individual API requests
-MAX_MOVE_TIME_SECONDS = 300
+from chess_data import (
+    ApiError, PlayerNotFound, DEFAULT_TZ, fetch_player, localize_games,
+)
+
 NUM_DECILES = 10
 VIEW_MY = "👤 Moja Analiza"
 VIEW_COMPARE = "⚔️ Porównanie Graczy"
@@ -76,66 +71,6 @@ components.html(
             metaWebApp.content = "yes";
             head.appendChild(metaWebApp);
         }}
-    </script>
-    """, height=0, width=0
-)
-
-# --- NICKNAME PERSISTENCE WITH LOCALSTORAGE ---
-components.html(
-    """
-    <script>
-        // Handle nickname persistence with localStorage
-        const savedNick = localStorage.getItem('chess_nickname') || '';
-         
-        // Store the saved nickname in window for access by other scripts
-        window.chessNickname = savedNick;
-         
-        // Create mutation observer to detect when Streamlit text inputs are ready
-        const observer = new MutationObserver(function(mutations) {
-            // Find all text input fields
-            const inputs = document.querySelectorAll('input[type="text"]');
-            inputs.forEach(input => {
-                // Check if this is the main nick input (look for context)
-                if (input.value === '' && savedNick && input.placeholder === '' && !input.hasAttribute('data-nick-initialized')) {
-                    // Check if this input is near a label that says "Nick:"
-                    const parent = input.closest('div');
-                    if (parent) {
-                        const label = parent.textContent;
-                        if (label.includes('Nick:') && !label.includes('rywala')) {
-                            input.value = savedNick;
-                            input.setAttribute('data-nick-initialized', 'true');
-                            input.dispatchEvent(new Event('change', { bubbles: true }));
-                        }
-                    }
-                }
-                 
-                // Save nickname whenever any nick input changes
-                input.addEventListener('change', function() {
-                    const parent = input.closest('div');
-                    if (parent && parent.textContent.includes('Nick:') && !parent.textContent.includes('rywala')) {
-                        if (input.value) {
-                            localStorage.setItem('chess_nickname', input.value);
-                            window.chessNickname = input.value;
-                        }
-                    }
-                });
-            });
-        });
-         
-        observer.observe(document.body, { childList: true, subtree: true });
-         
-        // Also handle blur events for quicker saving
-        document.addEventListener('blur', function(event) {
-            if (event.target && event.target.type === 'text') {
-                const parent = event.target.closest('div');
-                if (parent && parent.textContent.includes('Nick:') && !parent.textContent.includes('rywala')) {
-                    if (event.target.value) {
-                        localStorage.setItem('chess_nickname', event.target.value);
-                        window.chessNickname = event.target.value;
-                    }
-                }
-            }
-        }, true);
     </script>
     """, height=0, width=0
 )
@@ -235,6 +170,8 @@ ui_dict = {
 
 reason_dict = {
     "resigned": {"pl": "Rezygnacja", "en": "Resignation", "de": "Aufgabe"},
+    "resign": {"pl": "Rezygnacja", "en": "Resignation", "de": "Aufgabe"},
+    "draw": {"pl": "Remis", "en": "Draw", "de": "Remis"},
     "timeout": {"pl": "Czas", "en": "Timeout", "de": "Zeit"},
     "outoftime": {"pl": "Czas", "en": "Timeout", "de": "Zeit"},
     "checkmated": {"pl": "Mat", "en": "Checkmate", "de": "Schachmatt"},
@@ -335,338 +272,6 @@ def t_op(eng_name):
     l = lang_map.get(st.session_state.op_lang, "pl")
     if l == "en": return eng_name
     return op_translations.get(eng_name, {}).get(l, eng_name)
-
-def format_bytes(size_bytes):
-    value = float(max(size_bytes if size_bytes is not None else 0, 0))
-    units = ["B", "KB", "MB", "GB"]
-    unit_idx = 0
-    while value >= 1024 and unit_idx < len(units) - 1:
-        value /= 1024
-        unit_idx += 1
-    return f"{value:.1f} {units[unit_idx]}"
-
-def render_training_component(learning_mode, opening_tree):
-    cfg = {
-        "learningMode": learning_mode,
-        "tree": opening_tree,
-        "theme": {
-            "bg": bg_color,
-            "card": chart_bg,
-            "text": font_color,
-            "accent": cw
-        }
-    }
-    html = """
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/chessboard.js/1.0.0/chessboard-1.0.0.min.css">
-    <div id="coach-wrap">
-        <div id="coach-top">
-            <div id="coach-status">Ładowanie modułu...</div>
-            <button id="next-line">Następna linia</button>
-        </div>
-        <div id="board" style="width: 100%; max-width: 660px; margin: 0 auto;"></div>
-    </div>
-    <style>
-        body { margin: 0; padding: 0; background: transparent; font-family: Inter, sans-serif; }
-        #coach-wrap {
-            background: __THEME_BG__;
-            color: __THEME_TEXT__;
-            border: 1px solid rgba(127,127,127,.25);
-            border-radius: 12px;
-            padding: 12px;
-        }
-        #coach-top {
-            display: flex;
-            gap: 8px;
-            align-items: center;
-            justify-content: space-between;
-            margin-bottom: 10px;
-        }
-        #coach-status {
-            font-weight: 700;
-            font-size: 16px;
-            color: __THEME_TEXT__;
-        }
-        #next-line {
-            border: 0;
-            border-radius: 8px;
-            padding: 8px 10px;
-            background: __THEME_ACCENT__;
-            color: #fff;
-            font-weight: 700;
-            cursor: pointer;
-        }
-    </style>
-    <script>
-        const APP_CONFIG = __APP_CONFIG__;
-        const statusBox = document.getElementById("coach-status");
-        const nextBtn = document.getElementById("next-line");
-        const tree = APP_CONFIG.tree || { variants: [] };
-        const variants = tree.variants || [];
-        const CHESS_SCRIPT_SOURCES = [
-            "https://cdnjs.cloudflare.com/ajax/libs/chess.js/0.10.3/chess.min.js",
-            "https://cdn.jsdelivr.net/npm/chess.js@0.10.3/chess.min.js",
-            "https://unpkg.com/chess.js@0.10.3/chess.min.js"
-        ];
-        const CHESSBOARD_SCRIPT_SOURCES = [
-            "https://cdnjs.cloudflare.com/ajax/libs/chessboard.js/1.0.0/chessboard-1.0.0.min.js",
-            "https://cdn.jsdelivr.net/npm/@chrisoakman/chessboardjs@1.0.0/dist/chessboard-1.0.0.min.js",
-            "https://unpkg.com/@chrisoakman/chessboardjs@1.0.0/dist/chessboard-1.0.0.min.js"
-        ];
-        const MAX_SCRIPT_LOAD_TIMEOUT_MS = 5000;
-        const DEPENDENCY_READY_TIMEOUT_MS = 1500;
-        let variantIndex = 0;
-        let currentVariant = null;
-        let currentPly = 0;
-        let board = null;
-        let game = null;
-
-        function findScriptBySrc(src) {
-            const target = new URL(src, window.location.href).href;
-            return Array.from(document.scripts).find(script => {
-                try {
-                    return new URL(script.src, window.location.href).href === target;
-                } catch (error) {
-                    return false;
-                }
-            }) || null;
-        }
-
-        function waitForCondition(checkFn, timeoutMs = 3000, intervalMs = 120) {
-            return new Promise((resolve, reject) => {
-                let ready = false;
-                try {
-                    ready = checkFn();
-                } catch (error) {
-                    reject(error);
-                    return;
-                }
-                if (ready) {
-                    resolve();
-                    return;
-                }
-                const started = Date.now();
-                const tick = () => {
-                    let isReady = false;
-                    try {
-                        isReady = checkFn();
-                    } catch (error) {
-                        reject(error);
-                        return;
-                    }
-                    if (isReady) {
-                        resolve();
-                        return;
-                    }
-                    if (Date.now() - started >= timeoutMs) {
-                        reject(new Error(`Timeout after ${timeoutMs}ms while waiting for dependency.`));
-                        return;
-                    }
-                    setTimeout(tick, intervalMs);
-                };
-                setTimeout(tick, intervalMs);
-            });
-        }
-
-        function loadScriptWithFallback(sources, label, isReady = () => false) {
-            return new Promise((resolve, reject) => {
-                let idx = 0;
-                const tryNext = () => {
-                    if (isReady()) {
-                        resolve();
-                        return;
-                    }
-                    if (idx >= sources.length) {
-                        reject(new Error(`Brak dostępnych źródeł skryptu: ${label}.`));
-                        return;
-                    }
-                    const src = sources[idx++];
-                    const existing = findScriptBySrc(src);
-                    if (existing) {
-                        if (isReady()) {
-                            existing.dataset.loaded = "1";
-                            resolve();
-                            return;
-                        }
-                        if (existing.dataset.loaded === "1") {
-                            resolve();
-                            return;
-                        }
-                        if (existing.dataset.loadError === "1") {
-                            tryNext();
-                            return;
-                        }
-                        if (existing.readyState === "loaded" || existing.readyState === "complete") {
-                            existing.dataset.loaded = "1";
-                            resolve();
-                            return;
-                        }
-                        let settled = false;
-                        const settleSuccess = () => {
-                            if (settled) return;
-                            settled = true;
-                            existing.dataset.loaded = "1";
-                            resolve();
-                        };
-                        const settleError = () => {
-                            if (settled) return;
-                            settled = true;
-                            existing.dataset.loadError = "1";
-                            tryNext();
-                        };
-                        const timeoutId = setTimeout(() => settleError(), MAX_SCRIPT_LOAD_TIMEOUT_MS);
-                        existing.addEventListener("load", () => {
-                            clearTimeout(timeoutId);
-                            settleSuccess();
-                        }, { once: true });
-                        existing.addEventListener("error", () => {
-                            clearTimeout(timeoutId);
-                            settleError();
-                        }, { once: true });
-                        return;
-                    }
-                    const script = document.createElement("script");
-                    script.src = src;
-                    script.async = true;
-                    const timeoutId = setTimeout(() => {
-                        script.dataset.loadError = "1";
-                        script.remove();
-                        tryNext();
-                    }, MAX_SCRIPT_LOAD_TIMEOUT_MS);
-                    script.onload = () => {
-                        clearTimeout(timeoutId);
-                        waitForCondition(isReady, DEPENDENCY_READY_TIMEOUT_MS).then(() => {
-                            script.dataset.loaded = "1";
-                            resolve();
-                        }).catch(() => {
-                            script.dataset.loadError = "1";
-                            console.debug(`${label} loaded but not ready in ${DEPENDENCY_READY_TIMEOUT_MS}ms, trying next source.`);
-                            tryNext();
-                        });
-                    };
-                    script.onerror = () => {
-                        clearTimeout(timeoutId);
-                        script.dataset.loadError = "1";
-                        script.remove();
-                        tryNext();
-                    };
-                    document.head.appendChild(script);
-                };
-                tryNext();
-            });
-        }
-
-        async function loadBoardDependencies() {
-            if (typeof Chess === "undefined") {
-                await loadScriptWithFallback(CHESS_SCRIPT_SOURCES, "chess.js", () => typeof Chess !== "undefined");
-            }
-            if (typeof Chessboard === "undefined") {
-                await loadScriptWithFallback(CHESSBOARD_SCRIPT_SOURCES, "chessboard.js", () => typeof Chessboard !== "undefined");
-            }
-            if (typeof Chess === "undefined" || typeof Chessboard === "undefined") {
-                const missing = [];
-                if (typeof Chess === "undefined") missing.push("Chess");
-                if (typeof Chessboard === "undefined") missing.push("Chessboard");
-                throw new Error(`Nie udało się załadować bibliotek szachowych: ${missing.join(", ")}.`);
-            }
-        }
-
-        function setStatus(text) { statusBox.textContent = text; }
-        function chooseVariant() {
-            if (!variants.length) return null;
-            if (APP_CONFIG.learningMode === "Losowo") {
-                return variants[Math.floor(Math.random() * variants.length)];
-            }
-            const selected = variants[variantIndex % variants.length];
-            variantIndex += 1;
-            return selected;
-        }
-        const normalizeSan = (san) => (san || "").replace(/[+#?!]/g, "").trim();
-        const buildMove = (from, to, promotionHint = null) => {
-            const move = { from, to };
-            const piece = game ? game.get(from) : null;
-            if (promotionHint) move.promotion = promotionHint;
-            if (!promotionHint && piece && piece.type === "p" && (to.endsWith("8") || to.endsWith("1"))) {
-                move.promotion = "q";
-            }
-            return move;
-        };
-
-        function resetOpening() {
-            if (!game || !board) return;
-            game.reset();
-            currentPly = 0;
-            currentVariant = chooseVariant();
-            board.position(game.fen());
-            if (!currentVariant) {
-                setStatus("Brak wariantów debiutowych do treningu.");
-                return;
-            }
-            const expected = currentVariant.line?.[currentPly] || "-";
-            setStatus(`Wariant: ${currentVariant.name} | Oczekiwany ruch: ${expected}`);
-        }
-
-        function onDrop(source, target) {
-            if (!game || !board) return "snapback";
-            if (!currentVariant) return "snapback";
-            const expected = currentVariant.line?.[currentPly];
-            if (!expected || game.turn() !== "w") return "snapback";
-            const move = game.move(buildMove(source, target));
-            if (!move) return "snapback";
-            if (normalizeSan(move.san) !== normalizeSan(expected)) {
-                game.undo();
-                setStatus(`Wariant: ${currentVariant.name} | Zły ruch dla tego debiutu, spróbuj ponownie.`);
-                return "snapback";
-            }
-            currentPly += 1;
-            board.position(game.fen());
-            const reply = currentVariant.line?.[currentPly];
-            if (reply) {
-                setTimeout(() => {
-                    game.move(reply);
-                    currentPly += 1;
-                    board.position(game.fen());
-                    const nextExpected = currentVariant.line?.[currentPly];
-                    if (nextExpected) {
-                        setStatus(`Wariant: ${currentVariant.name} | Oczekiwany ruch: ${nextExpected}`);
-                    } else {
-                        setStatus(`Wariant: ${currentVariant.name} ukończony.`);
-                    }
-                }, 280);
-            } else {
-                setStatus(`Wariant: ${currentVariant.name} ukończony.`);
-            }
-            return;
-        }
-
-        async function initTrainingModule() {
-            try {
-                await loadBoardDependencies();
-            } catch (error) {
-                setStatus("Nie udało się załadować modułu planszy. Odśwież stronę i spróbuj ponownie.");
-                nextBtn.disabled = true;
-                return;
-            }
-            game = new Chess();
-            board = Chessboard("board", {
-                draggable: true,
-                position: "start",
-                orientation: "white",
-                pieceTheme: "https://cdnjs.cloudflare.com/ajax/libs/chessboard.js/1.0.0/img/chesspieces/wikipedia/{piece}.png",
-                onDrop
-            });
-            nextBtn.disabled = false;
-            nextBtn.onclick = () => resetOpening();
-            resetOpening();
-        }
-
-        initTrainingModule();
-    </script>
-    """
-    html = html.replace("__APP_CONFIG__", json.dumps(cfg, ensure_ascii=False))
-    html = html.replace("__THEME_BG__", cfg["theme"]["card"])
-    html = html.replace("__THEME_TEXT__", cfg["theme"]["text"])
-    html = html.replace("__THEME_ACCENT__", cfg["theme"]["accent"])
-    components.html(html, height=860, scrolling=False)
 
 # --- CSS (DYNAMICZNY MOTYW) ---
 css_dark = """
@@ -875,49 +480,6 @@ st.markdown(f"""
     """, unsafe_allow_html=True)
 
 # --- FUNKCJE POMOCNICZE ---
-def get_opening_group(opening_name):
-    name = opening_name.lower()
-    if "sicilian" in name: return "Sicilian Defense"
-    if "french" in name: return "French Defense"
-    if "caro-kann" in name or "caro kann" in name: return "Caro-Kann Defense"
-    if "ruy lopez" in name or "spanish" in name: return "Ruy Lopez"
-    if "italian" in name or "giuoco piano" in name: return "Italian Game"
-    if "scotch" in name: return "Scotch Game"
-    if "vienna" in name: return "Vienna Game"
-    if "four knights" in name: return "Four Knights Game"
-    if "two knights" in name: return "Two Knights Defense"
-    if "petrov" in name or "russian" in name: return "Petrov's Defense"
-    if "philidor" in name: return "Philidor Defense"
-    if "bishop's opening" in name or "bishops opening" in name: return "Bishop's Opening"
-    if "scandinavian" in name: return "Scandinavian Defense"
-    if "alekhine" in name: return "Alekhine's Defense"
-    if "pirc" in name: return "Pirc Defense"
-    if "modern defense" in name: return "Modern Defense" 
-    if "queens gambit" in name or "queen's gambit" in name: return "Queen's Gambit"
-    if "kings gambit" in name or "king's gambit" in name: return "King's Gambit"
-    if "kings indian" in name or "king's indian" in name: return "King's Indian Defense"
-    if "queens indian" in name or "queen's indian" in name: return "Queen's Indian Defense"
-    if "nimzo" in name: return "Nimzo-Indian Defense"
-    if "bogo-indian" in name or "bogo indian" in name: return "Bogo-Indian Defense"
-    if "grunfeld" in name or "grünfeld" in name or "gruenfeld" in name: return "Grünfeld Defense"
-    if "slav" in name: return "Slav Defense"
-    if "catalan" in name: return "Catalan Opening"
-    if "london" in name: return "London System"
-    if "trompowsky" in name: return "Trompowsky Attack"
-    if "benoni" in name: return "Benoni Defense"
-    if "benko" in name or "volga" in name: return "Benko Gambit"
-    if "dutch" in name: return "Dutch Defense"
-    if "english" in name: return "English Opening"
-    if "reti" in name or "réti" in name: return "Réti Opening"
-    if "bird" in name: return "Bird's Opening"
-    if "king's pawn" in name or "kings pawn" in name: return "King's Pawn Opening"
-    if "queen's pawn" in name or "queens pawn" in name: return "Queen's Pawn Opening"
-    fallback = opening_name.split(':')[0].strip()
-    for keyword in [" Defense", " Opening", " Game", " Gambit", " System", " Attack"]:
-        idx = fallback.lower().find(keyword.lower())
-        if idx != -1: return fallback[:idx + len(keyword)].title()
-    return fallback.title()
-
 def get_result_icon(result):
     if result == "Wygrane": return "🟢"
     if result == "Przegrane": return "🔴"
@@ -952,21 +514,6 @@ def get_opening_short_label(opening_group, opening_name):
     clean = re.sub(r"[^A-Za-zÀ-ž0-9\s-]", "", str(opening_group or opening_name)).strip()
     return clean.split()[0].title() if clean else "Inne"
 
-def build_opening_guide_url(opening_name):
-    clean = re.sub(r"[^A-Za-zÀ-ž0-9\s-]", " ", str(opening_name or "")).strip()
-    if not clean:
-        return "https://lichess.org/opening"
-    slug = "-".join(clean.split()).lower()
-    return f"https://lichess.org/opening/{quote(slug, safe='-')}"
-
-def make_opening_link(name):
-    label = str(name or "").strip() or "Nieznany"
-    # build_opening_guide_url returns a URL-encoded string; html.escape handles
-    # any HTML special characters (e.g. &) so the URL is safe inside an attribute.
-    url = escape(build_opening_guide_url(label))
-    text = escape(label)
-    return f'<a href="{url}" target="_blank">{text}</a>'
-
 def render_openings_table(df, limit):
     out = df.sort_values("Gry", ascending=False).head(limit).copy()
     
@@ -996,90 +543,10 @@ def render_openings_table(df, limit):
     # Display as interactive dataframe with sorting and filtering
     st.dataframe(
         out,
-        use_container_width=True,
+        width="stretch",
         hide_index=True,
         column_config=col_config if col_config else None
     )
-
-def extract_opening(pgn):
-    if not pgn: return "Nieznany"
-    opening_tag = re.search(r'\[Opening "(.*?)"\]', pgn)
-    if opening_tag:
-        return opening_tag.group(1).strip()
-    match = re.search(r'openings/(.*?)"', pgn)
-    if not match: return "Inny"
-    slug = match.group(1)
-    # Chess.com URLs encode apostrophes as hyphens (e.g., King-s-Pawn → King's-Pawn)
-    slug = re.sub(r'(?<=[A-Za-z])-s(?=-[A-Z]|-$)', "'s", slug)
-    result = slug.replace('-', ' ').title()
-    # Fix title() incorrectly capitalizing the 's in possessives (King'S → King's)
-    return re.sub(r"(?<=[A-Za-z])'S\b", "'s", result)
-
-def opening_for_user(opening_name, is_white):
-    if not opening_name:
-        return "Nieznany"
-    parts = [p.strip() for p in str(opening_name).split(":") if p.strip()]
-    if not parts:
-        return "Nieznany"
-    if is_white or len(parts) == 1:
-        return parts[0]
-    role_keywords = r"\b(defen[sc]e|counter(?:gambit)?|gambit|system|attack)\b"
-    search_order = parts[1:] + [parts[0]]
-    for part in search_order:
-        if re.search(role_keywords, part, flags=re.IGNORECASE):
-            return part
-    return parts[1]
-
-def extract_moves_count(pgn):
-    if not pgn: return 0
-    matches = re.findall(r'(\d+)\.', pgn)
-    return int(matches[-1]) if matches else 0
-
-def _clock_to_seconds(clock_text):
-    try:
-        parts = clock_text.split(":")
-        if len(parts) == 3:
-            h, m, s = parts
-            return int(h) * 3600 + int(m) * 60 + float(s)
-        if len(parts) == 2:
-            m, s = parts
-            return int(m) * 60 + float(s)
-        return 0.0
-    except (ValueError, TypeError):
-        return 0.0
-
-def extract_move_times_from_pgn(pgn, is_white):
-    if not pgn:
-        return []
-    clocks = re.findall(r'\[%clk ([0-9:\.]+)\]', pgn)
-    if not clocks:
-        return []
-    try:
-        sec = [_clock_to_seconds(c) for c in clocks]
-    except Exception:
-        return []
-    my_idx = list(range(0 if is_white else 1, len(sec), 2))
-    my_clocks = [sec[i] for i in my_idx]
-    if len(my_clocks) < 2:
-        return []
-    deltas = []
-    for i in range(1, len(my_clocks)):
-        d = my_clocks[i - 1] - my_clocks[i]
-        if 0 <= d <= MAX_MOVE_TIME_SECONDS:
-            deltas.append(round(d, 2))
-    return deltas
-
-def extract_move_times_from_lichess_clocks(clocks, is_white):
-    if not clocks or len(clocks) < 4:
-        return []
-    my_idx = list(range(0 if is_white else 1, len(clocks), 2))
-    my_clocks = [float(clocks[i]) / 100 for i in my_idx]
-    deltas = []
-    for i in range(1, len(my_clocks)):
-        d = my_clocks[i - 1] - my_clocks[i]
-        if 0 <= d <= MAX_MOVE_TIME_SECONDS:
-            deltas.append(round(d, 2))
-    return deltas
 
 def build_move_pace_table(df):
     labels = ["0-10"] + [f"{i*10+1}-{(i+1)*10}" for i in range(1, NUM_DECILES)]
@@ -1105,280 +572,6 @@ def build_move_pace_table(df):
             "Moves": len(data),
         })
     return pd.DataFrame(rows)
-
-def build_game_modes_comparison(df):
-    """Build comparison table of all game modes"""
-    modes = df["Tryb"].unique()
-    rows = []
-    for mode in sorted(modes):
-        mode_df = df[df["Tryb"] == mode]
-        w = (mode_df["Wynik"] == "Wygrane").sum()
-        d = (mode_df["Wynik"] == "Remisy").sum()
-        l = (mode_df["Wynik"] == "Przegrane").sum()
-        total = len(mode_df)
-        win_rate = round(w / total * 100, 1) if total > 0 else 0
-        avg_elo = round(mode_df["ELO"].mean(), 0) if not mode_df["ELO"].empty else 0
-        peak_elo = mode_df["ELO"].max() if not mode_df["ELO"].empty else 0
-        
-        rows.append({
-            "Tryb": mode,
-            "Partie": total,
-            "Wygrane": w,
-            "Remisy": d,
-            "Przegrane": l,
-            "Win%": f"{win_rate}%",
-            "Średni ELO": int(avg_elo),
-            "Peak ELO": int(peak_elo)
-        })
-    return pd.DataFrame(rows)
-
-def build_mode_by_hour_heatmap(df):
-    """Build heatmap data of game modes by hour of day"""
-    heatmap_data = df.groupby(["Godzina", "Tryb"]).size().reset_index(name="Partie")
-    return heatmap_data
-
-def build_mode_opening_stats(df):
-    """Get most common openings for each game mode"""
-    modes = df["Tryb"].unique()
-    stats = {}
-    for mode in modes:
-        mode_df = df[df["Tryb"] == mode]
-        openings = mode_df["Debiut"].value_counts().head(5)
-        stats[mode] = openings
-    return stats
-
-def build_mode_color_stats(df):
-    """Get white vs black win rates for each game mode"""
-    modes = df["Tryb"].unique()
-    rows = []
-    for mode in sorted(modes):
-        mode_df = df[df["Tryb"] == mode]
-        white_df = mode_df[mode_df["Kolor"] == "Białe"]
-        black_df = mode_df[mode_df["Kolor"] == "Czarne"]
-        
-        white_wins = (white_df["Wynik"] == "Wygrane").sum() if not white_df.empty else 0
-        white_total = len(white_df)
-        white_wr = round(white_wins / white_total * 100, 1) if white_total > 0 else 0
-        
-        black_wins = (black_df["Wynik"] == "Wygrane").sum() if not black_df.empty else 0
-        black_total = len(black_df)
-        black_wr = round(black_wins / black_total * 100, 1) if black_total > 0 else 0
-        
-        rows.append({
-            "Tryb": mode,
-            "Białe (N)": white_total,
-            "Białe Win%": f"{white_wr}%",
-            "Czarne (N)": black_total,
-            "Czarne Win%": f"{black_wr}%"
-        })
-    return pd.DataFrame(rows)
-
-
-def build_mode_movepace_table(df, mode):
-    """Build move pace table for a specific game mode"""
-    mode_df = df[df["Tryb"] == mode]
-    return build_move_pace_table(mode_df)
-
-def build_mode_movetime_trend(df):
-    """Build move time trend by mode and month"""
-    if df.empty or "Data" not in df.columns:
-        return pd.DataFrame()
-    
-    # Create year-month column
-    df_copy = df.copy()
-    df_copy["YearMonth"] = pd.to_datetime(df_copy["Data"]).dt.to_period("M")
-    
-    # Calculate average move time per second for each mode and month
-    trend_data = []
-    for mode in df_copy["Tryb"].unique():
-        mode_df = df_copy[df_copy["Tryb"] == mode]
-        for year_month in sorted(mode_df["YearMonth"].unique()):
-            month_data = mode_df[mode_df["YearMonth"] == year_month]
-            
-            # Calculate average move time from MoveTimes column
-            total_time = 0
-            total_moves = 0
-            for _, row in month_data.iterrows():
-                move_times = row.get("MoveTimes", [])
-                if isinstance(move_times, list) and move_times:
-                    total_time += sum(move_times)
-                    total_moves += len(move_times)
-            
-            if total_moves > 0:
-                avg_time_per_move = total_time / total_moves
-                trend_data.append({
-                    "YearMonth": str(year_month),
-                    "Tryb": mode,
-                    "AvgTimePerMove": round(avg_time_per_move, 2)
-                })
-    
-    return pd.DataFrame(trend_data) if trend_data else pd.DataFrame()
-
-def build_report_summary(df):
-    total_games = len(df)
-    w = int((df["Wynik"] == "Wygrane").sum())
-    d = int((df["Wynik"] == "Remisy").sum())
-    l = int((df["Wynik"] == "Przegrane").sum())
-    winp = round((w / total_games) * 100, 1) if total_games else 0
-    date_from = df["Data"].min() if total_games else "-"
-    date_to = df["Data"].max() if total_games else "-"
-    mode_stats = (
-        df.groupby("Tryb")
-        .agg(
-            Partie=("Wynik", "count"),
-            Wygrane=("Wynik", lambda x: int((x == "Wygrane").sum())),
-        )
-        .reset_index()
-        .sort_values("Partie", ascending=False)
-    )
-    if not mode_stats.empty:
-        mode_stats["Win%"] = (mode_stats["Wygrane"] / mode_stats["Partie"] * 100).round(1)
-    color_stats = (
-        df.groupby("Kolor")
-        .agg(
-            Partie=("Wynik", "count"),
-            Wygrane=("Wynik", lambda x: int((x == "Wygrane").sum())),
-            Remisy=("Wynik", lambda x: int((x == "Remisy").sum())),
-            Przegrane=("Wynik", lambda x: int((x == "Przegrane").sum())),
-        )
-        .reset_index()
-        .sort_values("Partie", ascending=False)
-    )
-    if not color_stats.empty:
-        color_stats["Win%"] = (color_stats["Wygrane"] / color_stats["Partie"] * 100).round(1)
-    opening_stats = (
-        df.groupby("Debiut_Grupa")
-        .agg(
-            Partie=("Wynik", "count"),
-            Wygrane=("Wynik", lambda x: int((x == "Wygrane").sum())),
-        )
-        .reset_index()
-        .sort_values("Partie", ascending=False)
-        .head(10)
-    )
-    if not opening_stats.empty:
-        opening_stats["Win%"] = (opening_stats["Wygrane"] / opening_stats["Partie"] * 100).round(1)
-    reason_stats = (
-        df.groupby("Powod")
-        .agg(Partie=("Powod", "count"))
-        .reset_index()
-        .sort_values("Partie", ascending=False)
-        .head(10)
-    )
-    return {
-        "total_games": total_games,
-        "w": w,
-        "d": d,
-        "l": l,
-        "winp": winp,
-        "date_from": date_from,
-        "date_to": date_to,
-        "mode_stats": mode_stats,
-        "color_stats": color_stats,
-        "opening_stats": opening_stats,
-        "reason_stats": reason_stats,
-        "pace_df": build_move_pace_table(df),
-    }
-
-def build_html_report(df, username):
-    summary = build_report_summary(df)
-    mode_html = summary["mode_stats"].fillna("-").to_html(index=False)
-    color_html = summary["color_stats"].fillna("-").to_html(index=False)
-    opening_html = summary["opening_stats"].fillna("-").to_html(index=False)
-    reason_html = summary["reason_stats"].fillna("-").to_html(index=False)
-    pace_html = summary["pace_df"].fillna("-").to_html(index=False)
-    return f"""
-    <html><head><meta charset='utf-8'>
-    <style>
-      body {{ font-family: Inter, Arial, sans-serif; background:#14181f; color:#e5e7eb; padding:28px; }}
-      .hero {{ background: linear-gradient(135deg,#1f2937,#111827); border-radius:16px; padding:18px 20px; margin-bottom:16px; border:1px solid #374151; }}
-      .kpi {{ display:flex; flex-wrap:wrap; gap:10px; margin-top:10px; }}
-      .chip {{ background:#1f2937; border:1px solid #374151; border-radius:999px; padding:6px 12px; font-size:13px; }}
-      .card {{ background:#1f2937; border-radius:12px; padding:14px; margin-bottom:14px; border:1px solid #374151; }}
-      h1 {{ color:#81b64c; margin:0 0 6px; }}
-      h3 {{ margin:0 0 10px; color:#f3f4f6; }}
-      table {{ border-collapse: collapse; width: 100%; background:#1f2937; }}
-      th, td {{ border:1px solid #374151; padding:8px; text-align:center; }}
-      th {{ background:#111827; }}
-    </style></head><body>
-      <div class='hero'>
-        <h1>ChessStats — {username}</h1>
-        <div>Zakres: {summary["date_from"]} ➜ {summary["date_to"]}</div>
-        <div class='kpi'>
-          <div class='chip'><b>Partie:</b> {summary["total_games"]}</div>
-          <div class='chip'><b>W/R/P:</b> {summary["w"]}/{summary["d"]}/{summary["l"]}</div>
-          <div class='chip'><b>Win%:</b> {summary["winp"]}%</div>
-        </div>
-      </div>
-      <div class='card'><h3>Tryby gry</h3>{mode_html}</div>
-      <div class='card'><h3>Wyniki wg koloru</h3>{color_html}</div>
-      <div class='card'><h3>Najważniejsze debiuty</h3>{opening_html}</div>
-      <div class='card'><h3>Najczęstsze zakończenia partii</h3>{reason_html}</div>
-      <div class='card'><h3>Tempo ruchu (segmenty partii)</h3>{pace_html}</div>
-    </body></html>
-    """
-
-def build_pdf_report(df, username):
-    summary = build_report_summary(df)
-    buffer = BytesIO()
-    doc = SimpleDocTemplate(
-        buffer,
-        pagesize=A4,
-        leftMargin=24,
-        rightMargin=24,
-        topMargin=24,
-        bottomMargin=24,
-        title=f"ChessStats {username}",
-    )
-    styles = getSampleStyleSheet()
-    story = []
-    story.append(Paragraph(f"<b>ChessStats — {username}</b>", styles["Title"]))
-    story.append(Paragraph(f"Zakres: {summary['date_from']} - {summary['date_to']}", styles["Normal"]))
-    story.append(Spacer(1, 10))
-    kpi_rows = [
-        ["Partie", "W/R/P", "Win%"],
-        [str(summary["total_games"]), f"{summary['w']}/{summary['d']}/{summary['l']}", f"{summary['winp']}%"],
-    ]
-    kpi_table = Table(kpi_rows)
-    kpi_table.setStyle(TableStyle([
-        ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#1f2937")),
-        ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
-        ("GRID", (0, 0), (-1, -1), 0.5, colors.HexColor("#9ca3af")),
-        ("ALIGN", (0, 0), (-1, -1), "CENTER"),
-        ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
-        ("BOTTOMPADDING", (0, 0), (-1, 0), 8),
-    ]))
-    story.append(kpi_table)
-    story.append(Spacer(1, 12))
-
-    def add_df_table(title, frame):
-        story.append(Paragraph(f"<b>{title}</b>", styles["Heading3"]))
-        if frame.empty:
-            story.append(Paragraph("Brak danych", styles["Normal"]))
-            story.append(Spacer(1, 8))
-            return
-        data = [list(frame.columns)] + frame.fillna("").astype(str).values.tolist()
-        table = Table(data, repeatRows=1)
-        table.setStyle(TableStyle([
-            ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#111827")),
-            ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
-            ("GRID", (0, 0), (-1, -1), 0.4, colors.HexColor("#9ca3af")),
-            ("ALIGN", (0, 0), (-1, -1), "CENTER"),
-            ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
-            ("FONTSIZE", (0, 0), (-1, -1), 8.8),
-        ]))
-        story.append(table)
-        story.append(Spacer(1, 10))
-
-    add_df_table("Tryby gry", summary["mode_stats"])
-    add_df_table("Wyniki wg koloru", summary["color_stats"])
-    add_df_table("Najważniejsze debiuty", summary["opening_stats"])
-    add_df_table("Najczęstsze zakończenia partii", summary["reason_stats"])
-    add_df_table("Tempo ruchu (segmenty partii)", summary["pace_df"])
-
-    doc.build(story)
-    buffer.seek(0)
-    return buffer.getvalue()
 
 def get_duration_bin(moves):
     bins = ["0-20", "21-30", "31-40", "41-50", "51-60", "61-70", "71+"]
@@ -1458,17 +651,6 @@ def import_to_lichess(pgn_text):
     except Exception:
         return None
 
-def to_lichess_analysis_url(url):
-    if not isinstance(url, str):
-        return None
-    base = url.strip()
-    if not base:
-        return None
-    if "lichess.org" not in base:
-        return base
-    base = base.split("?")[0].rstrip("/")
-    return base if base.endswith("/analysis") else f"{base}/analysis"
-
 def calc_elo(df, mode):
     mdf = df[df["Tryb"] == mode]
     if mdf.empty: return "-", "-", None
@@ -1481,144 +663,42 @@ def calc_elo(df, mode):
         if curr > best_curr: best_curr = curr
     return f"{best_peak}", f"{best_curr}", best_curr
 
-def _stream_get_text(url, headers=None, timeout=API_TIMEOUT, progress_cb=None, label=""):
-    res = requests.get(url, headers=headers or {}, timeout=timeout, stream=True)
-    total = int(res.headers.get("Content-Length", "0") or 0)
-    if progress_cb:
-        progress_cb(0, total, label, True)
-    chunks = []
-    for chunk in res.iter_content(chunk_size=8192):
-        if not chunk:
-            continue
-        chunks.append(chunk)
-        if progress_cb:
-            progress_cb(len(chunk), total, label, False)
-    content = b"".join(chunks).decode("utf-8", errors="replace")
-    return res.status_code, content
-
-def fetch_data_live(user, platform="Chess.com", progress_callback=None):
-    cols = ["Konto", "Platforma", "Timestamp", "Godzina", "Dzień", "Dzień_Nr", "Data", "Miesiąc", "Tryb", "Wynik", "ELO", "Elo_Rywala", "Ruchy", "Debiut", "Debiut_Grupa", "Przeciwnik", "Kolor", "Powod", "PGN_Raw", "Link", "MoveTimes"]
+def user_timezone():
+    """Strefa czasowa przeglądarki (Streamlit >= 1.42), w razie braku Europe/Warsaw."""
     try:
-        headers = {"User-Agent": f"AnalizySzachowe-V30-{user}"}
-        days_map = {0: 'Pn', 1: 'Wt', 2: 'Śr', 3: 'Czw', 4: 'Pt', 5: 'Sb', 6: 'Nd'}
-        all_games = []
-        k_id = f"{user} ({'C' if platform == 'Chess.com' else 'L'})"
-        progress_state = {"downloaded": 0, "known_total": 0}
-
-        def push_progress(delta, total, label, is_start):
-            if is_start and total > 0:
-                progress_state["known_total"] += total
-            if not is_start and delta > 0:
-                progress_state["downloaded"] += delta
-            if progress_callback:
-                progress_callback(progress_state["downloaded"], progress_state["known_total"], label)
-        
-        if platform == "Chess.com":
-            p_res = requests.get(f"https://api.chess.com/pub/player/{user}", headers=headers, timeout=API_TIMEOUT)
-            a_code, a_text = _stream_get_text(
-                f"https://api.chess.com/pub/player/{user}/games/archives",
-                headers=headers,
-                timeout=API_TIMEOUT,
-                progress_cb=push_progress,
-                label=f"{platform}: lista archiwów"
-            )
-            if p_res.status_code != 200: return None, pd.DataFrame(columns=cols)
-            if a_code != 200: return None, pd.DataFrame(columns=cols)
-            archives = json.loads(a_text).get("archives", [])
-            for idx, url in enumerate(archives, start=1):
-                try:
-                    m_code, m_text = _stream_get_text(
-                        url,
-                        headers=headers,
-                        timeout=API_TIMEOUT,
-                        progress_cb=push_progress,
-                        label=f"{platform}: archiwum {idx}/{len(archives)}"
-                    )
-                    if m_code == 200:
-                        month_games = json.loads(m_text).get("games", [])
-                        for g in month_games:
-                            if "end_time" in g:
-                                ts = datetime.fromtimestamp(g["end_time"])
-                                is_w = g["white"]["username"].lower() == user.lower()
-                                my_r, opp_r = g["white" if is_w else "black"]["result"], g["black" if is_w else "white"]["result"]
-                                out = "Wygrane" if my_r == "win" else ("Remisy" if my_r in ["agreed", "repetition", "stalemate", "insufficient", "50move", "timevsinsufficient"] else "Przegrane")
-                                pgn = g.get("pgn", "")
-                                deb = opening_for_user(extract_opening(pgn), is_w)
-                                all_games.append({
-                                    "Konto": k_id, "Platforma": platform, "Timestamp": ts, "Godzina": ts.hour, "Dzień": days_map[ts.weekday()], "Dzień_Nr": ts.weekday(),
-                                    "Data": ts.date(), "Miesiąc": ts.strftime("%Y-%m"), "Tryb": g.get("time_class", "Inne").capitalize(), "Wynik": out, 
-                                    "ELO": g["white" if is_w else "black"].get("rating", 0), "Elo_Rywala": g["black" if is_w else "white"].get("rating", 0),
-                                    "Ruchy": extract_moves_count(pgn), "Debiut": deb, "Debiut_Grupa": get_opening_group(deb), "Przeciwnik": g["black" if is_w else "white"]["username"],
-                                    "Kolor": "Białe" if is_w else "Czarne", "Powod": my_r if out=="Przegrane" else opp_r, "PGN_Raw": pgn, "Link": "",
-                                    "MoveTimes": extract_move_times_from_pgn(pgn, is_w)
-                                })
-                except Exception:
-                    continue 
-            return {"avatar": p_res.json().get("avatar", "")}, pd.DataFrame(all_games, columns=cols) if all_games else pd.DataFrame(columns=cols)
-            
-        elif platform == "Lichess":
-            p_res = requests.get(f"https://lichess.org/api/user/{user}", headers=headers, timeout=API_TIMEOUT)
-            if p_res.status_code != 200: return None, pd.DataFrame(columns=cols)
-            g_code, g_text = _stream_get_text(
-                f"https://lichess.org/api/games/user/{user}?opening=true&clocks=true",
-                headers={"Accept": "application/x-ndjson"},
-                timeout=60,
-                progress_cb=push_progress,
-                label=f"{platform}: gry użytkownika"
-            )
-            if g_code != 200:
-                return None, pd.DataFrame(columns=cols)
-            for line in g_text.strip().split('\n'):
-                if not line: continue
-                try:
-                    g = json.loads(line)
-                    ts = datetime.fromtimestamp(g["createdAt"] / 1000.0)
-                    my_col = "white" if g["players"]["white"].get("user", {}).get("name", "").lower() == user.lower() else "black"
-                    opp_col = "black" if my_col == "white" else "white"
-                    out = "Wygrane" if g.get("winner") == my_col else ("Przegrane" if g.get("winner") == opp_col else "Remisy")
-                    m_l = g.get("moves", "").split()
-                    deb = opening_for_user(g.get("opening", {}).get("name", "Nieznany"), my_col == "white")
-                    all_games.append({
-                        "Konto": k_id, "Platforma": platform, "Timestamp": ts, "Godzina": ts.hour, "Dzień": days_map[ts.weekday()], "Dzień_Nr": ts.weekday(),
-                        "Data": ts.date(), "Miesiąc": ts.strftime("%Y-%m"), "Tryb": g.get("speed", "Inne").capitalize(), "Wynik": out, 
-                        "ELO": g["players"][my_col].get("rating", 0), "Elo_Rywala": g["players"][opp_col].get("rating", 0),
-                        "Ruchy": len(m_l)//2 + len(m_l)%2, "Debiut": deb, "Debiut_Grupa": get_opening_group(deb),
-                        "Przeciwnik": g["players"][opp_col].get("user", {}).get("name", "Anonim"), "Kolor": "Białe" if my_col == "white" else "Czarne",
-                        "Powod": g.get("status"), "PGN_Raw": g.get("moves", ""), "Link": f"https://lichess.org/{g['id']}",
-                        "MoveTimes": extract_move_times_from_lichess_clocks(g.get("clocks", []), my_col == "white")
-                    })
-                except Exception:
-                    continue
-            return {"avatar": p_res.json().get("profile", {}).get("avatar", "")}, pd.DataFrame(all_games, columns=cols) if all_games else pd.DataFrame(columns=cols)
+        return st.context.timezone or DEFAULT_TZ
     except Exception:
-        return None, pd.DataFrame(columns=cols)
+        return DEFAULT_TZ
 
-@st.cache_data(show_spinner=False, ttl=3600)
-def fetch_data(user, platform="Chess.com"):
-    return fetch_data_live(user, platform, progress_callback=None)
-
-def run_fetch_with_progress(user, platform):
+def run_fetch_with_progress(user, platform, force=False):
+    """Zwraca (profil, DataFrame). Przy błędzie pokazuje konkretny komunikat i zwraca (None, None)."""
+    user = (user or "").strip()
     progress_bar = st.progress(0, text=f"Pobieranie {user} ({platform})...")
-    status_box = st.empty()
-    started = datetime.now().timestamp()
 
-    def on_progress(downloaded, known_total, label):
-        elapsed = max(datetime.now().timestamp() - started, 0.1)
-        speed = downloaded / elapsed
-        eta = (known_total - downloaded) / speed if known_total > 0 and downloaded < known_total and speed > 0 else None
-        ratio = int(min(100, max(0, (downloaded / known_total) * 100))) if known_total > 0 else (1 if downloaded > 0 else 0)
-        eta_text = f" | ETA: {int(eta)}s" if eta is not None else ""
-        text = f"{label} | {format_bytes(downloaded)}"
-        if known_total > 0:
-            text += f" / {format_bytes(known_total)}"
-        text += eta_text
-        progress_bar.progress(ratio, text=text)
-        status_box.caption(text)
+    def on_progress(done, total, label):
+        ratio = int(min(100, max(0, done / total * 100))) if total else 0
+        progress_bar.progress(ratio, text=label)
 
-    out = fetch_data_live(user, platform, progress_callback=on_progress)
-    progress_bar.empty()
-    status_box.empty()
-    return out
+    try:
+        profile, df = fetch_player(user, platform, progress_cb=on_progress, force=force)
+    except PlayerNotFound:
+        st.error(f"Nie znaleziono gracza **{escape(user)}** na {platform}.")
+        return None, None
+    except ApiError as e:
+        st.error(f"{platform}: {e}")
+        return None, None
+    finally:
+        progress_bar.empty()
+    if df.empty:
+        st.error(f"Gracz **{escape(user)}** nie ma partii bullet/blitz/rapid na {platform}.")
+        return None, None
+    return profile, localize_games(df, user_timezone())
+
+def merge_games(df1, df2):
+    return pd.concat([df1, df2], ignore_index=True).sort_values("Timestamp", kind="stable").reset_index(drop=True)
+
+def fetched_ok(f):
+    return f[0] is not None and f[1] is not None and not f[1].empty
 
 # --- SESSION & START ---
 for k in ['data','data2','url', 'user', 'user2', 'plat2']: 
@@ -1636,47 +716,52 @@ if st.session_state.data is None:
     scope_options = [SCOPE_SINGLE, SCOPE_MERGE, SCOPE_COMPARE]
     log_m = st.radio(tu("Zasięg:"), scope_options, horizontal=True, format_func=tu)
     if log_m == SCOPE_SINGLE:
+        # Nick i platforma w adresie (?user=...&platform=...) zastępują localStorage:
+        # działają po odświeżeniu strony, da się je zapisać w zakładce i udostępnić.
+        platforms = ["Chess.com", "Lichess"]
+        qp_user = st.query_params.get("user", "")
+        qp_plat = st.query_params.get("platform", "Chess.com")
         c1, c2 = st.columns([1, 4])
-        plat = c1.selectbox("Plat:", ["Chess.com", "Lichess"])
-        nick = c2.text_input("Nick:", value=st.session_state.saved_nick, placeholder="Wpisz nick gracza")
-        if nick and nick != st.session_state.saved_nick:
-            st.session_state.saved_nick = nick
-        if st.button(t("btn_analize"), type="primary", use_container_width=True):
+        plat = c1.selectbox("Plat:", platforms, index=platforms.index(qp_plat) if qp_plat in platforms else 0)
+        nick = c2.text_input("Nick:", value=st.session_state.saved_nick or qp_user, placeholder="Wpisz nick gracza")
+        auto_run = bool(qp_user) and not st.session_state.get("auto_run_done")
+        st.session_state.auto_run_done = True
+        if st.button(t("btn_analize"), type="primary", width="stretch") or auto_run:
+            nick = nick.strip()
             if nick:
                 st.session_state.saved_nick = nick
                 with st.spinner(tu("Pobieranie...")):
                     f = run_fetch_with_progress(nick, plat)
-                    if f[0] is not None and not f[1].empty: 
+                    if fetched_ok(f):
                         st.session_state.data, st.session_state.user, st.session_state.platforms = f, nick, [plat]
                         st.session_state.fetch_args = [(nick, plat)]
+                        st.query_params.update({"user": nick, "platform": plat})
                         st.rerun()
-                    else: st.error("Nie znaleziono partii dla tego gracza.")
     elif log_m == SCOPE_MERGE:
         c1, c2 = st.columns(2)
         p1, n1 = c1.selectbox("P1:", ["Chess.com", "Lichess"]), c1.text_input("Nick 1:")
         p2, n2 = c2.selectbox("P2:", ["Lichess", "Chess.com"]), c2.text_input("Nick 2:")
-        if st.button(t("btn_connect"), type="primary", use_container_width=True):
+        if st.button(t("btn_connect"), type="primary", width="stretch"):
             if n1 and n2:
                 with st.spinner(tu("Łączenie...")):
                     f1, f2 = run_fetch_with_progress(n1, p1), run_fetch_with_progress(n2, p2)
-                    if f1[0] is not None and not f1[1].empty and f2[0] is not None and not f2[1].empty:
-                        st.session_state.data = (f1[0], pd.concat([f1[1], f2[1]], ignore_index=True))
+                    if fetched_ok(f1) and fetched_ok(f2):
+                        st.session_state.data = (f1[0], merge_games(f1[1], f2[1]))
                         st.session_state.user, st.session_state.platforms = f"{n1}+{n2}", list(set([p1, p2]))
                         st.session_state.fetch_args = [(n1, p1), (n2, p2)]
                         st.session_state.default_view = VIEW_MY
                         st.rerun()
-                    else: st.error("Błąd pobierania danych. Upewnij się, że oba konta posiadają historię gier.")
     else:
         c1, c2 = st.columns(2)
         p1 = c1.selectbox("Platforma gracza 1:", ["Chess.com", "Lichess"], key="q_p1")
         n1 = c1.text_input("Nick gracza 1:", key="q_n1")
         p2 = c2.selectbox("Platforma gracza 2:", ["Chess.com", "Lichess"], key="q_p2")
         n2 = c2.text_input("Nick gracza 2:", key="q_n2")
-        if st.button(tu("Uruchom porównanie"), type="primary", use_container_width=True):
+        if st.button(tu("Uruchom porównanie"), type="primary", width="stretch"):
             if n1 and n2:
                 with st.spinner(tu("Pobieranie i porównywanie...")):
                     f1, f2 = run_fetch_with_progress(n1, p1), run_fetch_with_progress(n2, p2)
-                    if f1[0] is not None and not f1[1].empty and f2[0] is not None and not f2[1].empty:
+                    if fetched_ok(f1) and fetched_ok(f2):
                         st.session_state.data = f1
                         st.session_state.user = n1
                         st.session_state.platforms = [p1]
@@ -1686,8 +771,6 @@ if st.session_state.data is None:
                         st.session_state.plat2 = p2
                         st.session_state.default_view = VIEW_COMPARE
                         st.rerun()
-                    else:
-                        st.error("Nie udało się pobrać danych dla obu graczy.")
 else:
     profile, df_raw = st.session_state.data
     df_loc = df_raw.copy()
@@ -1705,13 +788,13 @@ else:
         border_color = cw if st.session_state.theme == "Neon Retro" else "transparent"
         html_str = (
             f"<div style='display: flex; align-items: center; gap: 15px; margin-bottom: 15px;'>"
-            f"<img src='{profile.get('avatar')}' width='60' style='border-radius: 5px; border: 2px solid {border_color}; box-shadow: 0 2px 4px rgba(0,0,0,0.5);'>"
-            f"<h2 style='margin: 0; padding: 0;'>{username}</h2>"
+            f"<img src='{escape(profile.get('avatar'), quote=True)}' width='60' style='border-radius: 5px; border: 2px solid {border_color}; box-shadow: 0 2px 4px rgba(0,0,0,0.5);'>"
+            f"<h2 style='margin: 0; padding: 0;'>{escape(username)}</h2>"
             f"</div>"
         )
         st.markdown(html_str, unsafe_allow_html=True)
     else:
-        st.markdown(f"<h2 style='margin-bottom: 15px;'>{username}</h2>", unsafe_allow_html=True)
+        st.markdown(f"<h2 style='margin-bottom: 15px;'>{escape(username)}</h2>", unsafe_allow_html=True)
     
     with st.expander(tu("⚙️ Ustawienia")):
         app_options = [VIEW_MY, VIEW_COMPARE]
@@ -1726,32 +809,37 @@ else:
 
         c_btn1, c_btn2 = st.columns(2)
         with c_btn1:
-            if st.button(t("btn_refresh"), use_container_width=True):
-                with st.spinner("Pobieranie najnowszych partii w tle..."):
-                    fetch_data.clear() # czyści cache dla API
+            if st.button(t("btn_refresh"), width="stretch"):
+                ok = True
+                with st.spinner("Pobieranie najnowszych partii..."):
                     args = st.session_state.get('fetch_args', [])
                     if len(args) == 1:
-                        f = run_fetch_with_progress(args[0][0], args[0][1])
-                        if f[0] is not None and not f[1].empty:
+                        f = run_fetch_with_progress(args[0][0], args[0][1], force=True)
+                        if fetched_ok(f):
                             st.session_state.data = f
+                        else: ok = False
                     elif len(args) == 2:
-                        f1 = run_fetch_with_progress(args[0][0], args[0][1])
-                        f2 = run_fetch_with_progress(args[1][0], args[1][1])
-                        if f1[0] is not None and not f1[1].empty and f2[0] is not None and not f2[1].empty:
-                            st.session_state.data = (f1[0], pd.concat([f1[1], f2[1]], ignore_index=True))
-                    
+                        f1 = run_fetch_with_progress(args[0][0], args[0][1], force=True)
+                        f2 = run_fetch_with_progress(args[1][0], args[1][1], force=True)
+                        if fetched_ok(f1) and fetched_ok(f2):
+                            st.session_state.data = (f1[0], merge_games(f1[1], f2[1]))
+                        else: ok = False
+
                     if st.session_state.data2 is not None and st.session_state.user2 and st.session_state.plat2:
-                        f2_rival = run_fetch_with_progress(st.session_state.user2, st.session_state.plat2)
-                        if f2_rival[0] is not None and not f2_rival[1].empty:
+                        f2_rival = run_fetch_with_progress(st.session_state.user2, st.session_state.plat2, force=True)
+                        if fetched_ok(f2_rival):
                             st.session_state.data2 = f2_rival[1]
-                st.rerun()
+                        else: ok = False
+                if ok: st.rerun()
                 
         with c_btn2:
-            if st.button(t("btn_change"), type="primary", use_container_width=True):
+            if st.button(t("btn_change"), type="primary", width="stretch"):
                 for k in ['data','data2','url','user','user2','plat2']: st.session_state[k] = None if k in ['data','data2','url'] else ""
                 st.session_state.platforms = []
                 st.session_state.fetch_args = []
                 st.session_state.default_view = VIEW_MY
+                st.session_state.saved_nick = ""
+                st.query_params.clear()
                 st.rerun()
 
     if app_m == VIEW_MY:
@@ -1775,10 +863,10 @@ else:
             
             st.markdown("<span style='font-size:0.9rem; font-weight:bold;'>Kolor</span>", unsafe_allow_html=True)
             c_w_btn, c_b_btn, _ = st.columns([1, 1, 4])
-            if c_w_btn.button("⚪ Białe", type="primary" if st.session_state.cw_solo else "secondary", use_container_width=True, key="sw_solo"):
+            if c_w_btn.button("⚪ Białe", type="primary" if st.session_state.cw_solo else "secondary", width="stretch", key="sw_solo"):
                 st.session_state.cw_solo = not st.session_state.cw_solo
                 st.rerun()
-            if c_b_btn.button("⚫ Czarne", type="primary" if st.session_state.cb_solo else "secondary", use_container_width=True, key="sb_solo"):
+            if c_b_btn.button("⚫ Czarne", type="primary" if st.session_state.cb_solo else "secondary", width="stretch", key="sb_solo"):
                 st.session_state.cb_solo = not st.session_state.cb_solo
                 st.rerun()
             
@@ -1837,7 +925,7 @@ else:
                         fig_elo = px.line(mdf, x="Timestamp", y="ELO", color="Konto", color_discrete_sequence=[cw])
                         fig_elo.update_layout(xaxis_title=None)
                         fig_elo = style_chart(fig_elo)
-                        st.plotly_chart(fig_elo, use_container_width=True)
+                        st.plotly_chart(fig_elo, width="stretch")
 
                 st.divider()
                 c1, c2 = st.columns(2)
@@ -1849,14 +937,14 @@ else:
                         st.markdown(f"### {t('win_reason')}")
                         fig_pie_w = px.pie(df_f_pie[df_f_pie["Wynik"]=="Wygrane"], names="Powod_T", hole=0.4, color_discrete_sequence=["#16a34a", "#22c55e", "#38bdf8", "#2563eb"])
                         fig_pie_w = style_chart(fig_pie_w)
-                        st.plotly_chart(fig_pie_w, use_container_width=True)
+                        st.plotly_chart(fig_pie_w, width="stretch")
                 
                 if not df_f_pie[df_f_pie["Wynik"]=="Przegrane"].empty:
                     with c2:
                         st.markdown(f"### {t('loss_reason')}")
                         fig_pie_l = px.pie(df_f_pie[df_f_pie["Wynik"]=="Przegrane"], names="Powod_T", hole=0.4, color_discrete_sequence=["#dc2626", "#f97316", "#ec4899", "#fb7185"])
                         fig_pie_l = style_chart(fig_pie_l)
-                        st.plotly_chart(fig_pie_l, use_container_width=True)
+                        st.plotly_chart(fig_pie_l, width="stretch")
 
             with t_hist:
                 st.markdown("### Aktywność i wyniki dzienne")
@@ -1868,11 +956,11 @@ else:
                                  category_orders={"Wynik": ["Przegrane", "Remisy", "Wygrane"]})
                 fig_act.update_layout(barmode='stack')
                 fig_act = style_chart(fig_act)
-                st.plotly_chart(fig_act, use_container_width=True)
+                st.plotly_chart(fig_act, width="stretch")
                 
                 mon = df_f.groupby("Miesiąc").agg(G=('Wynik','count'), W=('Wynik',lambda x:(x=='Wygrane').sum()), R=('Wynik',lambda x:(x=='Remisy').sum()), L=('Wynik',lambda x:(x=='Przegrane').sum())).reset_index().sort_values("Miesiąc", ascending=False)
                 mon["Win%"] = (mon["W"]/mon["G"]*100).round(0).astype(int)
-                st.dataframe(mon.rename(columns={"G":"Gry"}), use_container_width=True, hide_index=True)
+                st.dataframe(mon.rename(columns={"G":"Gry"}), width="stretch", hide_index=True)
 
             with t_czas:
                 h_st = df_f.groupby("Godzina").agg(G=('Wynik', 'count'), W=('Wynik', lambda x: (x == 'Wygrane').sum())).reset_index()
@@ -1883,7 +971,7 @@ else:
                 fig_h.update_layout(coloraxis_showscale=False)
                 fig_h.update_yaxes(range=[0, 100])
                 fig_h = style_chart(fig_h)
-                st.plotly_chart(fig_h, use_container_width=True)
+                st.plotly_chart(fig_h, width="stretch")
                 
                 d_st = df_f.groupby(["Dzień", "Dzień_Nr"]).agg(G=('Wynik', 'count'), W=('Wynik', lambda x: (x == 'Wygrane').sum())).reset_index().sort_values("Dzień_Nr")
                 d_st["Win%"] = (d_st["W"] / d_st["G"] * 100).round(0).astype(int)
@@ -1893,7 +981,7 @@ else:
                 fig_d.update_layout(coloraxis_showscale=False)
                 fig_d.update_yaxes(range=[0, 100])
                 fig_d = style_chart(fig_d)
-                st.plotly_chart(fig_d, use_container_width=True)
+                st.plotly_chart(fig_d, width="stretch")
                 
                 df_f["Bin"] = df_f["Ruchy"].apply(get_duration_bin)
                 dst = df_f.groupby("Bin").agg(G=('Wynik', 'count'), W=('Wynik', lambda x: (x == 'Wygrane').sum())).reset_index()
@@ -1905,7 +993,7 @@ else:
                 fig_dur.update_layout(coloraxis_showscale=False)
                 fig_dur.update_yaxes(range=[0, 100])
                 fig_dur = style_chart(fig_dur)
-                st.plotly_chart(fig_dur, use_container_width=True)
+                st.plotly_chart(fig_dur, width="stretch")
 
                 pace_df = build_move_pace_table(df_f)
                 pace_plot = pace_df.dropna(subset=["AvgSec"])
@@ -1916,7 +1004,7 @@ else:
                         labels={"Segment": t("decile"), "AvgSec": t("avg_move_seconds")}
                     )
                     fig_pace = style_chart(fig_pace)
-                    st.plotly_chart(fig_pace, use_container_width=True)
+                    st.plotly_chart(fig_pace, width="stretch")
                 else:
                     st.info(t("no_tempo_data"))
                 
@@ -1945,7 +1033,7 @@ else:
                 if t_res: 
                     fig_str = px.bar(pd.DataFrame(t_res), x="Seria", y="Win%", color="Typ", barmode='group', text="Win%", hover_data=["Partie"], color_discrete_map={"Po serii Wygranych":cw, "Po serii Porażek":cl})
                     fig_str = style_chart(fig_str)
-                    st.plotly_chart(fig_str, use_container_width=True)
+                    st.plotly_chart(fig_str, width="stretch")
 
             with t_deb:
                 c_w1, c_b1 = st.columns(2)
@@ -2005,7 +1093,7 @@ else:
                     )
                     sel_idx = st.selectbox(tu("Mecz:"), options=ana.index, format_func=lambda idx: ana.at[idx, "label"])
                     g_sel = ana.loc[sel_idx]
-                    if st.button(t("prepare_analysis"), type="primary", use_container_width=True):
+                    if st.button(t("prepare_analysis"), type="primary", width="stretch"):
                         with st.spinner(tu("Przesyłanie PGN do analizy...")):
                             st.session_state.url = g_sel["Link"] if g_sel["Platforma"]=="Lichess" else import_to_lichess(g_sel["PGN_Raw"]); st.rerun()
                     if st.session_state.url:
@@ -2023,15 +1111,13 @@ else:
         p2 = c2.selectbox("Platforma rywala:", ["Chess.com", "Lichess"])
         n2 = c2.text_input("Nick rywala:")
         
-        if st.button(t("btn_rival"), type="primary", use_container_width=True):
+        if st.button(t("btn_rival"), type="primary", width="stretch"):
             if n2:
                 with st.spinner(f"Pobieranie danych dla {n2}..."):
                     f2 = run_fetch_with_progress(n2, p2)
-                    if f2[1] is not None and not f2[1].empty: 
-                        st.session_state.data2, st.session_state.user2, st.session_state.plat2 = f2[1], n2, p2
+                    if fetched_ok(f2):
+                        st.session_state.data2, st.session_state.user2, st.session_state.plat2 = f2[1], n2.strip(), p2
                         st.rerun()
-                    else:
-                        st.error("Nie udało się pobrać danych rywala lub gracz nie ma historii.")
 
         if st.session_state.data2 is not None:
             df2 = st.session_state.data2.copy()
@@ -2058,10 +1144,10 @@ else:
                 sm_c = fx2.selectbox("Tryb:", ["Wszystkie"] + wspolne_tryby, key="c_sm")
                 
                 c_w_por, c_b_por, _ = st.columns([1, 1, 4])
-                if c_w_por.button("⚪ Białe", type="primary" if st.session_state.cw_por else "secondary", use_container_width=True, key="por_w"):
+                if c_w_por.button("⚪ Białe", type="primary" if st.session_state.cw_por else "secondary", width="stretch", key="por_w"):
                     st.session_state.cw_por = not st.session_state.cw_por
                     st.rerun()
-                if c_b_por.button("⚫ Czarne", type="primary" if st.session_state.cb_por else "secondary", use_container_width=True, key="por_b"):
+                if c_b_por.button("⚫ Czarne", type="primary" if st.session_state.cb_por else "secondary", width="stretch", key="por_b"):
                     st.session_state.cb_por = not st.session_state.cb_por
                     st.rerun()
                 
@@ -2127,8 +1213,9 @@ else:
                     df1_mode = df1_c[df1_c["Tryb"] == mode]
                     df2_mode = df2_c[df2_c["Tryb"] == mode]
                     
-                    current_elo1 = df1_mode["ELO"].iloc[-1] if not df1_mode.empty else "N/A"
-                    current_elo2 = df2_mode["ELO"].iloc[-1] if not df2_mode.empty else "N/A"
+                    # Najnowsza partia = największy Timestamp (Lichess zwraca partie od najnowszej)
+                    current_elo1 = df1_mode.sort_values("Timestamp")["ELO"].iloc[-1] if not df1_mode.empty else "N/A"
+                    current_elo2 = df2_mode.sort_values("Timestamp")["ELO"].iloc[-1] if not df2_mode.empty else "N/A"
                     peak_elo1 = df1_mode["ELO"].max() if not df1_mode.empty else 0
                     peak_elo2 = df2_mode["ELO"].max() if not df2_mode.empty else 0
                     
@@ -2179,7 +1266,7 @@ else:
                                 fig_elo_comp.update_xaxes(title_text="")
                                 fig_elo_comp.update_yaxes(title_text="ELO")
                                 fig_elo_comp = style_chart(fig_elo_comp)
-                                st.plotly_chart(fig_elo_comp, use_container_width=True)
+                                st.plotly_chart(fig_elo_comp, width="stretch")
 
                 st.divider()
                 
@@ -2203,7 +1290,7 @@ else:
                             fig_r_w.update_traces(textposition='outside')
                             fig_r_w.update_yaxes(title_text="Procent (%)")
                             fig_r_w = style_chart(fig_r_w)
-                            st.plotly_chart(fig_r_w, use_container_width=True)
+                            st.plotly_chart(fig_r_w, width="stretch")
 
                     df_loss = df_r_comb[df_r_comb["Wynik"] == "Przegrane"].groupby(["Powod_T", "Gracz"]).size().reset_index(name="Ilość")
                     if not df_loss.empty:
@@ -2216,7 +1303,7 @@ else:
                             fig_r_l.update_traces(textposition='outside')
                             fig_r_l.update_yaxes(title_text="Procent (%)")
                             fig_r_l = style_chart(fig_r_l)
-                            st.plotly_chart(fig_r_l, use_container_width=True)
+                            st.plotly_chart(fig_r_l, width="stretch")
 
             with tabs[1]:
                 if not df1_c.empty and not df2_c.empty:
@@ -2229,7 +1316,7 @@ else:
                     st.markdown("### Porównanie aktywności dziennej")
                     fig_act_c = px.bar(act_comb, x="Data", y="Partie", color="Gracz", barmode="group", color_discrete_sequence=[cp1, cp2])
                     fig_act_c = style_chart(fig_act_c)
-                    st.plotly_chart(fig_act_c, use_container_width=True)
+                    st.plotly_chart(fig_act_c, width="stretch")
 
             with tabs[2]:
                 if not df1_c.empty and not df2_c.empty:
@@ -2247,7 +1334,7 @@ else:
                     fig_h_c = px.bar(h_comb, x="Godzina", y="Win%", color="Gracz", barmode="group", color_discrete_sequence=[cp1, cp2])
                     fig_h_c.update_yaxes(range=[0, 100])
                     fig_h_c = style_chart(fig_h_c)
-                    st.plotly_chart(fig_h_c, use_container_width=True)
+                    st.plotly_chart(fig_h_c, width="stretch")
 
                     d_df1 = df1_c.groupby(["Dzień", "Dzień_Nr"]).agg(G=('Wynik', 'count'), W=('Wynik', lambda x: (x == 'Wygrane').sum())).reset_index()
                     d_df1["Win%"] = (d_df1["W"] / d_df1["G"] * 100).round(0).astype(int)
@@ -2263,7 +1350,7 @@ else:
                     fig_d_c = px.bar(d_comb, x="Dzień", y="Win%", color="Gracz", barmode="group", color_discrete_sequence=[cp1, cp2])
                     fig_d_c.update_yaxes(range=[0, 100])
                     fig_d_c = style_chart(fig_d_c)
-                    st.plotly_chart(fig_d_c, use_container_width=True)
+                    st.plotly_chart(fig_d_c, width="stretch")
                     
                     df1_c["Bin"] = df1_c["Ruchy"].apply(get_duration_bin)
                     df2_c["Bin"] = df2_c["Ruchy"].apply(get_duration_bin)
@@ -2284,7 +1371,7 @@ else:
                                    x="Bin", y="Win%", color="Gracz", barmode="group", color_discrete_sequence=[cp1, cp2])
                     fig_b_c.update_yaxes(range=[0, 100])
                     fig_b_c = style_chart(fig_b_c)
-                    st.plotly_chart(fig_b_c, use_container_width=True)
+                    st.plotly_chart(fig_b_c, width="stretch")
 
                     p1_df = build_move_pace_table(df1_c).dropna(subset=["AvgSec"])
                     p2_df = build_move_pace_table(df2_c).dropna(subset=["AvgSec"])
@@ -2299,7 +1386,7 @@ else:
                             labels={"Segment": t("decile"), "AvgSec": t("avg_move_seconds")}
                         )
                         fig_pace_c = style_chart(fig_pace_c)
-                        st.plotly_chart(fig_pace_c, use_container_width=True)
+                        st.plotly_chart(fig_pace_c, width="stretch")
                     else:
                         st.info(t("no_tempo_data"))
 
@@ -2340,7 +1427,7 @@ else:
                    st.markdown(f"<h5 style='text-align: center; color: {font_color};'>⚪ {t('color_white')}</h5>", unsafe_allow_html=True)
                    df_comp_w = create_player_opening_comparison("Białe")
                    if not df_comp_w.empty:
-                       st.dataframe(df_comp_w, use_container_width=True, hide_index=True)
+                       st.dataframe(df_comp_w, width="stretch", hide_index=True)
                    else:
                        st.info("Brak partii")
                     
@@ -2348,7 +1435,7 @@ else:
                    st.markdown(f"<h5 style='text-align: center; color: {font_color};'>⚫ {t('color_black')}</h5>", unsafe_allow_html=True)
                    df_comp_b = create_player_opening_comparison("Czarne")
                    if not df_comp_b.empty:
-                       st.dataframe(df_comp_b, use_container_width=True, hide_index=True)
+                       st.dataframe(df_comp_b, width="stretch", hide_index=True)
                    else:
                        st.info("Brak partii")
 
@@ -2363,7 +1450,7 @@ else:
                             f"<div style='background-color: {chart_bg}; padding: 20px; border-radius: 8px; margin-bottom: 30px; {border_css}'>"
                             f"<div style='display: flex; justify-content: space-between; align-items: center; width: 100%; max-width: 600px; margin: 0 auto;'>"
                             f"<div style='text-align: center; width: 33%;'>"
-                            f"<div style='color: {cp1}; font-size: 1.1rem; margin-bottom: 5px; font-weight: bold; overflow: hidden; text-overflow: ellipsis;'>{u1}</div>"
+                            f"<div style='color: {cp1}; font-size: 1.1rem; margin-bottom: 5px; font-weight: bold; overflow: hidden; text-overflow: ellipsis;'>{escape(u1)}</div>"
                             f"<div style='color: {cp1}; font-size: 2.2rem; font-weight: bold; line-height: 1;'>{h2_w}</div>"
                             f"</div>"
                             f"<div style='text-align: center; width: 33%; border-left: 1px solid {grid_color}; border-right: 1px solid {grid_color}; padding: 0 10px;'>"
@@ -2371,7 +1458,7 @@ else:
                             f"<div style='color: {font_color}; font-size: 2.2rem; font-weight: bold; line-height: 1;'>{h2_d}</div>"
                             f"</div>"
                             f"<div style='text-align: center; width: 33%;'>"
-                            f"<div style='color: {cp2}; font-size: 1.1rem; margin-bottom: 5px; font-weight: bold; overflow: hidden; text-overflow: ellipsis;'>{u2}</div>"
+                            f"<div style='color: {cp2}; font-size: 1.1rem; margin-bottom: 5px; font-weight: bold; overflow: hidden; text-overflow: ellipsis;'>{escape(u2)}</div>"
                             f"<div style='color: {cp2}; font-size: 2.2rem; font-weight: bold; line-height: 1;'>{h2_l}</div>"
                             f"</div>"
                             f"</div>"
@@ -2387,10 +1474,10 @@ else:
                                           x="Partia_Nr", y="value", color="variable", color_discrete_sequence=[cp1, cp2],
                                           labels={"value": "Suma Zwycięstw", "Partia_Nr": "Nr Partii", "variable": "Gracz"})
                         fig_h2h = style_chart(fig_h2h)
-                        st.plotly_chart(fig_h2h, use_container_width=True)
+                        st.plotly_chart(fig_h2h, width="stretch")
                         
                         st.write("**Historia spotkań:**")
-                        st.dataframe(h2[["Data", "Tryb", "Kolor", "Wynik", "Ruchy", "Debiut"]].sort_values("Data", ascending=False), use_container_width=True, hide_index=True)
+                        st.dataframe(h2[["Data", "Tryb", "Kolor", "Wynik", "Ruchy", "Debiut"]].sort_values("Data", ascending=False), width="stretch", hide_index=True)
                     else: 
                         st.info(f"Brak zarejestrowanych bezpośrednich partii pomiędzy **{u1}** a **{u2}** (przy obecnych filtrach).")
     

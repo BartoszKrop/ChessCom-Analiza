@@ -10,10 +10,10 @@
   <link rel="icon" href="icons/icon.svg?v=3" type="image/svg+xml">
   <link rel="manifest" href="manifest.webmanifest">
   <link rel="apple-touch-icon" href="icons/icon-180.png?v=3">
-  <link rel="stylesheet" href="css/style.css?v=61">
-  <link rel="stylesheet" href="css/pieces.css?v=61">
+  <link rel="stylesheet" href="css/style.css?v=63">
+  <link rel="stylesheet" href="css/pieces.css?v=63">
   <link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin>
-  <script type="module" src="js/app.js?v=61"></script>
+  <script type="module" src="js/app.js?v=63"></script>
 </head>
 <body>
   <header class="topbar">
@@ -132,12 +132,10 @@
       <div id="tab-content"></div>
 
       <div class="quickbar" id="quickbar" role="toolbar" aria-label="Szybkie filtry">
-        <div class="qb-group" id="qb-mode" aria-label="Tryb gry">
-          <button type="button" data-mode="">Wszystkie</button><button type="button" data-mode="Bullet">Bullet</button><button type="button" data-mode="Blitz">Blitz</button><button type="button" data-mode="Rapid">Rapid</button>
-        </div>
-        <div class="qb-group" id="qb-per" aria-label="Okres">
-          <button type="button" data-days="30">30 dni</button><button type="button" data-days="90">3 mies.</button><button type="button" data-days="365">Rok</button><button type="button" data-days="0">Całość</button>
-        </div>
+        <button type="button" class="qb-btn" data-menu="mode" aria-haspopup="true"><span class="qb-l">Tryb</span><b></b><i aria-hidden="true">▾</i></button>
+        <button type="button" class="qb-btn" data-menu="per" aria-haspopup="true"><span class="qb-l">Czas</span><b></b><i aria-hidden="true">▾</i></button>
+        <button type="button" class="qb-btn" data-menu="col" aria-haspopup="true"><span class="qb-l">Kolor</span><b></b><i aria-hidden="true">▾</i></button>
+        <div class="qb-menu hidden" id="qb-menu" role="menu"></div>
       </div>
     </section>
   </main>

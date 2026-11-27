@@ -10,16 +10,16 @@
   <link rel="icon" href="icons/icon.svg" type="image/svg+xml">
   <link rel="manifest" href="manifest.webmanifest">
   <link rel="apple-touch-icon" href="icons/icon-180.png">
-  <link rel="stylesheet" href="css/style.css?v=54">
-  <link rel="stylesheet" href="css/pieces.css?v=54">
+  <link rel="stylesheet" href="css/style.css?v=55">
+  <link rel="stylesheet" href="css/pieces.css?v=55">
   <link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin>
-  <script type="module" src="js/app.js?v=54"></script>
+  <script type="module" src="js/app.js?v=55"></script>
 </head>
 <body>
   <header class="topbar">
-    <h1>♟️ ChessStats</h1>
+    <a class="brand" href="./" aria-label="ChessStats"><img src="icons/icon.svg" alt="" width="34" height="34"><h1>ChessStats</h1></a>
     <details class="settings">
-      <summary>⚙️ Ustawienia</summary>
+      <summary aria-label="Ustawienia" title="Ustawienia"><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="3.2"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.9l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.9-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1-1.5 1.7 1.7 0 0 0-1.9.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.9 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1 1.7 1.7 0 0 0-.3-1.9l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.9.3h0a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5h0a1.7 1.7 0 0 0 1.9-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.9v0a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></svg></summary>
       <div class="settings-body">
         <label>🎨 Motyw
           <select id="theme">
@@ -43,11 +43,15 @@
 
   <main>
     <!-- EKRAN STARTOWY -->
-    <section id="start" class="card">
+    <section id="start" class="card start-card">
+      <div class="hero">
+        <h2>Statystyki Twoich partii szachowych</h2>
+        <p>Wpisz nick z Chess.com lub Lichess. Zobaczysz formę, debiuty, błędy i analizę Stockfishem, wszystko w przeglądarce.</p>
+      </div>
       <div class="seg" id="scope">
         <button data-scope="single" class="on">Jeden profil</button>
-        <button data-scope="merge">Połącz profile (C+L)</button>
-        <button data-scope="compare">Porównanie graczy</button>
+        <button data-scope="merge" title="Połącz konta Chess.com i Lichess">Połącz (C+L)</button>
+        <button data-scope="compare">Porównaj</button>
       </div>
       <form id="start-form">
         <div class="row" id="p1-row">
@@ -63,7 +67,8 @@
       <div class="progress hidden" id="progress"><div class="bar"></div><span></span></div>
       <div class="error hidden" id="start-error"></div>
       <div id="recent" class="recent hidden"></div>
-      <p class="hint">Pierwsze pobranie dużego konta może potrwać chwilę. Potem dane są zapamiętane w przeglądarce i kolejne wejścia są prawie natychmiastowe.</p>
+      <ul class="feats"><li>📈 Forma i ELO</li><li>🤖 Analiza Stockfish</li><li>📚 Debiuty</li><li>🎯 Ćwiczenie błędów</li></ul>
+      <p class="hint">Pierwsze pobranie dużego konta może potrwać chwilę, potem dane są zapamiętane w przeglądarce.</p>
     </section>
 
     <!-- WYNIKI -->

@@ -1,16 +1,16 @@
-import { fetchPlayer, importToLichess, PlayerNotFound, ApiError, cacheGet, cacheSet } from "./api.js?v=64";
-import { renderBoard } from "./board.js?v=64";
-import { patterns } from "./insights.js?v=64";
-import { startTrainer } from "./trainer.js?v=64";
-import { initInstallPrompt } from "./install.js?v=64";
-import { disablePageZoom } from "./nozoom.js?v=64";
-import { addLocalTime, DAYS, MODES, sanMoves } from "./parse.js?v=64";
-import { tOpening, tReason } from "./i18n.js?v=64";
+import { fetchPlayer, importToLichess, PlayerNotFound, ApiError, cacheGet, cacheSet } from "./api.js?v=65";
+import { renderBoard } from "./board.js?v=65";
+import { patterns } from "./insights.js?v=65";
+import { startTrainer } from "./trainer.js?v=65";
+import { initInstallPrompt } from "./install.js?v=65";
+import { disablePageZoom } from "./nozoom.js?v=65";
+import { addLocalTime, DAYS, MODES, sanMoves } from "./parse.js?v=65";
+import { tOpening, tReason } from "./i18n.js?v=65";
 import {
   LENGTH_BINS, lengthBin, pct, filterGames, counts, groupWin, eloSummary, totalHours,
   mostCommon, movePace, streakEffect, openingTable, reasonShares, dayHourGrid, monthGrid,
   sessionIndexWin, SESSION_ORDER, ratingDiffWin, DIFF_ORDER, timeResults, quickResigns, opponents, monthSummary, prevMonth, openingTree,
-} from "./stats.js?v=64";
+} from "./stats.js?v=65";
 
 const $ = (s) => document.querySelector(s);
 const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
@@ -439,7 +439,7 @@ function showResults() {
 }
 
 const MY_TABS = [["stats", "📊 Statystyki"], ["ins", "💡 Wnioski"], ["hist", "📅 Historia"], ["time", "⏳ Czas"], ["open", "🔬 Debiuty"], ["ana", "🧠 Analiza"]];
-const CMP_TABS = [["cstats", "📊 Ogólne"], ["chist", "📅 Historia"], ["ctime", "⏳ Czas"], ["copen", "🔬 Debiuty"], ["h2h", "🥊 H2H"]];
+const CMP_TABS = [["cstats", "📊 Ogólne"], ["cins", "💡 Wnioski"], ["chist", "📅 Historia"], ["ctime", "⏳ Czas"], ["copen", "🔬 Debiuty"], ["cana", "🧠 Analiza"], ["h2h", "🥊 H2H"]];
 
 function renderResults() {
   const d = state.data;
@@ -483,7 +483,7 @@ function renderTab() {
   if (state.view === "compare") {
     if (!state.rival) return;
     const g2 = filterGames(state.rival.games, f);
-    ({ cstats: tabCompareStats, chist: tabCompareHist, ctime: tabCompareTime, copen: tabCompareOpen, h2h: tabH2H })[state.tab](el, g1, g2);
+    ({ cstats: tabCompareStats, cins: tabCompareIns, cana: tabCompareAna, chist: tabCompareHist, ctime: tabCompareTime, copen: tabCompareOpen, h2h: tabH2H })[state.tab](el, g1, g2);
     fitCharts();
     return;
   }
@@ -728,7 +728,7 @@ function tabOpen(el, games) {
 let engineMod = null;
 async function engine() {
   if (!engineMod) {
-    engineMod = await import("./engine.js?v=64");
+    engineMod = await import("./engine.js?v=65");
     engineMod.useCache(cacheGet, cacheSet);
   }
   return engineMod;
@@ -1172,6 +1172,58 @@ function tabAnalysis(el, games) {
 // ----- Porównanie
 const names = () => [state.data.name, state.rival.name];
 
+// Wnioski obu graczy obok siebie: sesje, siła rywala, wyniki na czas, szybkie poddania.
+function tabCompareIns(el, g1, g2) {
+  const [u1, u2] = names();
+  const pair = (fn, order) => [[g1, u1, "--p1"], [g2, u2, "--p2"]].map(([l, n, c]) => winBar(fn(l), order, n, css(c)));
+  plot(chartBox(el, "Win% wg numeru partii w sesji"), pair(sessionIndexWin, SESSION_ORDER), { ...LINE50, barmode: "group", yaxis: { range: [0, 100], title: { text: "Win %" } }, xaxis: { type: "category", title: { text: "Która partia w sesji (przerwa > 2 h = nowa sesja)" } } });
+  plot(chartBox(el, "Win% wg siły rywala"), pair(ratingDiffWin, DIFF_ORDER), { ...LINE50, barmode: "group", yaxis: { range: [0, 100], title: { text: "Win %" } }, xaxis: { type: "category", title: { text: "Ranking rywala minus własny" } } });
+
+  el.insertAdjacentHTML("beforeend", "<h3>Partie rozstrzygnięte na czas</h3>");
+  const tr = (l) => timeResults(l);
+  const rows = [];
+  for (const [name, l] of [[u1, g1], [u2, g2]]) for (const r of tr(l)) rows.push({ ...r, who: name });
+  table(el, [
+    { key: "who", label: "Gracz", fmt: (v) => shortName(v, 14) }, { key: "mode", label: "Tryb" },
+    { key: "lossPct", label: "Porażki na czas", num: true, nowrap: true, html: (r) => `${r.lossPct}% <span class="muted">(${r.lostOnTime}/${r.losses})</span>` },
+    { key: "winPct", label: "Wygrane na czas", num: true, nowrap: true, html: (r) => `${r.winPct}% <span class="muted">(${r.wonOnTime}/${r.wins})</span>` },
+  ], rows, { scroll: true });
+
+  el.insertAdjacentHTML("beforeend", `<h3 title="Porażki przez poddanie albo porzucenie partii przed 20. ruchem">Szybkie poddania (przed 20. ruchem) ⓘ</h3>`);
+  const q1 = quickResigns(g1), q2 = quickResigns(g2);
+  el.insertAdjacentHTML("beforeend", `<div class="metrics">${metric(u1, q1.n, `${q1.pct}% porażek`)}${metric(u2, q2.n, `${q2.pct}% porażek`)}</div>`);
+
+  const o1 = new Map(opponents(g1).map((o) => [o.opp.toLowerCase(), o]));
+  const common = opponents(g2).filter((o) => o1.has(o.opp.toLowerCase())).slice(0, 10);
+  el.insertAdjacentHTML("beforeend", "<h3>Wspólni rywale</h3>");
+  if (!common.length) return info(el, "Brak wspólnych rywali z co najmniej 3 partiami u obu graczy.");
+  table(el, [
+    { key: "opp", label: "Rywal" }, { key: "an", label: `Gry ${shortName(u1, 8)}`, num: true }, { key: "aw", label: "Win%", num: true, fmt: (v) => `${v}%` },
+    { key: "bn", label: `Gry ${shortName(u2, 8)}`, num: true }, { key: "bw", label: "Win%", num: true, fmt: (v) => `${v}%` },
+  ], common.map((o) => { const a = o1.get(o.opp.toLowerCase()); return { opp: o.opp, an: a.n, aw: a.winPct, bn: o.n, bw: o.winPct }; }), { scroll: true });
+}
+
+// Analiza partii wybranego gracza z porównania (Stockfish, Lichess).
+function tabCompareAna(el, g1, g2) {
+  const [u1, u2] = names();
+  let who = state.cmpAnaWho === 2 ? 2 : 1;
+  el.insertAdjacentHTML("beforeend", `<div class="seg" id="cana-who"><button data-w="1">${esc(shortName(u1, 18))}</button><button data-w="2">${esc(shortName(u2, 18))}</button></div><div id="cana-box"></div>`);
+  const box = el.querySelector("#cana-box");
+  const draw = () => {
+    el.querySelectorAll("#cana-who button").forEach((b) => b.classList.toggle("on", Number(b.dataset.w) === who));
+    box.innerHTML = "";
+    const l = who === 1 ? g1 : g2;
+    if (!l.length) return info(box, "Brak partii dla wybranych filtrów.");
+    tabAnalysis(box, l);
+  };
+  el.querySelector("#cana-who").addEventListener("click", (e) => {
+    const b = e.target.closest("button");
+    if (!b) return;
+    who = Number(b.dataset.w); state.cmpAnaWho = who; draw();
+  });
+  draw();
+}
+
 function tabCompareStats(el, g1, g2) {
   const [u1, u2] = names();
   const c1 = counts(g1), c2 = counts(g2);
@@ -1275,10 +1327,10 @@ function tabH2H(el, g1) {
     { type: "scatter", mode: "lines", name: u1, x, y: cw, line: { color: css("--p1") } },
     { type: "scatter", mode: "lines", name: u2, x, y: cl, line: { color: css("--p2") } },
   ], { xaxis: { title: { text: "Nr partii" } }, yaxis: { title: { text: "Suma zwycięstw" } } });
-  el.insertAdjacentHTML("beforeend", "<h3>Historia spotkań</h3>");
-  const res = { W: "Wygrana", D: "Remis", L: "Porażka" };
-  table(el, [{ key: "day", label: "Data", nowrap: true }, { key: "mode", label: "Tryb" }, { key: "res", label: "Wynik", nowrap: true }, { key: "moves", label: "Ruchy", num: true }, { key: "opening", label: "Debiut" }],
-    h.slice().reverse().map((g) => ({ ...g, res: `${g.color === "w" ? "⚪" : "⚫"} ${res[g.result]}` })), { scroll: true });
+  el.insertAdjacentHTML("beforeend", `<h3>Partie między wami</h3><div class="info small">Perspektywa: ${esc(u1)}. Kliknij „Stockfish", żeby otworzyć partię na szachownicy z analizą.</div>`);
+  const box = document.createElement("div");
+  el.appendChild(box);
+  tabAnalysis(box, h);
 }
 
 // ---------------------------------------------------------------- start

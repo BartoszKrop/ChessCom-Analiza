@@ -19,11 +19,10 @@ jobs:
 
   python:
     runs-on: ubuntu-latest
-    if: ${{ hashFiles('tests/test_chess_data.py') != '' }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
       - run: pip install -r requirements.txt pytest
-      - run: pytest -q tests
+      - run: python -m pytest -q tests

@@ -1,15 +1,15 @@
-import { fetchPlayer, importToLichess, PlayerNotFound, ApiError, cacheGet, cacheSet } from "./api.js?v=53";
-import { renderBoard } from "./board.js?v=53";
-import { patterns } from "./insights.js?v=53";
-import { startTrainer } from "./trainer.js?v=53";
-import { initInstallPrompt } from "./install.js?v=53";
-import { addLocalTime, DAYS, MODES, sanMoves } from "./parse.js?v=53";
-import { tOpening, tReason } from "./i18n.js?v=53";
+import { fetchPlayer, importToLichess, PlayerNotFound, ApiError, cacheGet, cacheSet } from "./api.js?v=54";
+import { renderBoard } from "./board.js?v=54";
+import { patterns } from "./insights.js?v=54";
+import { startTrainer } from "./trainer.js?v=54";
+import { initInstallPrompt } from "./install.js?v=54";
+import { addLocalTime, DAYS, MODES, sanMoves } from "./parse.js?v=54";
+import { tOpening, tReason } from "./i18n.js?v=54";
 import {
   LENGTH_BINS, lengthBin, pct, filterGames, counts, groupWin, eloSummary, totalHours,
   mostCommon, movePace, streakEffect, openingTable, reasonShares, dayHourGrid, monthGrid,
   sessionIndexWin, SESSION_ORDER, ratingDiffWin, DIFF_ORDER, timeResults, quickResigns, opponents, monthSummary, prevMonth, openingTree,
-} from "./stats.js?v=53";
+} from "./stats.js?v=54";
 
 const $ = (s) => document.querySelector(s);
 const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
@@ -673,7 +673,7 @@ function tabOpen(el, games) {
 let engineMod = null;
 async function engine() {
   if (!engineMod) {
-    engineMod = await import("./engine.js?v=53");
+    engineMod = await import("./engine.js?v=54");
     engineMod.useCache(cacheGet, cacheSet);
   }
   return engineMod;
@@ -821,7 +821,7 @@ function sfViewer(panel, g, r, eng, onDeeper) {
     const last = cur ? r.plies[cur - 1] : null;
     // Zielona strzałka: ruch właśnie zagrany. Niebieska: ruch, który należało zagrać zamiast niego (z pozycji przed nim).
     const arrows = [];
-    const instead = last && last.bestSan && (KIND[last.kind].err || last.drop >= 3) ? r.best?.[cur - 1] : null;
+    const instead = last && last.bestSan ? r.best?.[cur - 1] : null;
     if (last) arrows.push({ from: last.from, to: last.to, color: "#3aa655" });
     if (instead) arrows.push({ from: instead.slice(0, 2), to: instead.slice(2, 4), color: "#4a90d9" });
 
@@ -843,7 +843,7 @@ function sfViewer(panel, g, r, eng, onDeeper) {
       html = `<div class="sf-move">${badge(last.kind)} <b>${esc(moveLabel(last, cur - 1))}</b> <span class="muted">${last.mine ? "Twój ruch" : "ruch rywala"}</span></div>
         <div class="sf-verdict" style="--k:${k.color}"><b>${k.name}</b>${last.drop >= 1 ? ` · −${Math.round(last.drop)}% szans na wygraną` : ""}</div>
         ${whyText(last.why) ? `<div class="sf-why">${esc(whyText(last.why))}</div>` : ""}`;
-      if (instead) html += `<div class="legend"><span><i style="background:#3aa655"></i>zagrany ruch</span><span><i style="background:#4a90d9"></i>ruch, który należało zagrać</span></div>`;
+      if (instead) html += `<div class="legend"><span><i style="background:#3aa655"></i>zagrany ruch</span><span><i style="background:#4a90d9"></i>${k.err ? "ruch, który należało zagrać" : "najlepszy ruch silnika"}</span></div>`;
       if (last.bestSan && (k.err || last.kind === "good" || last.kind === "excellent")) {
         html += `<div class="${k.err ? "" : "muted"}">${k.err ? "Lepiej było" : "Najlepszy był"}: <b>${esc(k.err && last.line.length ? last.line.slice(0, 4).join(" ") : last.bestSan)}</b>${k.err ? ` <button class="link-btn" data-nav="prev">◀ pokaż</button>` : ""}</div>`;
       }

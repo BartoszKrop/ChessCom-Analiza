@@ -3,7 +3,7 @@
 // Pliki silnika leżą w docs/vendor/stockfish (GPLv3, https://github.com/nmrugg/stockfish.js).
 
 import { Chess } from "../vendor/chess.js";
-import { sanMoves } from "./parse.js?v=50";
+import { sanMoves } from "./parse.js?v=51";
 
 const engineUrl = (file) => new URL(`../vendor/stockfish/${file}`, import.meta.url).href;
 
@@ -64,7 +64,7 @@ export function classifyMove({ drop, isBest, gap = null, winBefore = 50, winAfte
   if (err === "mistake") return prevOppError ? "miss" : "mistake";
   if (err === "inaccuracy") return "inaccuracy";
   if (sacrifice && drop < 3 && winAfter >= 40 && winBefore < 90) return "brilliant";
-  if (isBest && gap !== null && gap >= 12 && winBefore < 90 && winAfter >= 25) return "great";
+  if (isBest && gap !== null && gap >= 15 && winBefore < 75 && winAfter >= 25) return "great";
   if (isBest) return "best";
   if (drop < 2) return "excellent";
   return "good";
@@ -195,7 +195,7 @@ const newToken = () => { cancelAnalysis(); current = { cancelled: false }; retur
 export const ANALYSIS_DEPTH = 16; // przy wielu wątkach: defaultDepth() = 18
 export const DEEP_DEPTH = 20; // przy wielu wątkach: deepDepth() = 22
 export const BATCH_DEPTH = 12;
-const CACHE_PREFIX = "sf|v3|";
+const CACHE_PREFIX = "sf|v4|";
 
 // Faza partii w pozycji: debiut do 12. ruchu, końcówka gdy zostało ≤ 6 figur (bez pionów i królów).
 export function phaseOf(fen, moveNo) {

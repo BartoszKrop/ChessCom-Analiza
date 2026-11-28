@@ -217,7 +217,7 @@ tr.clickable:hover td { background: rgba(127, 127, 127, .12); }
 .bd .arrows { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; z-index: 2; }
 .evalbar { position: relative; width: 22px; flex-shrink: 0; background: #403d39; border-radius: 4px; overflow: hidden; }
 .evalbar .fill { position: absolute; left: 0; right: 0; background: #f1f1f1; transition: height .25s; }
-.evalbar span { position: absolute; left: 0; right: 0; text-align: center; font-size: 9px; font-weight: 700; z-index: 1; }
+.evalbar span { position: absolute; left: 0; right: 0; text-align: center; font-size: 10px; letter-spacing: -.3px; font-weight: 700; z-index: 1; }
 .evalbar span.low { bottom: 3px; color: #403d39; }
 .evalbar span.high { top: 3px; color: #f1f1f1; }
 .sf-info { display: grid; gap: 4px; padding: 10px 12px; background: var(--bg); border-radius: 6px; min-height: 92px; font-size: .95rem; }
@@ -416,3 +416,35 @@ body.noscroll #to-top { display: none; }
 .sf-panel.training .sf-fullbtn { display: none; }
 .sf-panel.full .sf-main { grid-template-columns: minmax(0, min(calc(100dvh - 340px), 68vw)) minmax(0, 1fr); }
 @media (max-width: 760px) { .sf-panel.full .sf-main { grid-template-columns: 1fr; } }
+
+/* Zwykły widok analizy: tylko plansza, przewijanie i wejście w pełną analizę. Opisy są w pełnej analizie. */
+.sf-panel:not(.full) > .sf-source { display: none; }
+/* Ćwiczenia i skok do błędu są w pełnej analizie; tu zostaje tylko celność i tabelka rodzajów ruchów. */
+.sf-panel:not(.full):not(.training) .sf-tools,
+.sf-panel:not(.full):not(.training) .sf-info,
+.sf-panel:not(.full):not(.training) .sf-acc { display: none; }
+.sf-panel:not(.full):not(.training) .sf-sum { display: table; margin-top: 0; }
+.sf-panel:not(.full):not(.training) .sf-kindhelp:not(.hidden) { display: grid; }
+.board { position: relative; }
+.sf-boardend { position: absolute; left: 50%; bottom: 8%; transform: translateX(-50%); z-index: 4; padding: 6px 14px; border-radius: 999px; white-space: nowrap; font-weight: 700; font-size: .9rem; color: #fff; background: rgba(30, 30, 30, .85); box-shadow: 0 4px 14px rgba(0, 0, 0, .4); backdrop-filter: blur(4px); pointer-events: none; animation: popUp2 .25s ease both; }
+.sf-boardend.W { background: color-mix(in srgb, var(--win) 88%, #000); }
+.sf-boardend.L { background: color-mix(in srgb, var(--loss) 88%, #000); }
+.sf-panel.training .sf-boardend { display: none; }
+.evalbar { width: 24px; border-radius: 6px; box-shadow: inset 0 0 0 1px rgba(0, 0, 0, .25); }
+.evalbar .fill { transition: height .35s cubic-bezier(.2, .8, .2, 1); }
+
+/* Przycisk „Pełna analiza”: karta z ikoną, opisem i strzałką. */
+.sf-fullbtn { display: flex; flex-direction: row; align-items: center; gap: 12px; width: 100%; margin-top: 12px; min-height: 60px; padding: 10px 14px 10px 10px; text-align: left; color: var(--text); background: linear-gradient(135deg, color-mix(in srgb, var(--accent) 22%, var(--card)), color-mix(in srgb, var(--accent) 8%, var(--card))); border: 1px solid color-mix(in srgb, var(--accent) 45%, transparent); border-radius: 14px; box-shadow: 0 1px 0 rgba(255, 255, 255, .05) inset, 0 4px 14px rgba(0, 0, 0, .18); font-size: 1rem; transition: transform .12s ease, border-color .15s ease, background .15s ease; }
+.sf-fullbtn:hover { border-color: var(--accent); }
+.sf-fullbtn:active { transform: scale(.985); }
+.sf-fullbtn .ico { flex: none; display: grid; place-items: center; width: 40px; height: 40px; border-radius: 10px; background: var(--accent); color: #fff; }
+.sf-fullbtn .ico svg { width: 24px; height: 24px; }
+.sf-fullbtn .txt { flex: 1; min-width: 0; display: grid; gap: 1px; }
+.sf-fullbtn .txt b { font-size: 1rem; font-weight: 700; }
+.sf-fullbtn .txt small { font-size: .78rem; font-weight: 500; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.sf-fullbtn .chev { flex: none; font-size: 1.6rem; line-height: 1; color: var(--accent); transition: transform .15s ease; }
+.sf-fullbtn:hover .chev { transform: translateX(3px); }
+[data-theme="neon"] .sf-fullbtn { color: var(--text); }
+[data-theme="neon"] .sf-fullbtn .ico { color: #0a0a14; }
+.evalbar span.w { color: #403d39; }
+.evalbar span.b { color: #f1f1f1; }

@@ -5,7 +5,7 @@
 //    albo sieć nie odpowiada przez 3 s (słaby zasięg), wtedy nowa wersja zapisuje się w tle na następny raz;
 // 3) Plotly z CDN trzyma w cache (duży plik, rzadko się zmienia).
 // Zapytań do API Chess.com i Lichess nie dotyka.
-const CACHE = "chessstats-v29";
+const CACHE = "chessstats-v30";
 const SLOW_MS = 3000;
 let slowUntil = 0; // po jednym wolnym pliku kolejne przez chwilę od razu z cache (strona to kilka fal plików)
 const CDN_CACHE = "chessstats-cdn-v1";

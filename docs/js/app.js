@@ -1,17 +1,17 @@
-import { fetchPlayer, cachedPlayer, importToLichess, PlayerNotFound, ApiError, cacheGet, cacheSet } from "./api.js?v=83";
-import { renderBoard } from "./board.js?v=83";
-import { patterns } from "./insights.js?v=83";
-import { startTrainer } from "./trainer.js?v=83";
-import { initInstallPrompt } from "./install.js?v=83";
-import { disablePageZoom } from "./nozoom.js?v=83";
-import { countUp, enter, initSwipeTabs, initToTop } from "./polish.js?v=83";
-import { addLocalTime, DAYS, MODES, sanMoves } from "./parse.js?v=83";
-import { tOpening, tReason } from "./i18n.js?v=83";
+import { fetchPlayer, cachedPlayer, importToLichess, PlayerNotFound, ApiError, cacheGet, cacheSet } from "./api.js?v=84";
+import { renderBoard } from "./board.js?v=84";
+import { patterns } from "./insights.js?v=84";
+import { startTrainer } from "./trainer.js?v=84";
+import { initInstallPrompt } from "./install.js?v=84";
+import { disablePageZoom } from "./nozoom.js?v=84";
+import { countUp, enter, initSwipeTabs, initToTop } from "./polish.js?v=84";
+import { addLocalTime, DAYS, MODES, sanMoves } from "./parse.js?v=84";
+import { tOpening, tReason } from "./i18n.js?v=84";
 import {
   LENGTH_BINS, lengthBin, pct, filterGames, counts, groupWin, eloSummary, eloChange, totalHours,
   mostCommon, movePace, streakEffect, openingTable, reasonShares, dayHourGrid, monthGrid,
   sessionIndexWin, SESSION_ORDER, ratingDiffWin, DIFF_ORDER, timeResults, quickResigns, opponents, monthSummary, prevMonth, openingTree,
-} from "./stats.js?v=83";
+} from "./stats.js?v=84";
 
 const $ = (s) => document.querySelector(s);
 const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
@@ -748,7 +748,7 @@ function tabOpen(el, games) {
 let engineMod = null;
 async function engine() {
   if (!engineMod) {
-    engineMod = await import("./engine.js?v=83");
+    engineMod = await import("./engine.js?v=84");
     engineMod.useCache(cacheGet, cacheSet);
   }
   return engineMod;

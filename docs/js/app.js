@@ -1,17 +1,17 @@
-import { fetchPlayer, cachedPlayer, importToLichess, PlayerNotFound, ApiError, cacheGet, cacheSet } from "./api.js?v=77";
-import { renderBoard } from "./board.js?v=77";
-import { patterns } from "./insights.js?v=77";
-import { startTrainer } from "./trainer.js?v=77";
-import { initInstallPrompt } from "./install.js?v=77";
-import { disablePageZoom } from "./nozoom.js?v=77";
-import { countUp, enter, initSwipeTabs, initToTop } from "./polish.js?v=77";
-import { addLocalTime, DAYS, MODES, sanMoves } from "./parse.js?v=77";
-import { tOpening, tReason } from "./i18n.js?v=77";
+import { fetchPlayer, cachedPlayer, importToLichess, PlayerNotFound, ApiError, cacheGet, cacheSet } from "./api.js?v=78";
+import { renderBoard } from "./board.js?v=78";
+import { patterns } from "./insights.js?v=78";
+import { startTrainer } from "./trainer.js?v=78";
+import { initInstallPrompt } from "./install.js?v=78";
+import { disablePageZoom } from "./nozoom.js?v=78";
+import { countUp, enter, initSwipeTabs, initToTop } from "./polish.js?v=78";
+import { addLocalTime, DAYS, MODES, sanMoves } from "./parse.js?v=78";
+import { tOpening, tReason } from "./i18n.js?v=78";
 import {
   LENGTH_BINS, lengthBin, pct, filterGames, counts, groupWin, eloSummary, eloChange, totalHours,
   mostCommon, movePace, streakEffect, openingTable, reasonShares, dayHourGrid, monthGrid,
   sessionIndexWin, SESSION_ORDER, ratingDiffWin, DIFF_ORDER, timeResults, quickResigns, opponents, monthSummary, prevMonth, openingTree,
-} from "./stats.js?v=77";
+} from "./stats.js?v=78";
 
 const $ = (s) => document.querySelector(s);
 const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
@@ -748,7 +748,7 @@ function tabOpen(el, games) {
 let engineMod = null;
 async function engine() {
   if (!engineMod) {
-    engineMod = await import("./engine.js?v=77");
+    engineMod = await import("./engine.js?v=78");
     engineMod.useCache(cacheGet, cacheSet);
   }
   return engineMod;
@@ -895,7 +895,8 @@ function sfViewer(panel, g, r, eng, onDeeper) {
 
   // Wykres oceny.
   const chart = chartBox(panel, "Ocena pozycji (dla Ciebie)");
-  chart.classList.add("short");
+  chart.classList.add("short", "sf-evalchart");
+  chart.previousElementSibling.classList.add("sf-evaltitle");
   const mySign = g.color === "b" ? -1 : 1; // oś pokazuje przewagę Twojej strony
   const y = r.evals.map((v) => Math.max(-6, Math.min(6, (mySign * v) / 100)));
   const marks = r.plies.map((p, i) => ({ p, i })).filter(({ p }) => p.mine && ["brilliant", "great", "best", "mistake", "miss", "blunder"].includes(p.kind));
@@ -903,7 +904,7 @@ function sfViewer(panel, g, r, eng, onDeeper) {
   plot(chart, [
     { type: "scatter", mode: "lines", x: y.map((_, i) => i / 2), y, fill: "tozeroy", line: { color: css("--accent"), width: 1.5 }, fillcolor: "rgba(129,182,76,.22)", hovertemplate: "ruch %{x:.1f}: %{y:+.1f}<extra></extra>" },
     { type: "scatter", mode: "markers", x: marks.map(({ i }) => (i + 1) / 2), y: marks.map(({ i }) => y[i + 1]), marker: { color: marks.map(({ p }) => KIND[p.kind].color), size: marks.map(({ p }) => (p.kind === "best" ? 8 : 11)), line: { color: "#fff", width: 1 } }, text: marks.map(({ p, i }) => moveLabel(p, i) + KIND[p.kind].mark), hovertemplate: "%{text}<extra></extra>" },
-  ], { showlegend: false, shapes: cursor(), yaxis: { range: [-6.3, 6.3], zeroline: true, title: { text: "pionki" } }, xaxis: { title: { text: "Ruch (kliknij, żeby przejść)" } }, margin: { l: 44, r: 10, t: 10, b: 40 } })
+  ], { showlegend: false, hovermode: "x", dragmode: false, shapes: cursor(), yaxis: { range: [-6.3, 6.3], zeroline: true, fixedrange: true, title: { text: "pionki" } }, xaxis: { fixedrange: true, title: { text: "Ruch (kliknij, żeby przejść)" } }, margin: { l: 44, r: 10, t: 10, b: 40 } })
     .then(() => chart.on?.("plotly_click", (ev) => go(Math.round(ev.points[0].x * 2))));
   panel.insertAdjacentHTML("beforeend", `<div class="info small">Stockfish 18 lite w Twojej przeglądarce, głębokość ${r.depth || 12}. ${r.depth < eng.deepDepth() ? `<button class="link-btn sf-deeper">🔬 Głębsza analiza (ok. 4× dłużej)</button> ` : ""}Zielona strzałka: ostatnio zagrany ruch, niebieska: ruch, który należało zagrać zamiast niego. Oceny jak na Chess.com: genialny to dobre poświęcenie, świetny to jedyny dobry ruch, reszta zależy od tego, ile ruch zyskuje albo traci. Strzałki ← → na klawiaturze albo przesunięcie palcem po planszy zmieniają ruch.</div>`);
 

@@ -1,17 +1,17 @@
-import { fetchPlayer, cachedPlayer, importToLichess, PlayerNotFound, ApiError, cacheGet, cacheSet } from "./api.js?v=81";
-import { renderBoard } from "./board.js?v=81";
-import { patterns } from "./insights.js?v=81";
-import { startTrainer } from "./trainer.js?v=81";
-import { initInstallPrompt } from "./install.js?v=81";
-import { disablePageZoom } from "./nozoom.js?v=81";
-import { countUp, enter, initSwipeTabs, initToTop } from "./polish.js?v=81";
-import { addLocalTime, DAYS, MODES, sanMoves } from "./parse.js?v=81";
-import { tOpening, tReason } from "./i18n.js?v=81";
+import { fetchPlayer, cachedPlayer, importToLichess, PlayerNotFound, ApiError, cacheGet, cacheSet } from "./api.js?v=82";
+import { renderBoard } from "./board.js?v=82";
+import { patterns } from "./insights.js?v=82";
+import { startTrainer } from "./trainer.js?v=82";
+import { initInstallPrompt } from "./install.js?v=82";
+import { disablePageZoom } from "./nozoom.js?v=82";
+import { countUp, enter, initSwipeTabs, initToTop } from "./polish.js?v=82";
+import { addLocalTime, DAYS, MODES, sanMoves } from "./parse.js?v=82";
+import { tOpening, tReason } from "./i18n.js?v=82";
 import {
   LENGTH_BINS, lengthBin, pct, filterGames, counts, groupWin, eloSummary, eloChange, totalHours,
   mostCommon, movePace, streakEffect, openingTable, reasonShares, dayHourGrid, monthGrid,
   sessionIndexWin, SESSION_ORDER, ratingDiffWin, DIFF_ORDER, timeResults, quickResigns, opponents, monthSummary, prevMonth, openingTree,
-} from "./stats.js?v=81";
+} from "./stats.js?v=82";
 
 const $ = (s) => document.querySelector(s);
 const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
@@ -748,7 +748,7 @@ function tabOpen(el, games) {
 let engineMod = null;
 async function engine() {
   if (!engineMod) {
-    engineMod = await import("./engine.js?v=81");
+    engineMod = await import("./engine.js?v=82");
     engineMod.useCache(cacheGet, cacheSet);
   }
   return engineMod;
@@ -876,7 +876,11 @@ function sfViewer(panel, g, r, eng, onDeeper) {
           <button data-nav="first" aria-label="Początek">⏮</button><button data-nav="prev" class="big" aria-label="Poprzedni ruch">◀</button>
           <button data-nav="next" class="big" aria-label="Następny ruch">▶</button><button data-nav="last" aria-label="Koniec">⏭</button>
         </div>
-        <button data-nav="full" class="sf-fullbtn" title="Pełna analiza (F)"><span>📊 Pełna analiza</span><small>wykres oceny, wszystkie ruchy, podsumowanie</small></button>
+        <button data-nav="full" class="sf-fullbtn" title="Pełna analiza (F)">
+          <span class="ico" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M3 17l5-6 4 3 4-7 5 5" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/><path d="M3 21h18" stroke="currentColor" stroke-width="2" stroke-linecap="round" opacity=".5"/></svg></span>
+          <span class="txt"><b>Pełna analiza</b><small>Wykres · ruchy · celność ${r.accuracy}%</small></span>
+          <span class="chev" aria-hidden="true">›</span>
+        </button>
         <div class="sf-tools">
           <button data-nav="train" class="train-btn" title="Znajdź właściwy ruch w swoich błędach">🎯 Ćwicz błędy</button><button data-nav="err" class="err-btn">Następny błąd ›</button><button data-nav="flip" aria-label="Obróć planszę (R)" title="Obróć planszę (R)">⇅</button><button data-nav="full" aria-label="Pełna analiza z wykresem (F)" title="Pełna analiza z wykresem (F)">⛶</button>
         </div>
@@ -913,8 +917,8 @@ function sfViewer(panel, g, r, eng, onDeeper) {
   const cursor = () => [{ type: "line", x0: cur / 2, x1: cur / 2, yref: "paper", y0: 0, y1: 1, line: { color: css("--muted"), width: 1, dash: "dot" } }];
   plot(chart, [
     { type: "scatter", mode: "lines", x: y.map((_, i) => i / 2), y, fill: "tozeroy", line: { color: css("--accent"), width: 1.5 }, fillcolor: "rgba(129,182,76,.22)", hovertemplate: "ruch %{x:.1f}: %{y:+.1f}<extra></extra>" },
-    { type: "scatter", mode: "markers", x: marks.map(({ i }) => (i + 1) / 2), y: marks.map(({ i }) => y[i + 1]), marker: { color: marks.map(({ p }) => KIND[p.kind].color), size: marks.map(({ p }) => (p.kind === "best" ? 8 : 11)), line: { color: "#fff", width: 1 } }, text: marks.map(({ p, i }) => moveLabel(p, i) + KIND[p.kind].mark), hovertemplate: "%{text}<extra></extra>" },
-  ], { showlegend: false, hovermode: "x", dragmode: false, shapes: cursor(), font: { size: 10 }, yaxis: { range: [-6.3, 6.3], zeroline: true, fixedrange: true, dtick: 3, ticksuffix: " " }, xaxis: { fixedrange: true, ticks: "", nticks: 8 }, margin: { l: 26, r: 6, t: 6, b: 20 } })
+    { type: "scatter", mode: "markers", x: marks.map(({ i }) => (i + 1) / 2), y: marks.map(({ i }) => y[i + 1]), cliponaxis: false, marker: { color: marks.map(({ p }) => KIND[p.kind].color), size: marks.map(({ p }) => (p.kind === "best" ? 8 : 11)), line: { color: "#fff", width: 1 } }, text: marks.map(({ p, i }) => moveLabel(p, i) + KIND[p.kind].mark), hovertemplate: "%{text}<extra></extra>" },
+  ], { showlegend: false, hovermode: "x", dragmode: false, shapes: cursor(), font: { size: 10 }, yaxis: { range: [-7, 7], zeroline: true, fixedrange: true, dtick: 3, ticksuffix: " " }, xaxis: { fixedrange: true, ticks: "", nticks: 8 }, margin: { l: 26, r: 8, t: 8, b: 20 } })
     .then(() => chart.on?.("plotly_click", (ev) => go(Math.round(ev.points[0].x * 2))));
   panel.insertAdjacentHTML("beforeend", `<div class="info small sf-source">Źródło: Stockfish 18 lite · głębokość ${r.depth || 12}${r.depth < eng.deepDepth() ? ` · <button class="link-btn sf-deeper">🔬 Głębsza analiza</button>` : ""}</div>`);
 
@@ -929,6 +933,8 @@ function sfViewer(panel, g, r, eng, onDeeper) {
     if (instead) arrows.push({ from: instead.slice(0, 2), to: instead.slice(2, 4), color: "#4a90d9" });
 
     renderBoard(boardEl, { fen: r.fens[cur], flip, anim: animate && last ? { from: last.from, to: last.to } : null, last: last ? [last.from, last.to] : null, lastColor: last && KIND[last.kind].list ? KIND[last.kind].color : "", arrows, badge: last ? { sq: last.to, html: badge(last.kind, "board") } : null });
+    // Koniec partii widać na samej planszy (zwykły widok nie ma już opisu pod planszą).
+    if (cur === N) boardEl.insertAdjacentHTML("beforeend", `<div class="sf-boardend ${g.result}">${END_ICON[g.result] || "🏁"} ${esc(endText(g))}</div>`);
 
     const ev = r.evals[cur];
     const white = eng.winChance(ev);
@@ -937,7 +943,8 @@ function sfViewer(panel, g, r, eng, onDeeper) {
     fill.style.top = flip ? "0" : "auto";
     fill.style.bottom = flip ? "auto" : "0";
     panel.querySelector(".evalbar span").textContent = fmtEval(ev);
-    panel.querySelector(".evalbar span").className = (ev >= 0) !== flip ? "low" : "high";
+    // Liczba stoi na końcu paska po stronie, która wygrywa; ciemna na białym, jasna na czarnym.
+    panel.querySelector(".evalbar span").className = `${(ev >= 0) !== flip ? "low" : "high"} ${ev >= 0 ? "w" : "b"}`;
 
     let html = "";
     if (!last) html = `<div class="sf-move">Pozycja początkowa</div>`;

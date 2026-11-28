@@ -3,7 +3,7 @@
 // Pliki silnika leżą w docs/vendor/stockfish (GPLv3, https://github.com/nmrugg/stockfish.js).
 
 import { Chess } from "../vendor/chess.js";
-import { sanMoves } from "./parse.js?v=84";
+import { sanMoves } from "./parse.js?v=85";
 
 const engineUrl = (file) => new URL(`../vendor/stockfish/${file}`, import.meta.url).href;
 
@@ -13,8 +13,9 @@ export function pickThreads(isolated = typeof crossOriginIsolated !== "undefined
   return Math.max(1, Math.min(4, cores - 1));
 }
 export let engineThreads = 1;
-export const defaultDepth = () => (pickThreads() >= 3 ? 18 : 16);
-export const deepDepth = () => (pickThreads() >= 3 ? 22 : 20);
+// Ta sama głębokość na komputerze i telefonie; więcej wątków tylko przyspiesza liczenie.
+export const defaultDepth = () => ANALYSIS_DEPTH;
+export const deepDepth = () => DEEP_DEPTH;
 
 // Szansa wygranej (0–100) z oceny w centypionach, wzór jak na Lichess.
 export const winChance = (cp) => 50 + 50 * (2 / (1 + Math.exp(-0.00368208 * cp)) - 1);
@@ -202,9 +203,15 @@ export const cancelAnalysis = () => { if (current) current.cancelled = true; };
 const newToken = () => { cancelAnalysis(); current = { cancelled: false }; return current; };
 
 // Głębokość 16 to ok. 12 s na partię z 30 ruchów (desktop), 20 to ok. minuta. Seria partii liczy się szybciej (12).
-export const ANALYSIS_DEPTH = 16; // przy wielu wątkach: defaultDepth() = 18
-export const DEEP_DEPTH = 20; // przy wielu wątkach: deepDepth() = 22
+export const ANALYSIS_DEPTH = 16;
+export const DEEP_DEPTH = 20;
 export const BATCH_DEPTH = 12;
+// Poziomy analizy do wyboru w aplikacji.
+export const LEVELS = [
+  { id: "fast", name: "Szybka", depth: BATCH_DEPTH },
+  { id: "std", name: "Standard", depth: ANALYSIS_DEPTH },
+  { id: "deep", name: "Głęboka", depth: DEEP_DEPTH },
+];
 const CACHE_PREFIX = "sf|v7|";
 
 // Faza partii w pozycji: debiut do 12. ruchu, końcówka gdy zostało ≤ 6 figur (bez pionów i królów).

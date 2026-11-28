@@ -75,3 +75,11 @@ test("materialDiff i isSacrifice", () => {
   // Rywal nie bierze od razu (materiał traci się później, np. przez wcześniejszy błąd): to nie poświęcenie.
   assert.equal(isSacrifice(before, after, ["Nf6", "Nxg4", "Nxe4", "Nxe4"], true), false);
 });
+
+import { LEVELS, defaultDepth, deepDepth } from "../../docs/js/engine.js";
+test("poziomy analizy rosną, a domyślna głębokość jest jednakowa na każdym urządzeniu", () => {
+  assert.deepEqual(LEVELS.map((l) => l.id), ["fast", "std", "deep"]);
+  assert.ok(LEVELS[0].depth < LEVELS[1].depth && LEVELS[1].depth < LEVELS[2].depth);
+  assert.equal(defaultDepth(), LEVELS[1].depth);
+  assert.equal(deepDepth(), LEVELS[2].depth);
+});

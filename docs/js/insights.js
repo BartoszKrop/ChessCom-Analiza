@@ -1,6 +1,6 @@
 // Wzorce w grze na podstawie przeanalizowanych partii (wyniki z engine.analyzeGame). Czyste funkcje, bez DOM.
 
-import { winChance } from "./engine.js?v=84";
+import { winChance } from "./engine.js?v=85";
 
 const BIG = new Set(["blunder", "mistake", "miss"]);
 const PHASE_NAME = { open: "debiucie (ruchy 1–12)", middle: "grze środkowej", end: "końcówce" };

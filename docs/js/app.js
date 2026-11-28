@@ -1,17 +1,17 @@
-import { fetchPlayer, cachedPlayer, importToLichess, PlayerNotFound, ApiError, cacheGet, cacheSet } from "./api.js?v=84";
-import { renderBoard } from "./board.js?v=84";
-import { patterns } from "./insights.js?v=84";
-import { startTrainer } from "./trainer.js?v=84";
-import { initInstallPrompt } from "./install.js?v=84";
-import { disablePageZoom } from "./nozoom.js?v=84";
-import { countUp, enter, initSwipeTabs, initToTop } from "./polish.js?v=84";
-import { addLocalTime, DAYS, MODES, sanMoves } from "./parse.js?v=84";
-import { tOpening, tReason } from "./i18n.js?v=84";
+import { fetchPlayer, cachedPlayer, importToLichess, PlayerNotFound, ApiError, cacheGet, cacheSet } from "./api.js?v=85";
+import { renderBoard } from "./board.js?v=85";
+import { patterns } from "./insights.js?v=85";
+import { startTrainer } from "./trainer.js?v=85";
+import { initInstallPrompt } from "./install.js?v=85";
+import { disablePageZoom } from "./nozoom.js?v=85";
+import { countUp, enter, initSwipeTabs, initToTop } from "./polish.js?v=85";
+import { addLocalTime, DAYS, MODES, sanMoves } from "./parse.js?v=85";
+import { tOpening, tReason } from "./i18n.js?v=85";
 import {
   LENGTH_BINS, lengthBin, pct, filterGames, counts, groupWin, eloSummary, eloChange, totalHours,
   mostCommon, movePace, streakEffect, openingTable, reasonShares, dayHourGrid, monthGrid,
   sessionIndexWin, SESSION_ORDER, ratingDiffWin, DIFF_ORDER, timeResults, quickResigns, opponents, monthSummary, prevMonth, openingTree,
-} from "./stats.js?v=84";
+} from "./stats.js?v=85";
 
 const $ = (s) => document.querySelector(s);
 const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
@@ -748,7 +748,7 @@ function tabOpen(el, games) {
 let engineMod = null;
 async function engine() {
   if (!engineMod) {
-    engineMod = await import("./engine.js?v=84");
+    engineMod = await import("./engine.js?v=85");
     engineMod.useCache(cacheGet, cacheSet);
   }
   return engineMod;
@@ -816,23 +816,46 @@ async function openSfPanel(anchor, g) {
   runSf(panel, g);
 }
 
-async function runSf(panel, g, deep = false) {
+// Wybrany poziom analizy (Szybka / Standard / Głęboka) zapamiętujemy w przeglądarce.
+const SF_LEVEL_KEY = "sfLevel";
+function sfLevel(eng) {
+  let id = "std";
+  try { id = localStorage.getItem(SF_LEVEL_KEY) || id; } catch { /* bez pamięci przeglądarki */ }
+  return eng.LEVELS.find((l) => l.id === id) || eng.LEVELS[1];
+}
+function setSfLevel(id) { try { localStorage.setItem(SF_LEVEL_KEY, id); } catch { /* bez pamięci przeglądarki */ } }
+const levelPicker = (eng, depth) => `<div class="sf-levels" role="group" aria-label="Poziom analizy">${eng.LEVELS.map((l) =>
+  `<button data-level="${l.id}" class="${l.depth === depth ? "on" : ""}" title="Głębokość ${l.depth}">${l.name}<small>gł. ${l.depth}</small></button>`).join("")}</div>`;
+
+// depth: null = pokaż zapisaną analizę albo licz na wybranym poziomie; liczba = licz na tej głębokości.
+async function runSf(panel, g, depth = null, reopenFull = false) {
+  const run = (panel._run = (panel._run || 0) + 1);
+  const eng = await engine().catch(() => null);
+  const target = depth || (eng ? sfLevel(eng).depth : 16);
   panel.innerHTML = `<div class="progress"><div class="bar"></div><span>Uruchamiam silnik…</span></div>
-    <button class="link-btn sf-cancel">Anuluj</button>`;
-  panel.querySelector(".sf-cancel").addEventListener("click", async () => { (await engine()).cancelAnalysis(); });
+    <div class="sf-runbar">${eng ? levelPicker(eng, target) : ""}<button class="link-btn sf-cancel">Anuluj</button></div>`;
+  panel.querySelector(".sf-cancel").addEventListener("click", () => eng?.cancelAnalysis());
+  panel.querySelectorAll(".sf-levels [data-level]").forEach((b) => b.addEventListener("click", () => {
+    const l = eng.LEVELS.find((x) => x.id === b.dataset.level);
+    setSfLevel(l.id);
+    if (l.depth !== target) runSf(panel, g, l.depth);
+  }));
   try {
-    const eng = await engine();
-    // Partia już przeanalizowana (np. zbiorczo na mniejszej głębokości): pokazujemy zapamiętany wynik, głębiej liczy przycisk „Głębsza analiza".
-    const saved = deep ? null : await eng.cachedAnalysis(g, 0);
+    if (!eng) throw new Error("Nie udało się uruchomić silnika.");
+    // Zapisana analiza (np. głębsza albo zbiorcza) pokazuje się od razu; inny poziom można wybrać w pełnej analizie.
+    const saved = await eng.cachedAnalysis(g, depth || 0);
     const res = saved || await eng.analyzeGame(g, {
-      depth: deep ? eng.deepDepth() : eng.defaultDepth(),
+      depth: target,
       onProgress: (d, t) => {
+        if (panel._run !== run) return;
         panel.querySelector(".bar").style.width = `${(d / t) * 100}%`;
-        panel.querySelector(".progress span").textContent = `Analiza: pozycja ${d} z ${t}`;
+        panel.querySelector(".progress span").textContent = `Analiza (gł. ${target}): pozycja ${d} z ${t}`;
       },
     });
+    if (panel._run !== run) return; // w międzyczasie wybrano inny poziom
     if (!res) return panel.remove();
-    sfViewer(panel, g, res, eng, () => runSf(panel, g, true));
+    sfViewer(panel, g, res, eng, (d, full) => runSf(panel, g, d, full));
+    if (reopenFull) panel._openFull?.();
     document.querySelectorAll(`.gc-sf[data-link="${CSS.escape(g.link)}"]`).forEach((b) => (b.textContent = `🔍 ${Math.round(res.accuracy)}%`));
   } catch (err) {
     panel.innerHTML = `<div class="error">${esc(err.message || "Analiza się nie udała.")}</div>`;
@@ -920,7 +943,7 @@ function sfViewer(panel, g, r, eng, onDeeper) {
     { type: "scatter", mode: "markers", x: marks.map(({ i }) => (i + 1) / 2), y: marks.map(({ i }) => y[i + 1]), cliponaxis: false, marker: { color: marks.map(({ p }) => KIND[p.kind].color), size: marks.map(({ p }) => (p.kind === "best" ? 8 : 11)), line: { color: "#fff", width: 1 } }, text: marks.map(({ p, i }) => moveLabel(p, i) + KIND[p.kind].mark), hovertemplate: "%{text}<extra></extra>" },
   ], { showlegend: false, hovermode: "x", dragmode: false, shapes: cursor(), font: { size: 10 }, yaxis: { range: [-7, 7], zeroline: true, fixedrange: true, dtick: 3, ticksuffix: " " }, xaxis: { fixedrange: true, ticks: "", nticks: 8 }, margin: { l: 26, r: 8, t: 8, b: 20 } })
     .then(() => chart.on?.("plotly_click", (ev) => go(Math.round(ev.points[0].x * 2))));
-  panel.insertAdjacentHTML("beforeend", `<div class="info small sf-source">Źródło: Stockfish 18 lite · głębokość ${r.depth || 12}${r.depth < eng.deepDepth() ? ` · <button class="link-btn sf-deeper">🔬 Głębsza analiza</button>` : ""}</div>`);
+  panel.insertAdjacentHTML("beforeend", `<div class="sf-source"><span>Poziom analizy</span>${levelPicker(eng, r.depth || 12)}<div class="info small">Źródło: Stockfish 18 lite · głębokość ${r.depth || 12}</div></div>`);
 
   const bestSanAt = (i) => (i < N ? r.plies[i].bestSan || r.plies[i].san : null);
 
@@ -999,6 +1022,7 @@ function sfViewer(panel, g, r, eng, onDeeper) {
     if (chart.layout && on) window.Plotly.Plots.resize(chart);
   }
   panel._closeFull = () => toggleFull(false);
+  panel._openFull = () => toggleFull(true);
   panel.onfullscreenchange = () => { if (!document.fullscreenElement && panel.classList.contains("full")) toggleFull(false); };
 
   panel.addEventListener("click", (e) => {
@@ -1017,7 +1041,19 @@ function sfViewer(panel, g, r, eng, onDeeper) {
     else if (nav === "train") startTrainer(panel, g, r, flip, () => update());
     else if (nav === "err" && bad.length) go((bad.find(({ i }) => i + 1 > cur) || bad[0]).i + 1);
   });
-  panel.querySelector(".sf-deeper")?.addEventListener("click", onDeeper);
+  panel.querySelectorAll(".sf-source [data-level]").forEach((b) => b.addEventListener("click", () => {
+    const l = eng.LEVELS.find((x) => x.id === b.dataset.level);
+    setSfLevel(l.id);
+    // Słabszy poziom niż już policzony nic nie zmienia: zostawiamy dokładniejszą analizę, a wybór działa dla kolejnych partii.
+    if (l.depth <= (r.depth || 12)) {
+      panel.querySelectorAll(".sf-source [data-level]").forEach((x) => x.classList.toggle("pick", x === b && l.depth < (r.depth || 12)));
+      if (l.depth < (r.depth || 12)) toast(`${l.name} analiza będzie używana dla kolejnych partii. Ta ma już dokładniejszą.`);
+      return;
+    }
+    const wasFull = panel.classList.contains("full");
+    if (wasFull) toggleFull(false);
+    onDeeper(l.depth, wasFull);
+  }));
   panel.tabIndex = 0;
   panel.addEventListener("keydown", (e) => {
     if (panel.classList.contains("training")) return;

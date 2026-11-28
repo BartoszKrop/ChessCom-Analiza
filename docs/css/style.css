@@ -418,8 +418,13 @@ body.noscroll #to-top { display: none; }
 @media (max-width: 760px) { .sf-panel.full .sf-main { grid-template-columns: 1fr; } }
 
 /* Zwykły widok analizy: tylko plansza, przewijanie i wejście w pełną analizę. Opisy są w pełnej analizie. */
-.sf-panel:not(.full):not(.training) .sf-side, .sf-panel:not(.full) > .sf-source { display: none; }
-.sf-panel:not(.full):not(.training) .sf-main { grid-template-columns: minmax(0, 460px); justify-content: center; }
+.sf-panel:not(.full) > .sf-source { display: none; }
+/* Ćwiczenia i skok do błędu są w pełnej analizie; tu zostaje tylko celność i tabelka rodzajów ruchów. */
+.sf-panel:not(.full):not(.training) .sf-tools,
+.sf-panel:not(.full):not(.training) .sf-info,
+.sf-panel:not(.full):not(.training) .sf-acc { display: none; }
+.sf-panel:not(.full):not(.training) .sf-sum { display: table; margin-top: 0; }
+.sf-panel:not(.full):not(.training) .sf-kindhelp:not(.hidden) { display: grid; }
 .board { position: relative; }
 .sf-boardend { position: absolute; left: 50%; bottom: 8%; transform: translateX(-50%); z-index: 4; padding: 6px 14px; border-radius: 999px; white-space: nowrap; font-weight: 700; font-size: .9rem; color: #fff; background: rgba(30, 30, 30, .85); box-shadow: 0 4px 14px rgba(0, 0, 0, .4); backdrop-filter: blur(4px); pointer-events: none; animation: popUp2 .25s ease both; }
 .sf-boardend.W { background: color-mix(in srgb, var(--win) 88%, #000); }

@@ -1,17 +1,17 @@
-import { fetchPlayer, cachedPlayer, importToLichess, PlayerNotFound, ApiError, cacheGet, cacheSet } from "./api.js?v=78";
-import { renderBoard } from "./board.js?v=78";
-import { patterns } from "./insights.js?v=78";
-import { startTrainer } from "./trainer.js?v=78";
-import { initInstallPrompt } from "./install.js?v=78";
-import { disablePageZoom } from "./nozoom.js?v=78";
-import { countUp, enter, initSwipeTabs, initToTop } from "./polish.js?v=78";
-import { addLocalTime, DAYS, MODES, sanMoves } from "./parse.js?v=78";
-import { tOpening, tReason } from "./i18n.js?v=78";
+import { fetchPlayer, cachedPlayer, importToLichess, PlayerNotFound, ApiError, cacheGet, cacheSet } from "./api.js?v=79";
+import { renderBoard } from "./board.js?v=79";
+import { patterns } from "./insights.js?v=79";
+import { startTrainer } from "./trainer.js?v=79";
+import { initInstallPrompt } from "./install.js?v=79";
+import { disablePageZoom } from "./nozoom.js?v=79";
+import { countUp, enter, initSwipeTabs, initToTop } from "./polish.js?v=79";
+import { addLocalTime, DAYS, MODES, sanMoves } from "./parse.js?v=79";
+import { tOpening, tReason } from "./i18n.js?v=79";
 import {
   LENGTH_BINS, lengthBin, pct, filterGames, counts, groupWin, eloSummary, eloChange, totalHours,
   mostCommon, movePace, streakEffect, openingTable, reasonShares, dayHourGrid, monthGrid,
   sessionIndexWin, SESSION_ORDER, ratingDiffWin, DIFF_ORDER, timeResults, quickResigns, opponents, monthSummary, prevMonth, openingTree,
-} from "./stats.js?v=78";
+} from "./stats.js?v=79";
 
 const $ = (s) => document.querySelector(s);
 const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
@@ -748,7 +748,7 @@ function tabOpen(el, games) {
 let engineMod = null;
 async function engine() {
   if (!engineMod) {
-    engineMod = await import("./engine.js?v=78");
+    engineMod = await import("./engine.js?v=79");
     engineMod.useCache(cacheGet, cacheSet);
   }
   return engineMod;
@@ -905,8 +905,12 @@ function sfViewer(panel, g, r, eng, onDeeper) {
     { type: "scatter", mode: "lines", x: y.map((_, i) => i / 2), y, fill: "tozeroy", line: { color: css("--accent"), width: 1.5 }, fillcolor: "rgba(129,182,76,.22)", hovertemplate: "ruch %{x:.1f}: %{y:+.1f}<extra></extra>" },
     { type: "scatter", mode: "markers", x: marks.map(({ i }) => (i + 1) / 2), y: marks.map(({ i }) => y[i + 1]), marker: { color: marks.map(({ p }) => KIND[p.kind].color), size: marks.map(({ p }) => (p.kind === "best" ? 8 : 11)), line: { color: "#fff", width: 1 } }, text: marks.map(({ p, i }) => moveLabel(p, i) + KIND[p.kind].mark), hovertemplate: "%{text}<extra></extra>" },
   ], { showlegend: false, hovermode: "x", dragmode: false, shapes: cursor(), yaxis: { range: [-6.3, 6.3], zeroline: true, fixedrange: true, title: { text: "pionki" } }, xaxis: { fixedrange: true, title: { text: "Ruch (kliknij, żeby przejść)" } }, margin: { l: 44, r: 10, t: 10, b: 40 } })
-    .then(() => chart.on?.("plotly_click", (ev) => go(Math.round(ev.points[0].x * 2))));
-  panel.insertAdjacentHTML("beforeend", `<div class="info small">Stockfish 18 lite w Twojej przeglądarce, głębokość ${r.depth || 12}. ${r.depth < eng.deepDepth() ? `<button class="link-btn sf-deeper">🔬 Głębsza analiza (ok. 4× dłużej)</button> ` : ""}Zielona strzałka: ostatnio zagrany ruch, niebieska: ruch, który należało zagrać zamiast niego. Oceny jak na Chess.com: genialny to dobre poświęcenie, świetny to jedyny dobry ruch, reszta zależy od tego, ile ruch zyskuje albo traci. Strzałki ← → na klawiaturze albo przesunięcie palcem po planszy zmieniają ruch.</div>`);
+    .then(() => { chart.on?.("plotly_click", (ev) => go(Math.round(ev.points[0].x * 2))); if (panel.classList.contains("full")) evalAxis(true); });
+  // W pełnym ekranie podpis osi („kliknij, żeby przejść”) jest nad wykresem.
+  const evalAxis = (full) => chart.layout && window.Plotly.relayout(chart, full
+    ? { "xaxis.side": "top", "margin.t": 40, "margin.b": 8 }
+    : { "xaxis.side": "bottom", "margin.t": 10, "margin.b": 40 });
+  panel.insertAdjacentHTML("beforeend", `<div class="info small sf-source">Źródło: Stockfish 18 lite · głębokość ${r.depth || 12}${r.depth < eng.deepDepth() ? ` · <button class="link-btn sf-deeper">🔬 Głębsza analiza</button>` : ""}</div>`);
 
   const bestSanAt = (i) => (i < N ? r.plies[i].bestSan || r.plies[i].san : null);
 
@@ -974,7 +978,7 @@ function sfViewer(panel, g, r, eng, onDeeper) {
       else if (!on && document.fullscreenElement) document.exitFullscreen();
     } catch { /* bez API pełnego ekranu */ }
     panel.querySelector('[data-nav="full"]').classList.toggle("on", on);
-    if (chart.layout) window.Plotly.Plots.resize(chart);
+    if (chart.layout) { evalAxis(on); window.Plotly.Plots.resize(chart); }
   }
   panel._closeFull = () => toggleFull(false);
   panel.onfullscreenchange = () => { if (!document.fullscreenElement && panel.classList.contains("full")) toggleFull(false); };

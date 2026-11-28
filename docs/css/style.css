@@ -385,3 +385,4 @@ body.noscroll #to-top { display: none; }
 .sf-panel.full > .sf-evalchart { order: -1; flex: none; height: 140px; margin: 0 0 10px; }
 .sf-panel.full .sf-main { grid-template-columns: minmax(0, min(calc(100dvh - 280px), 68vw)) minmax(0, 1fr); }
 @media (max-width: 760px) { .sf-panel.full > .sf-evalchart { height: 130px; } .sf-panel.full .sf-main { grid-template-columns: 1fr; } }
+.sf-source { font-size: .75rem; opacity: .8; }

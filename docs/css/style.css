@@ -448,3 +448,6 @@ body.noscroll #to-top { display: none; }
 [data-theme="neon"] .sf-fullbtn .ico { color: #0a0a14; }
 .evalbar span.w { color: #403d39; }
 .evalbar span.b { color: #f1f1f1; }
+
+/* iPhone przybliża ekran przy wejściu w pole tekstowe z czcionką mniejszą niż 16px. Na ekranach dotykowych pola mają zawsze co najmniej 16px, więc ekran się nie przybliża. */
+@media (pointer: coarse) { input, select, textarea { font-size: max(16px, 1em) !important; } }

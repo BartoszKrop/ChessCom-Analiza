@@ -451,3 +451,6 @@ body.noscroll #to-top { display: none; }
 
 /* iPhone przybliża ekran przy wejściu w pole tekstowe z czcionką mniejszą niż 16px. Na ekranach dotykowych pola mają zawsze co najmniej 16px, więc ekran się nie przybliża. */
 @media (pointer: coarse) { input, select, textarea { font-size: max(16px, 1em) !important; } }
+
+/* Wykres oceny: bez dymka z numerem ruchu na dolnej osi (Plotly dodaje go przy hovermode "x"). */
+.sf-evalchart .hoverlayer .axistext { display: none; }

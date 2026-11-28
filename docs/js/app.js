@@ -1,17 +1,17 @@
-import { fetchPlayer, cachedPlayer, importToLichess, PlayerNotFound, ApiError, cacheGet, cacheSet } from "./api.js?v=80";
-import { renderBoard } from "./board.js?v=80";
-import { patterns } from "./insights.js?v=80";
-import { startTrainer } from "./trainer.js?v=80";
-import { initInstallPrompt } from "./install.js?v=80";
-import { disablePageZoom } from "./nozoom.js?v=80";
-import { countUp, enter, initSwipeTabs, initToTop } from "./polish.js?v=80";
-import { addLocalTime, DAYS, MODES, sanMoves } from "./parse.js?v=80";
-import { tOpening, tReason } from "./i18n.js?v=80";
+import { fetchPlayer, cachedPlayer, importToLichess, PlayerNotFound, ApiError, cacheGet, cacheSet } from "./api.js?v=81";
+import { renderBoard } from "./board.js?v=81";
+import { patterns } from "./insights.js?v=81";
+import { startTrainer } from "./trainer.js?v=81";
+import { initInstallPrompt } from "./install.js?v=81";
+import { disablePageZoom } from "./nozoom.js?v=81";
+import { countUp, enter, initSwipeTabs, initToTop } from "./polish.js?v=81";
+import { addLocalTime, DAYS, MODES, sanMoves } from "./parse.js?v=81";
+import { tOpening, tReason } from "./i18n.js?v=81";
 import {
   LENGTH_BINS, lengthBin, pct, filterGames, counts, groupWin, eloSummary, eloChange, totalHours,
   mostCommon, movePace, streakEffect, openingTable, reasonShares, dayHourGrid, monthGrid,
   sessionIndexWin, SESSION_ORDER, ratingDiffWin, DIFF_ORDER, timeResults, quickResigns, opponents, monthSummary, prevMonth, openingTree,
-} from "./stats.js?v=80";
+} from "./stats.js?v=81";
 
 const $ = (s) => document.querySelector(s);
 const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
@@ -748,7 +748,7 @@ function tabOpen(el, games) {
 let engineMod = null;
 async function engine() {
   if (!engineMod) {
-    engineMod = await import("./engine.js?v=80");
+    engineMod = await import("./engine.js?v=81");
     engineMod.useCache(cacheGet, cacheSet);
   }
   return engineMod;
@@ -868,6 +868,7 @@ function sfViewer(panel, g, r, eng, onDeeper) {
   let cur = 0;
 
   panel.innerHTML = `
+    <div class="sf-fullhead"><b>📊 Pełna analiza</b><button data-nav="full" class="sf-close" aria-label="Zamknij pełną analizę (Esc)">✕</button></div>
     <div class="sf-main">
       <div class="sf-boardcol">
         <div class="sf-boardwrap"><div class="evalbar"><div class="fill"></div><span></span></div><div class="board"></div></div>
@@ -875,12 +876,14 @@ function sfViewer(panel, g, r, eng, onDeeper) {
           <button data-nav="first" aria-label="Początek">⏮</button><button data-nav="prev" class="big" aria-label="Poprzedni ruch">◀</button>
           <button data-nav="next" class="big" aria-label="Następny ruch">▶</button><button data-nav="last" aria-label="Koniec">⏭</button>
         </div>
+        <button data-nav="full" class="sf-fullbtn" title="Pełna analiza (F)"><span>📊 Pełna analiza</span><small>wykres oceny, wszystkie ruchy, podsumowanie</small></button>
         <div class="sf-tools">
           <button data-nav="train" class="train-btn" title="Znajdź właściwy ruch w swoich błędach">🎯 Ćwicz błędy</button><button data-nav="err" class="err-btn">Następny błąd ›</button><button data-nav="flip" aria-label="Obróć planszę (R)" title="Obróć planszę (R)">⇅</button><button data-nav="full" aria-label="Pełna analiza z wykresem (F)" title="Pełna analiza z wykresem (F)">⛶</button>
         </div>
       </div>
       <div class="sf-side">
         <div class="sf-info"></div>
+        <div class="sf-acc">Celność: <b>Ty ${r.accuracy}%</b> · rywal ${r.accuracyOpp}%</div>
         ${summaryTable(r)}
         <div class="sf-movelist"></div>
       </div>
@@ -901,7 +904,7 @@ function sfViewer(panel, g, r, eng, onDeeper) {
   listEl.innerHTML = `<div class="mvgrid">${rows}<button class="sf-endchip ${g.result}" data-p="${N}">${END_ICON[g.result] || "🏁"} ${esc(endText(g))}</button></div>`;
 
   // Wykres oceny.
-  const chart = chartBox(panel, "Ocena pozycji (dla Ciebie)");
+  const chart = chartBox(panel, "Ocena pozycji · stuknij wykres, żeby przejść do ruchu");
   chart.classList.add("short", "sf-evalchart");
   chart.previousElementSibling.classList.add("sf-evaltitle");
   const mySign = g.color === "b" ? -1 : 1; // oś pokazuje przewagę Twojej strony
@@ -911,12 +914,8 @@ function sfViewer(panel, g, r, eng, onDeeper) {
   plot(chart, [
     { type: "scatter", mode: "lines", x: y.map((_, i) => i / 2), y, fill: "tozeroy", line: { color: css("--accent"), width: 1.5 }, fillcolor: "rgba(129,182,76,.22)", hovertemplate: "ruch %{x:.1f}: %{y:+.1f}<extra></extra>" },
     { type: "scatter", mode: "markers", x: marks.map(({ i }) => (i + 1) / 2), y: marks.map(({ i }) => y[i + 1]), marker: { color: marks.map(({ p }) => KIND[p.kind].color), size: marks.map(({ p }) => (p.kind === "best" ? 8 : 11)), line: { color: "#fff", width: 1 } }, text: marks.map(({ p, i }) => moveLabel(p, i) + KIND[p.kind].mark), hovertemplate: "%{text}<extra></extra>" },
-  ], { showlegend: false, hovermode: "x", dragmode: false, shapes: cursor(), yaxis: { range: [-6.3, 6.3], zeroline: true, fixedrange: true, title: { text: "pionki" } }, xaxis: { fixedrange: true, title: { text: "Ruch (kliknij, żeby przejść)" } }, margin: { l: 44, r: 10, t: 10, b: 40 } })
-    .then(() => { chart.on?.("plotly_click", (ev) => go(Math.round(ev.points[0].x * 2))); if (panel.classList.contains("full")) evalAxis(true); });
-  // W pełnym ekranie podpis osi („kliknij, żeby przejść”) jest nad wykresem.
-  const evalAxis = (full) => chart.layout && window.Plotly.relayout(chart, full
-    ? { "xaxis.side": "top", "margin.t": 40, "margin.b": 8 }
-    : { "xaxis.side": "bottom", "margin.t": 10, "margin.b": 40 });
+  ], { showlegend: false, hovermode: "x", dragmode: false, shapes: cursor(), font: { size: 10 }, yaxis: { range: [-6.3, 6.3], zeroline: true, fixedrange: true, dtick: 3, ticksuffix: " " }, xaxis: { fixedrange: true, ticks: "", nticks: 8 }, margin: { l: 26, r: 6, t: 6, b: 20 } })
+    .then(() => chart.on?.("plotly_click", (ev) => go(Math.round(ev.points[0].x * 2))));
   panel.insertAdjacentHTML("beforeend", `<div class="info small sf-source">Źródło: Stockfish 18 lite · głębokość ${r.depth || 12}${r.depth < eng.deepDepth() ? ` · <button class="link-btn sf-deeper">🔬 Głębsza analiza</button>` : ""}</div>`);
 
   const bestSanAt = (i) => (i < N ? r.plies[i].bestSan || r.plies[i].san : null);
@@ -988,8 +987,9 @@ function sfViewer(panel, g, r, eng, onDeeper) {
       if (on && !document.fullscreenElement) panel.requestFullscreen?.()?.catch(() => {});
       else if (!on && document.fullscreenElement) document.exitFullscreen();
     } catch { /* bez API pełnego ekranu */ }
-    panel.querySelector('[data-nav="full"]').classList.toggle("on", on);
-    if (chart.layout && on) { evalAxis(true); window.Plotly.Plots.resize(chart); }
+    panel.querySelectorAll('.sf-tools [data-nav="full"]').forEach((b) => b.classList.toggle("on", on));
+    if (on) panel.scrollTop = 0;
+    if (chart.layout && on) window.Plotly.Plots.resize(chart);
   }
   panel._closeFull = () => toggleFull(false);
   panel.onfullscreenchange = () => { if (!document.fullscreenElement && panel.classList.contains("full")) toggleFull(false); };

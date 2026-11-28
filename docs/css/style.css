@@ -396,3 +396,23 @@ body.noscroll #to-top { display: none; }
 .sf-endchip.W { background: color-mix(in srgb, var(--win) 25%, transparent); }
 .sf-endchip.L { background: color-mix(in srgb, var(--loss) 25%, transparent); }
 .sf-nav button.dim { opacity: .35; }
+
+/* Zwykły widok analizy: plansza, strzałki, ocena ruchu i wyraźny przycisk „Pełna analiza”.
+   Pełna analiza (⛶): nagłówek z zamknięciem, wykres oceny, podsumowanie i lista ruchów. */
+.sf-fullhead { display: none; }
+.sf-fullbtn { display: flex; flex-direction: column; align-items: center; gap: 1px; width: 100%; margin-top: 10px; min-height: 52px; padding: 6px 12px; background: var(--accent); color: #fff; border: none; border-radius: 10px; font-weight: 700; font-size: 1rem; box-shadow: 0 2px 8px rgba(0, 0, 0, .25); }
+.sf-fullbtn small { font-weight: 500; font-size: .75rem; opacity: .85; }
+[data-theme="neon"] .sf-fullbtn { color: #0a0a14; }
+.sf-acc { font-size: .9rem; color: var(--muted); padding: 2px 2px 0; }
+.sf-acc b { color: var(--text); }
+.sf-panel:not(.full) .sf-sum, .sf-panel:not(.full) .sf-kindhelp, .sf-panel:not(.full) .sf-movelist, .sf-panel:not(.full) .sf-tools [data-nav=full] { display: none; }
+.sf-panel.full .sf-fullbtn, .sf-panel.full .sf-acc { display: none; }
+.sf-panel.full { padding-top: max(10px, env(safe-area-inset-top)); }
+.sf-panel.full .sf-fullhead { order: -3; display: flex; align-items: center; justify-content: space-between; position: sticky; top: calc(-1 * max(10px, env(safe-area-inset-top))); z-index: 5; margin: 0 0 6px; padding: 4px 0; background: var(--bg); font-size: 1.05rem; }
+.sf-close { width: 40px; height: 40px; min-height: 40px; padding: 0; border-radius: 50%; font-size: 1.1rem; }
+.sf-panel.full > .sf-evaltitle { display: block; order: -2; margin: 0 0 4px; font-size: .78rem; font-weight: 500; color: var(--muted); }
+.sf-panel.full > .sf-evalchart { order: -1; height: 150px; }
+@media (max-width: 760px) { .sf-panel.full > .sf-evalchart { height: 140px; } }
+.sf-panel.training .sf-fullbtn { display: none; }
+.sf-panel.full .sf-main { grid-template-columns: minmax(0, min(calc(100dvh - 340px), 68vw)) minmax(0, 1fr); }
+@media (max-width: 760px) { .sf-panel.full .sf-main { grid-template-columns: 1fr; } }

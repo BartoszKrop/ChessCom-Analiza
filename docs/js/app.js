@@ -1,17 +1,17 @@
-import { fetchPlayer, cachedPlayer, importToLichess, PlayerNotFound, ApiError, cacheGet, cacheSet } from "./api.js?v=79";
-import { renderBoard } from "./board.js?v=79";
-import { patterns } from "./insights.js?v=79";
-import { startTrainer } from "./trainer.js?v=79";
-import { initInstallPrompt } from "./install.js?v=79";
-import { disablePageZoom } from "./nozoom.js?v=79";
-import { countUp, enter, initSwipeTabs, initToTop } from "./polish.js?v=79";
-import { addLocalTime, DAYS, MODES, sanMoves } from "./parse.js?v=79";
-import { tOpening, tReason } from "./i18n.js?v=79";
+import { fetchPlayer, cachedPlayer, importToLichess, PlayerNotFound, ApiError, cacheGet, cacheSet } from "./api.js?v=80";
+import { renderBoard } from "./board.js?v=80";
+import { patterns } from "./insights.js?v=80";
+import { startTrainer } from "./trainer.js?v=80";
+import { initInstallPrompt } from "./install.js?v=80";
+import { disablePageZoom } from "./nozoom.js?v=80";
+import { countUp, enter, initSwipeTabs, initToTop } from "./polish.js?v=80";
+import { addLocalTime, DAYS, MODES, sanMoves } from "./parse.js?v=80";
+import { tOpening, tReason } from "./i18n.js?v=80";
 import {
   LENGTH_BINS, lengthBin, pct, filterGames, counts, groupWin, eloSummary, eloChange, totalHours,
   mostCommon, movePace, streakEffect, openingTable, reasonShares, dayHourGrid, monthGrid,
   sessionIndexWin, SESSION_ORDER, ratingDiffWin, DIFF_ORDER, timeResults, quickResigns, opponents, monthSummary, prevMonth, openingTree,
-} from "./stats.js?v=79";
+} from "./stats.js?v=80";
 
 const $ = (s) => document.querySelector(s);
 const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
@@ -522,7 +522,7 @@ function switchTab(tab) {
 function fitCharts() {
   enter($("#tab-content"));
   countUp($("#tab-content"));
-  requestAnimationFrame(() => window.Plotly && document.querySelectorAll("#tab-content .js-plotly-plot").forEach((c) => window.Plotly.Plots.resize(c)));
+  requestAnimationFrame(() => window.Plotly && document.querySelectorAll("#tab-content .js-plotly-plot").forEach((c) => c.offsetParent && window.Plotly.Plots.resize(c)));
 }
 
 // ----- Moja analiza
@@ -748,7 +748,7 @@ function tabOpen(el, games) {
 let engineMod = null;
 async function engine() {
   if (!engineMod) {
-    engineMod = await import("./engine.js?v=79");
+    engineMod = await import("./engine.js?v=80");
     engineMod.useCache(cacheGet, cacheSet);
   }
   return engineMod;
@@ -785,6 +785,13 @@ function whyText(w) {
   if (w.code === "wasted") return "Zmarnowana przewaga";
   return "";
 }
+// Koniec partii: wynik z Twojej perspektywy i sposób (mat, poddanie, czas...).
+const END_ICON = { W: "🏆", D: "🤝", L: "🏳️" };
+const endText = (g) => {
+  const res = { W: "Wygrana", D: "Remis", L: "Porażka" }[g.result] || "Koniec";
+  const how = g.reason ? tReason(g.reason).toLowerCase() : "";
+  return how && how !== res.toLowerCase() ? `${res} · ${how}` : res;
+};
 const isBadMove = (p) => p.mine && ["blunder", "mistake", "miss"].includes(p.kind);
 const PHASES = [["open", "Debiut"], ["middle", "Gra środkowa"], ["end", "Końcówka"]];
 const fmtEval = (v) => {
@@ -869,7 +876,7 @@ function sfViewer(panel, g, r, eng, onDeeper) {
           <button data-nav="next" class="big" aria-label="Następny ruch">▶</button><button data-nav="last" aria-label="Koniec">⏭</button>
         </div>
         <div class="sf-tools">
-          <button data-nav="train" class="train-btn" title="Znajdź właściwy ruch w swoich błędach">🎯 Ćwicz błędy</button><button data-nav="err" class="err-btn">Następny błąd ›</button><button data-nav="flip" aria-label="Obróć planszę (R)" title="Obróć planszę (R)">⇅</button><button data-nav="full" aria-label="Pełny ekran (F)" title="Pełny ekran (F)">⛶</button>
+          <button data-nav="train" class="train-btn" title="Znajdź właściwy ruch w swoich błędach">🎯 Ćwicz błędy</button><button data-nav="err" class="err-btn">Następny błąd ›</button><button data-nav="flip" aria-label="Obróć planszę (R)" title="Obróć planszę (R)">⇅</button><button data-nav="full" aria-label="Pełna analiza z wykresem (F)" title="Pełna analiza z wykresem (F)">⛶</button>
         </div>
       </div>
       <div class="sf-side">
@@ -891,7 +898,7 @@ function sfViewer(panel, g, r, eng, onDeeper) {
     };
     rows += `<span class="no">${i / 2 + 1}.</span>${cell(i)}${cell(i + 1)}`;
   }
-  listEl.innerHTML = `<div class="mvgrid">${rows}</div>`;
+  listEl.innerHTML = `<div class="mvgrid">${rows}<button class="sf-endchip ${g.result}" data-p="${N}">${END_ICON[g.result] || "🏁"} ${esc(endText(g))}</button></div>`;
 
   // Wykres oceny.
   const chart = chartBox(panel, "Ocena pozycji (dla Ciebie)");
@@ -945,6 +952,7 @@ function sfViewer(panel, g, r, eng, onDeeper) {
         html += `<div class="${k.err ? "" : "muted"}">${k.err ? "Lepiej było" : "Najlepszy był"}: <b>${esc(k.err && last.line.length ? last.line.slice(0, 4).join(" ") : last.bestSan)}</b>${k.err ? ` <button class="link-btn" data-nav="prev">◀ pokaż</button>` : ""}</div>`;
       }
     }
+    if (cur === N) html = `<div class="sf-end ${g.result}">${END_ICON[g.result] || "🏁"} Koniec partii: <b>${esc(endText(g))}</b></div>` + html;
     html += `<div class="muted">Ocena: <b>${fmtEval(ev)}</b>${bestSanAt(cur) ? ` · najlepsze teraz: <b>${esc(bestSanAt(cur))}</b>` : ""}</div>`;
     info.innerHTML = html;
 
@@ -957,6 +965,9 @@ function sfViewer(panel, g, r, eng, onDeeper) {
     }
     if (chart.layout) window.Plotly.relayout(chart, { shapes: cursor() });
     panel.querySelector('[data-nav="err"]').disabled = !bad.length;
+    // Na początku i na końcu partii strzałki w tę stronę są wyszarzone, żeby było widać, że dalej nic nie ma.
+    panel.querySelectorAll('[data-nav="next"], [data-nav="last"]').forEach((b) => b.classList.toggle("dim", cur === N));
+    panel.querySelectorAll('[data-nav="prev"].big, [data-nav="first"]').forEach((b) => b.classList.toggle("dim", cur === 0));
   }
   let selKind = null;
   function toggleKind(k) {
@@ -978,7 +989,7 @@ function sfViewer(panel, g, r, eng, onDeeper) {
       else if (!on && document.fullscreenElement) document.exitFullscreen();
     } catch { /* bez API pełnego ekranu */ }
     panel.querySelector('[data-nav="full"]').classList.toggle("on", on);
-    if (chart.layout) { evalAxis(on); window.Plotly.Plots.resize(chart); }
+    if (chart.layout && on) { evalAxis(true); window.Plotly.Plots.resize(chart); }
   }
   panel._closeFull = () => toggleFull(false);
   panel.onfullscreenchange = () => { if (!document.fullscreenElement && panel.classList.contains("full")) toggleFull(false); };

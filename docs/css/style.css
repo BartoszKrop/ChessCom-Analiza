@@ -386,3 +386,13 @@ body.noscroll #to-top { display: none; }
 .sf-panel.full .sf-main { grid-template-columns: minmax(0, min(calc(100dvh - 280px), 68vw)) minmax(0, 1fr); }
 @media (max-width: 760px) { .sf-panel.full > .sf-evalchart { height: 130px; } .sf-panel.full .sf-main { grid-template-columns: 1fr; } }
 .sf-source { font-size: .75rem; opacity: .8; }
+/* Zwykły widok analizy bez wykresu oceny: wykres jest w pełnym ekranie (⛶), nad planszą. */
+.sf-panel:not(.full) > .sf-evaltitle, .sf-panel:not(.full) > .sf-evalchart { display: none; }
+/* Koniec partii w analizie */
+.sf-end { display: flex; align-items: center; gap: 6px; padding: 6px 10px; margin: -2px -4px 2px; border-radius: 6px; font-size: .95rem; background: rgba(127, 127, 127, .15); border-left: 4px solid var(--draw); animation: popUp2 .25s ease both; }
+.sf-end.W { border-left-color: var(--win); background: color-mix(in srgb, var(--win) 18%, transparent); }
+.sf-end.L { border-left-color: var(--loss); background: color-mix(in srgb, var(--loss) 18%, transparent); }
+.sf-endchip { grid-column: 1 / -1; justify-self: start; min-height: 0; margin-top: 6px; padding: 4px 10px; border-radius: 999px; border: none; font-size: .85rem; font-weight: 600; background: rgba(127, 127, 127, .18); color: var(--text); }
+.sf-endchip.W { background: color-mix(in srgb, var(--win) 25%, transparent); }
+.sf-endchip.L { background: color-mix(in srgb, var(--loss) 25%, transparent); }
+.sf-nav button.dim { opacity: .35; }
